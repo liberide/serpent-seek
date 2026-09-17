@@ -1,0 +1,16 @@
+.git
+.gitignore
+.idea
+data
+*.db
+*.db-wal
+*.db-shm
+web/node_modules
+web/.svelte-kit
+web/build
+.env
+serpentseek
+dist
+coverage.out
+*.md
+!THIRD_PARTY_LICENSES.md

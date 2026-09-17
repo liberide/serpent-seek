@@ -1,0 +1,13 @@
+# SerpentSeek data / build artifacts
+/data/
+*.db
+*.db-wal
+*.db-shm
+web/node_modules/
+web/.svelte-kit/
+web/build/*
+!web/build/.keep
+.env
+serpentseek
+/dist/
+coverage.out
