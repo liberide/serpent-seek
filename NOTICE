@@ -1,0 +1,52 @@
+SerpentSeek
+===========
+
+Copyright (C) 2026 The SerpentSeek Authors
+
+SerpentSeek is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, version 3 of the License. See the LICENSE file for the full text.
+
+SerpentSeek is distributed in the hope that it will be useful, but WITHOUT ANY
+WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR
+A PARTICULAR PURPOSE. See the GNU General Public License for more details.
+
+Third-party components
+----------------------
+
+The SerpentSeek binary and Docker image contain third-party open source
+components (Go modules compiled into the binary and npm packages embedded in
+the built web interface). These components are licensed by their respective
+copyright holders under permissive licenses (MIT, BSD-3-Clause, ISC,
+Apache-2.0). Their copyright notices and license texts are reproduced in
+THIRD_PARTY_LICENSES.md.
+
+Components marked as Apache-2.0 are licensed under the Apache License,
+Version 2.0; you may not use them except in compliance with that license.
+No Apache-licensed component ships a NOTICE file of its own at the pinned
+versions, so no additional attribution texts are carried over here.
+
+SerpentSeek is designed to interoperate with Open WebUI and can consume an
+externally hosted SearXNG instance. Neither Open WebUI nor SearXNG is
+distributed as part of this project; if you deploy them, their own licenses
+(BSD-3-Clause and AGPL-3.0-or-later respectively) apply to those deployments.
+
+Charges from third-party APIs
+-----------------------------
+
+Searches are executed against third-party search APIs (Yandex, Google,
+apiserpent, SerpBase, SearXNG and similar) using API keys supplied by the
+person who deploys and operates the service. Any charges for those requests
+are billed by the respective provider under that person's own agreement with
+the provider. The authors and contributors of SerpentSeek are not liable for
+such charges, nor for any other material damage arising from the use or
+inability to use the software (see GPLv3 sections 15 and 16: the program is
+provided "as is", without warranty of any kind).
+
+Operators are strongly advised to configure billing budgets, alerts and
+API-key quotas on the provider side, and to keep retry counts and attempt
+limits in chain settings at reasonable values.
+
+"SerpentSeek" is a project name, not a trademark claim; if you distribute
+modified versions, please make the origin and modifications of your build
+clear (GPLv3 §5(a)).

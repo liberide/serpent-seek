@@ -1,0 +1,25 @@
+# Example configuration for an EXTERNALLY hosted SearXNG instance.
+#
+# SerpentSeek does not run SearXNG itself: point the searxng provider at your own
+# instance (SEARXNG_URL / Providers UI). Server-to-server JSON access needs:
+#   search.formats: [html, json]   -> otherwise SearXNG returns 403
+#   limiter: false                 -> otherwise SearXNG returns 429
+#
+# NOTE: SearXNG is AGPLv3. It is an external service, never linked into
+# SerpentSeek; you are responsible for complying with its license.
+use_default_settings: true
+
+server:
+  secret_key: "${SEARXNG_SECRET_KEY:?set in .env}"   # SearXNG's own session/CSRF signer (NOT the SerpentSeek gate token)
+  limiter: false
+  image_proxy: false
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  formats:
+    - html
+    - json   # required: SerpentSeek calls /search?format=json
+
+ui:
+  default_locale: en

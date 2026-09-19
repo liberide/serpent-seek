@@ -1,0 +1,37 @@
+services:
+  serpentseek:
+    build: .
+    container_name: serpentseek
+    ports: ["8080:8080"]
+    env_file: [.env]
+    volumes: [serpentseek_data:/app/data]
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    pids_limit: 512
+    networks: [backend]
+
+  postgres:
+    # Compose profile "extdb" (optional external storage).
+    # PostgreSQL License — a separate satellite container, NOT a code dependency.
+    image: postgres:17-alpine
+    profiles: ["extdb"]
+    container_name: serpentseek-postgres
+    environment:
+      POSTGRES_DB: serpentseek
+      POSTGRES_USER: serpent
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes: [serpentseek_pg:/var/lib/postgresql/data]
+    restart: unless-stopped
+    security_opt: [no-new-privileges:true]
+    networks: [backend]
+
+# SearXNG is NOT part of this stack: SerpentSeek connects to an externally
+# hosted SearXNG instance. Set its URL via SEARXNG_URL or the Providers UI.
+# See deploy/searxng/settings.yml for an example instance configuration.
+
+networks:
+  backend: {}
+
+volumes:
+  serpentseek_data: {}
+  serpentseek_pg: {}

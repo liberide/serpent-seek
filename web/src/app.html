@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru" class="dark" data-theme="emerald">
+	<head>
+		<meta charset="utf-8" />
+		<link rel="icon" href="%sveltekit.assets%/favicon.svg" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta name="color-scheme" content="dark light" />
+		<script>
+			// Apply the saved UI theme before first paint to avoid a colour flash.
+			(function () {
+				try {
+					var allowed = [
+						'emerald', 'daylight', 'matrix', 'ocean', 'sunset',
+						'parchment', 'gruvbox', 'cyberpunk', 'mono', 'rose',
+						'oled', 'nord', 'lavender', 'ember', 'forest'
+					];
+					var stored = localStorage.getItem('serpentseek-theme');
+					var theme = allowed.indexOf(stored) !== -1 ? stored : 'emerald';
+					var root = document.documentElement;
+					root.setAttribute('data-theme', theme);
+					root.style.colorScheme = theme === 'daylight' ? 'light' : 'dark';
+				} catch (e) {
+					/* storage unavailable — keep the default theme */
+				}
+			})();
+		</script>
+		%sveltekit.head%
+	</head>
+	<body data-sveltekit-preload-data="hover" class="bg-slate-950 text-slate-100">
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
+</html>
