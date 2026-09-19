@@ -1,0 +1,1 @@
+Placeholder tracked in git so //go:embed all:build always has a file. See web/embed.go.

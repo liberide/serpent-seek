@@ -63,4 +63,5 @@ logs:
 	docker compose logs -f
 
 clean:
-	rm -rf serpentseek web/build web/.svelte-kit
+	rm -rf serpentseek web/.svelte-kit
+	find web/build -mindepth 1 ! -name .keep -exec rm -rf {} + 2>/dev/null || true

@@ -7,6 +7,7 @@
   "scripts": {
     "dev": "vite dev",
     "build": "vite build",
+    "postbuild": "node -e \"require('node:fs').writeFileSync('build/.keep', 'Placeholder tracked in git so //go:embed all:build always has a file. See web/embed.go.\\n')\"",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
   },
