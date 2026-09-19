@@ -1,0 +1,1597 @@
+openapi: 3.1.0
+info:
+  title: SerpentSeek API
+  version: "1.0.0"
+  summary: Search gateway microservice — visual provider chains, live request tracing, API-key/Passkeys auth, SQLite/PostgreSQL storage.
+  description: |
+    SerpentSeek is a drop-in replacement for the serpent-shim used by Open WebUI, upgraded to a full
+    service with an admin SPA.
+
+    **Machine endpoint.** `POST /search` is Open WebUI-compatible: request `{query, count}`, response is always
+    HTTP 200 with an array of `[{link,title,snippet}]` (or `[]` on failure/empty). Diagnostics are carried via
+    response headers `X-Serpent-Rid` and `X-Serpent-Api` and the History UI.
+
+    **Auth.** Two mechanisms, either or both can be used:
+    - `bearerAuth`: API keys (`seek_ak_…` scope `search`; `seek_admin_…` scope `admin`; `read` for GET-only).
+    - `cookieAuth`: session cookie `seek_sid` + CSRF double-submit header `X-CSRF-Token` on all mutations.
+    When `AUTH_ENABLED=false` every `/api/*` endpoint behaves as open-admin and `/search` needs no key.
+
+    **Request tracing.** Every response carries `X-Serpent-Rid`. Live step-by-step execution of a request's
+    chain is exposed over SSE (see `/api/requests/{id}/events`).
+
+    **Errors.** All `4xx/5xx` responses: `{ "error": { "code", "message", "rid" } }`.
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local default (docker compose up --build)
+
+tags:
+  - name: machine
+    description: Open WebUI-compatible machine search endpoint
+  - name: meta
+    description: Health and version
+  - name: auth
+    description: Sessions, login/logout, first-run setup, passkeys
+  - name: users
+    description: Users, API keys, passkey credentials management
+  - name: history
+    description: Search request history + live SSE tracing
+  - name: chains
+    description: Visual provider chains (graph of nodes/edges)
+  - name: providers
+    description: Search provider configuration and live tests
+  - name: settings
+    description: Runtime settings (env overrides marked readonly)
+  - name: logs
+    description: In-app log browsing
+  - name: maintenance
+    description: Cleanup jobs and manual maintenance actions
+  - name: stats
+    description: Dashboard aggregates
+  - name: playground
+    description: UI-originated manual search with live trace
+
+security:
+  - bearerAuth: []
+  - cookieAuth: []
+    csrfHeader: []
+
+paths:
+  # ---------------- machine / meta ----------------
+  /healthz:
+    get:
+      tags: [meta]
+      summary: Liveness/readiness probe (503 until migrations are applied)
+      security: []
+      responses:
+        "200":
+          description: Service is ready
+          headers: { X-Serpent-Rid: { $ref: "#/components/headers/XSerpentRid" } }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties: { ok: { type: boolean } }
+              example: { ok: true }
+        "503":
+          description: Not ready (migrations running, DB not reachable)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { ok: { type: boolean }, reason: { type: string } }
+              example: { ok: false, reason: migrations_running }
+
+  /version:
+    get:
+      tags: [meta]
+      summary: Build metadata
+      security: []
+      responses:
+        "200":
+          description: Version info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version: { type: string }
+                  commit: { type: string }
+                  build_date: { type: string, format: date-time }
+              example: { version: "1.0.0", commit: "a1b2c3d", build_date: "2026-09-22T10:00:00Z" }
+
+  /search:
+    post:
+      tags: [machine]
+      summary: Drop-in search endpoint for Open WebUI (replaces serpent-shim)
+      description: |
+        Compatible with the serpent-shim contract: Bearer auth, `{query, count}`, HTTP 200 **always** —
+        either `Row[]` (≤ count) or `[]` on failure/empty. Who answered and the request id are returned in
+        headers; full diagnostics live in History (`/api/requests/{id}`).
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query: { type: string, minLength: 1, description: Search text }
+                count:
+                  type: integer
+                  minimum: 1
+                  maximum: 20
+                  default: 5
+                  description: Max rows to return
+            example: { query: "open webui searxng json", count: 5 }
+      responses:
+        "200":
+          description: Search rows (empty array means fail/empty — see History and response headers)
+          headers:
+            X-Serpent-Rid: { $ref: "#/components/headers/XSerpentRid" }
+            X-Serpent-Api: { $ref: "#/components/headers/XSerpentApi" }
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Row" }
+              example:
+                - link: "https://searxng.org/"
+                  title: "SearXNG"
+                  snippet: "Privacy-respecting metasearch engine."
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  # ---------------- auth ----------------
+  /api/me:
+    get:
+      tags: [auth]
+      summary: Current session/user state
+      responses:
+        "200":
+          description: Auth mode + current user (null user with auth_enabled=false means open-admin)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MeResponse" }
+
+  /api/auth/setup:
+    post:
+      tags: [auth]
+      summary: First-run setup (creates first admin + first API key)
+      description: Available only while no admin exists; requires the one-time `SETUP_TOKEN` printed to server logs.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [setup_token, admin_name]
+              properties:
+                setup_token: { type: string }
+                admin_name: { type: string }
+                create_key: { type: boolean, default: true }
+                key_name: { type: string, default: first-admin-key }
+      responses:
+        "201":
+          description: Admin created; API key secret is shown once
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user: { $ref: "#/components/schemas/User" }
+                  api_key: { $ref: "#/components/schemas/ApiKeyCreated" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "410":
+          description: Setup window closed (token expired or setup already done)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /api/auth/login:
+    post:
+      tags: [auth]
+      summary: Login with an API key (creates a session cookie)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [api_key]
+              properties: { api_key: { type: string, example: "seek_ak_ab12cd34.…" } }
+      responses:
+        "200":
+          description: Session established; `seek_sid` (HttpOnly) + `seek_csrf` cookies set
+          headers: { X-Serpent-Rid: { $ref: "#/components/headers/XSerpentRid" } }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { user: { $ref: "#/components/schemas/User" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /api/auth/logout:
+    post:
+      tags: [auth]
+      summary: Logout (invalidates current session)
+      responses:
+        "204": { description: Logged out, cookies cleared }
+
+  /api/auth/passkey/register/begin:
+    post:
+      tags: [auth]
+      summary: WebAuthn registration — begin (requires an authenticated session)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: { name: { type: string, description: Friendly name for the passkey } }
+      responses:
+        "200":
+          description: PublicKeyCredentialCreationOptions (webauthn protocol object)
+          content:
+            application/json:
+              schema: { type: object, description: navigator.credentials.create() options }
+
+  /api/auth/passkey/register/finish:
+    post:
+      tags: [auth]
+      summary: WebAuthn registration — finish (stores the credential)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Attestation response from the authenticator }
+      responses:
+        "201":
+          description: Credential stored
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PasskeyCredential" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/auth/passkey/assert/begin:
+    post:
+      tags: [auth]
+      summary: WebAuthn login — begin (discoverable credentials)
+      security: []
+      responses:
+        "200":
+          description: PublicKeyCredentialRequestOptions
+          content:
+            application/json:
+              schema: { type: object, description: navigator.credentials.get() options }
+
+  /api/auth/passkey/assert/finish:
+    post:
+      tags: [auth]
+      summary: WebAuthn login — finish (creates session cookie)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, description: Assertion response from the authenticator }
+      responses:
+        "200":
+          description: Session established
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { user: { $ref: "#/components/schemas/User" } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  # ---------------- users / keys / passkeys ----------------
+  /api/users:
+    get:
+      tags: [users]
+      summary: List users (admin)
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/User" }
+    post:
+      tags: [users]
+      summary: Create user (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/users/{id}:
+    patch:
+      tags: [users]
+      summary: Update user (rename, role, disable)
+      parameters: [ { $ref: "#/components/parameters/UserId" } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserPatch" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [users]
+      summary: Delete user (admin); own admin account cannot delete itself while it is the last admin
+      parameters: [ { $ref: "#/components/parameters/UserId" } ]
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/keys:
+    get:
+      tags: [users]
+      summary: List API keys (prefix only — secrets are never returned)
+      responses:
+        "200":
+          description: API keys
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ApiKey" }
+    post:
+      tags: [users]
+      summary: Create API key (secret returned ONCE)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ApiKeyCreateInput" }
+      responses:
+        "201":
+          description: Created — copy the secret now, it is never shown again
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiKeyCreated" }
+
+  /api/keys/{id}:
+    patch:
+      tags: [users]
+      summary: Update key (rename, expiry, revoke)
+      parameters: [ { $ref: "#/components/parameters/KeyId" } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                expires_at: { type: string, format: date-time, nullable: true }
+                revoke: { type: boolean }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ApiKey" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [users]
+      summary: Delete key permanently
+      parameters: [ { $ref: "#/components/parameters/KeyId" } ]
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/passkeys:
+    get:
+      tags: [users]
+      summary: List passkey credentials (own or all for admin)
+      responses:
+        "200":
+          description: Passkeys
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PasskeyCredential" }
+
+  /api/passkeys/{id}:
+    delete:
+      tags: [users]
+      summary: Delete a passkey credential
+      parameters: [ { $ref: "#/components/parameters/UserId" } ]
+      responses:
+        "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ---------------- history ----------------
+  /api/requests:
+    get:
+      tags: [history]
+      summary: Search request history (cursor pagination, filters)
+      parameters:
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/RequestStatus" }
+        - name: provider
+          in: query
+          schema: { type: string, description: Filter by step provider code }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - name: q
+          in: query
+          schema: { type: string, description: Substring match on query text }
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: Page of requests
+          headers: { X-Serpent-Rid: { $ref: "#/components/headers/XSerpentRid" } }
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/RequestSummary" }
+                  next_cursor: { type: string, nullable: true }
+
+  /api/requests/{id}:
+    get:
+      tags: [history]
+      summary: Request details + step trace + chain snapshot (graph as it was at run time)
+      parameters: [ { $ref: "#/components/parameters/RequestId" } ]
+      responses:
+        "200":
+          description: Full request record
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RequestDetail" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/requests/{id}/events:
+    get:
+      tags: [history]
+      summary: Live execution trace of a request (SSE)
+      description: |
+        Server-Sent Events stream. Wire format: `event: <name>\ndata: <json>\n\nid: <seq>`.
+        Server sends a keep-alive ping every 15s and sets `retry: 2000`. Reconnection is supported via
+        the `Last-Event-ID` header. If the request already finished, the server immediately replays all
+        stored steps and closes the stream with `request_done`.
+
+        Events:
+        - `step_started` → SSEStepStarted — a chain node began executing (🟡 in UI)
+        - `step_finished` → SSEStepFinished — node completed (🟢 ok / 🔴 fail / ⚪ skip: see `kind` and `status`)
+        - `provider_dead` → SSEProviderDead — provider is excluded for the rest of THIS request
+        - `merge_progress` → SSEMergeProgress — full-chain live counter (collected/unique links so far)
+        - `merge_done` → SSEMergeDone — full-chain terminal merge counters (before `request_done`)
+        - `request_done` → SSERequestDone — terminal event; stream closes right after
+
+        The UI maps steps onto the chain snapshot: running node = yellow pulse, ok = green, fail = red,
+        skipped = gray; ProgressCube fills with each finished step and turns red on abort.
+      parameters: [ { $ref: "#/components/parameters/RequestId" } ]
+      responses:
+        "200":
+          description: SSE stream
+          headers:
+            Cache-Control: { schema: { type: string }, description: "no-cache" }
+            Last-Event-ID:
+              schema: { type: string }
+              description: Echo of the client's last received event id (request header)
+          content:
+            text/event-stream:
+              schema: { type: string, description: SSE wire format; see operation description for event payloads }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/events:
+    get:
+      tags: [history]
+      summary: Global feed (SSE) — request_created / request_done for Dashboard and History
+      description: Server-Sent Events; same wire format as `/api/requests/{id}/events`.
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+
+  # ---------------- chains ----------------
+  /api/chains:
+    get:
+      tags: [chains]
+      summary: List chains (summaries)
+      responses:
+        "200":
+          description: Chains
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ChainSummary" }
+    post:
+      tags: [chains]
+      summary: Create chain (nodes + edges + layout); server validates the graph
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChainInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Chain" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  /api/chains/{id}:
+    get:
+      tags: [chains]
+      summary: Chain details (graph + layout)
+      parameters: [ { $ref: "#/components/parameters/ChainId" } ]
+      responses:
+        "200":
+          description: Chain
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Chain" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [chains]
+      summary: Replace graph (nodes/edges/positions) + metadata; validated before save
+      parameters: [ { $ref: "#/components/parameters/ChainId" } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChainInput" }
+      responses:
+        "200":
+          description: Updated (version is incremented)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Chain" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [chains]
+      summary: Delete chain (the ACTIVE chain cannot be deleted)
+      parameters: [ { $ref: "#/components/parameters/ChainId" } ]
+      responses:
+        "204": { description: Deleted }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/chains/{id}/activate:
+    post:
+      tags: [chains]
+      summary: Make chain active (exactly one active chain at a time)
+      parameters: [ { $ref: "#/components/parameters/ChainId" } ]
+      responses:
+        "200":
+          description: Activated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { ok: { type: boolean } }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/chains/{id}/duplicate:
+    post:
+      tags: [chains]
+      summary: Duplicate chain ("<name> copy")
+      parameters: [ { $ref: "#/components/parameters/ChainId" } ]
+      responses:
+        "201":
+          description: Duplicated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Chain" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/chains/{id}/validate:
+    post:
+      tags: [chains]
+      summary: Dry-run validation (also used live by the editor canvas)
+      parameters: [ { $ref: "#/components/parameters/ChainId" } ]
+      responses:
+        "200":
+          description: Validation result (cycles, orphans, >1 start, dangling edges, bad params)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [valid, errors]
+                properties:
+                  valid: { type: boolean }
+                  errors:
+                    type: array
+                    items: { $ref: "#/components/schemas/ValidationIssue" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ---------------- providers ----------------
+  /api/providers:
+    get:
+      tags: [providers]
+      summary: 'List providers (credentials masked: only `"***"` + set flag)'
+      responses:
+        "200":
+          description: Providers
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Provider" }
+    post:
+      tags: [providers]
+      summary: Create provider (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProviderInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Provider" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/providers/{id}:
+    get:
+      tags: [providers]
+      summary: Provider details
+      parameters: [ { $ref: "#/components/parameters/ProviderId" } ]
+      responses:
+        "200":
+          description: Provider
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Provider" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [providers]
+      summary: Full replace of a provider
+      parameters: [ { $ref: "#/components/parameters/ProviderId" } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProviderInput" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Provider" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [providers]
+      summary: Partial update — enabled toggle and/or base_url
+      description: |
+        Used by the card on/off switch (`enabled`) and the URL field (`base_url`).
+        `base_url` is **not a secret** (e.g. the external SearXNG URL) and is freely
+        readable/editable. Full edits (name/params/credentials) go through `PUT`.
+      parameters: [ { $ref: "#/components/parameters/ProviderId" } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProviderPatch" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Provider" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [providers]
+      summary: Delete a provider instance (refused while a chain references it)
+      parameters: [ { $ref: "#/components/parameters/ProviderId" } ]
+      responses:
+        "200":
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { ok: { type: boolean } }
+        "409":
+          description: Provider is used by one or more chains (`error.chains[]`); remove it from the chains first
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /api/providers/{id}/test:
+    post:
+      tags: [providers]
+      summary: Live test of a provider (probe query "test"; shows http/kind/ms and up to 3 links)
+      parameters: [ { $ref: "#/components/parameters/ProviderId" } ]
+      responses:
+        "200":
+          description: Probe result (a failed probe is HTTP 200 with ok=false — classification is in `kind`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProviderTestResult" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ---------------- settings ----------------
+  /api/settings:
+    get:
+      tags: [settings]
+      summary: All settings (with source env|db|default and readonly flags)
+      responses:
+        "200":
+          description: Settings catalog
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettingsResponse" }
+    put:
+      tags: [settings]
+      summary: Update settings (db-sourced only; env-managed keys are readonly)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SettingsUpdateRequest" }
+      responses:
+        "200":
+          description: Applied (some keys need a container restart — e.g. STORAGE_DRIVER)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SettingsUpdateResponse" }
+        "422": { $ref: "#/components/responses/ValidationFailed" }
+
+  # ---------------- logs ----------------
+  /api/logs:
+    get:
+      tags: [logs]
+      summary: Browse in-app logs (secrets are already redacted server-side)
+      parameters:
+        - name: level
+          in: query
+          schema: { $ref: "#/components/schemas/LogLevel" }
+        - name: q
+          in: query
+          schema: { type: string, description: Substring match on message }
+        - { $ref: "#/components/parameters/Cursor" }
+        - { $ref: "#/components/parameters/Limit" }
+      responses:
+        "200":
+          description: Page of log entries (newest first)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/LogEntry" }
+                  next_cursor: { type: string, nullable: true }
+
+  # ---------------- maintenance ----------------
+  /api/maintenance/clear-logs:
+    post:
+      tags: [maintenance]
+      summary: "UI button: delete ALL log rows"
+      responses:
+        "200":
+          description: Deleted count
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeletedResponse" }
+
+  /api/maintenance/clear-history:
+    post:
+      tags: [maintenance]
+      summary: "UI button: delete request history (optionally only older than N days)"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                older_than_days:
+                  type: integer
+                  minimum: 1
+                  description: Omitted = delete everything
+      responses:
+        "200":
+          description: Deleted counts (steps are removed via cascade)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requests_deleted: { type: integer }
+                  steps_deleted: { type: integer }
+
+  /api/maintenance/vacuum-now:
+    post:
+      tags: [maintenance]
+      summary: Run VACUUM immediately (SQLite driver only; no-op on PostgreSQL)
+      responses:
+        "200":
+          description: Vacuum result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  freed_bytes: { type: integer, format: int64 }
+
+  /api/maintenance/run-cleanup:
+    post:
+      tags: [maintenance]
+      summary: Run the retention cleanup job NOW (history/logs/sessions by *_RETENTION_DAYS)
+      responses:
+        "200":
+          description: Cleanup summary
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CleanupResponse" }
+
+  # ---------------- stats ----------------
+  /api/stats/summary:
+    get:
+      tags: [stats]
+      summary: Dashboard aggregates (today counters, 7-day sparkline, provider health)
+      responses:
+        "200":
+          description: Stats bundle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatsSummary" }
+
+  # ---------------- playground ----------------
+  /api/search/ui:
+    post:
+      tags: [playground]
+      summary: Start a manual search from the UI (async — trace it live over SSE)
+      description: Creates the request and returns immediately; the UI subscribes to `/api/requests/{id}/events`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SearchRequest"
+      responses:
+        "202":
+          description: Accepted — follow the trace at `stream_url`
+          headers: { X-Serpent-Rid: { $ref: "#/components/headers/XSerpentRid" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlaygroundResponse" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        API key in `Authorization: Bearer …`. Scopes: `search` → `/search` only; `read` → GET `/api/*`;
+        `admin` → everything. Key format `seek_ak_<prefix>.<secret>` / `seek_admin_…`.
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: seek_sid
+      description: Session cookie (HttpOnly, Secure, SameSite=Strict, rolling expiry 30d).
+    csrfHeader:
+      type: apiKey
+      in: header
+      name: X-CSRF-Token
+      description: Double-submit CSRF token (readable cookie `seek_csrf` → echo in this header) — required on all mutations made with cookieAuth.
+
+  headers:
+    XSerpentRid:
+      description: Request codifier `NNNN-xxxx`; links responses, logs and History records
+      schema: { type: string, example: "0008-1c77" }
+    XSerpentApi:
+      description: Provider that produced the final answer (last executed provider otherwise), `-` when none
+      schema: { type: string, example: "searxng" }
+
+  parameters:
+    UserId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    KeyId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    RequestId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    ChainId: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    ProviderId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        description: Provider *instance* id (providers.id), not the driver code
+        example: 3f9c2b1a-1c2d-4e5f-8a9b-0c1d2e3f4a5b
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      schema: { type: string, description: Opaque cursor from next_cursor (absent on first page) }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    BadRequest:
+      description: Malformed request
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example: { error: { code: bad_json, message: "request body is not valid JSON", rid: "0008-1c77" } }
+    Unauthorized:
+      description: Missing/invalid credentials
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example: { error: { code: unauthorized, message: "invalid or missing credentials", rid: "0008-1c77" } }
+    NotFound:
+      description: Entity not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    Conflict:
+      description: State conflict (unique violation, rule violation, etc.)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+    ValidationFailed:
+      description: Domain validation failed (e.g. chain graph errors)
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error: { $ref: "#/components/schemas/ErrorObject" }
+              issues:
+                type: array
+                items: { $ref: "#/components/schemas/ValidationIssue" }
+    RateLimited:
+      description: Too many attempts (auth endpoints, 10/min per IP)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  schemas:
+    # ---------- shared ----------
+    Row:
+      type: object
+      required: [link, title, snippet]
+      properties:
+        link: { type: string, description: Result URL }
+        title: { type: string }
+        snippet: { type: string }
+        sources:
+          type: array
+          items: { type: string }
+          description: >
+            Only in the history/dedupe view (full-chain mode): providers whose responses
+            contained this link after dedupe ("found at N providers"). Never returned by /search.
+      description: Open WebUI result row (normalized from any provider)
+
+    SearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string, minLength: 1 }
+        count:
+          type: integer
+          minimum: 0
+          maximum: 20
+          default: 0
+          description: >
+            Result cap. 0 (or omitted) = return everything found — providers are
+            queried without a num/pageSize limit and the response is not truncated.
+            The global setting IGNORE_REQUEST_COUNT («Settings → Сеть») forces this
+            behaviour for every request.
+
+    ErrorObject:
+      type: object
+      required: [code, message, rid]
+      properties:
+        code: { type: string }
+        message: { type: string, description: Secrets are redacted server-side }
+        rid: { type: string, example: "0008-1c77" }
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error: { $ref: "#/components/schemas/ErrorObject" }
+
+    # ---------- enums ----------
+    RequestStatus:
+      type: string
+      enum: [running, ok, empty, fail]
+      description: "`empty` only if the LAST executed step was a 2xx with zero links; otherwise `fail`"
+
+    StepStatus:
+      type: string
+      enum: [running, ok, fail, skipped]
+      description: "UI colors: running 🟡, ok 🟢, fail 🔴, skipped ⚪"
+
+    StepKind:
+      type: string
+      enum: [ok, empty, api, http, net, timeout, read, json, skip]
+      description: Classification of an execution step (permanent kinds exclude the provider for the request)
+
+    LogLevel:
+      type: string
+      enum: [DEBUG, INFO, WARN, ERROR, OK]
+
+    DelayPolicy:
+      type: string
+      enum: [none, fixed, linear]
+
+    # ---------- history ----------
+    RequestSummary:
+      type: object
+      required: [id, rid, query, count, status, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        rid: { type: string, example: "0008-1c77" }
+        query: { type: string }
+        count: { type: integer }
+        status: { $ref: "#/components/schemas/RequestStatus" }
+        used_provider: { type: string, nullable: true }
+        results_count: { type: integer }
+        total_ms: { type: integer, format: int64 }
+        steps_count: { type: integer }
+        chain_id: { type: string, format: uuid, nullable: true }
+        client: { type: string, nullable: true, description: "open-webui | ui | key name" }
+        error: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    RequestStep:
+      type: object
+      required: [idx, provider, attempt_no, status]
+      properties:
+        id: { type: string, format: uuid }
+        request_id: { type: string, format: uuid }
+        idx: { type: integer, description: Step number inside the request (0-based) }
+        node_key: { type: string, nullable: true, description: Chain node that produced the step }
+        provider: { type: string }
+        engine: { type: string, nullable: true }
+        attempt_no: { type: integer, minimum: 1 }
+        stage: { type: string, nullable: true, description: "Sub-call of a multi-call node (pubmed esearch|esummary|efetch)" }
+        status: { $ref: "#/components/schemas/StepStatus" }
+        kind: { $ref: "#/components/schemas/StepKind" }
+        http_status: { type: integer, nullable: true }
+        error: { type: string, nullable: true, description: Redacted server-side }
+        permanent: { type: boolean, description: Provider excluded for the rest of THIS request }
+        results_count: { type: integer }
+        wait_before_ms: { type: integer, format: int64, description: Backoff applied before the call }
+        took_ms: { type: integer, format: int64 }
+        started_at: { type: string, format: date-time, nullable: true }
+        finished_at: { type: string, format: date-time, nullable: true }
+
+    RequestDetail:
+      allOf:
+        - $ref: "#/components/schemas/RequestSummary"
+        - type: object
+          properties:
+            steps:
+              type: array
+              items: { $ref: "#/components/schemas/RequestStep" }
+            chain_snapshot:
+              $ref: "#/components/schemas/Chain"
+              description: Exact graph the request ran on, including its mode (colored by step results in the UI)
+            answer:
+              type: string
+              nullable: true
+              description: Generated text of the last answer-mode node (absent for search-only chains)
+            merge:
+              type: object
+              nullable: true
+              description: Full-chain merge summary (present for full_chain requests)
+              properties:
+                collected_total: { type: integer }
+                unique_links: { type: integer }
+                duplicates_removed: { type: integer }
+            results:
+              type: array
+              description: Persisted final rows (with `sources` in full-chain mode)
+              items: { $ref: "#/components/schemas/Row" }
+
+    # ---------- chains ----------
+    ChainNode:
+      type: object
+      required: [key, provider_id, is_start]
+      properties:
+        key: { type: string, description: Node id unique within the chain }
+        provider_id: { type: string, description: Provider instance id (providers.id) }
+        label: { type: string, nullable: true }
+        mode:
+          type: string
+          enum: [search, answer]
+          default: search
+          description: >
+            search — Row source; answer — generative node whose text goes to the request
+            answer field. Answer nodes never join the Row merge and cannot be the start block.
+        params:
+          type: object
+          additionalProperties: { type: string }
+          description: Per-node parameter overrides (engine, hl/gl, language, …)
+        timeout_ms: { type: integer, minimum: 1000, maximum: 120000, default: 20000, description: Response wait time per attempt, 1–120s }
+        retries: { type: integer, minimum: 0, maximum: 10, default: 0, description: Extra attempts inside the block (linear backoff retry_delay_ms × attempt) }
+        retry_delay_ms: { type: integer, minimum: 0, maximum: 30000, default: 700 }
+        delay_policy: { $ref: "#/components/schemas/DelayPolicy", default: linear }
+        on_success:
+          type: string
+          default: stop
+          description: "`stop` or a node key"
+        on_empty:
+          type: string
+          default: next
+          description: "`next`, `stop` or a node key — 2xx with zero rows is NOT a success"
+        on_fail:
+          type: string
+          default: next
+          description: "`next`, `stop` or a node key"
+        is_start:
+          type: boolean
+          default: false
+          description: Start block flag — exactly one node per chain must have it (yellow outline in the editor)
+        pos_x: { type: number, default: 0, description: Editor layout }
+        pos_y: { type: number, default: 0 }
+
+    ChainEdge:
+      type: object
+      required: [from_key, to_key]
+      properties:
+        from_key: { type: string }
+        to_key: { type: string }
+        condition:
+          type: string
+          enum: [success, empty, fail, next, any]
+          default: next
+          description: >
+            Outcome this edge carries (success = green, empty = amber, fail = red, next = neutral).
+            In full_chain mode only next/any edges steer the walk; the rest stay as diagnostics.
+
+    ChainGraph:
+      type: object
+      required: [nodes, edges]
+      properties:
+        nodes:
+          type: array
+          items: { $ref: "#/components/schemas/ChainNode" }
+        edges:
+          type: array
+          items: { $ref: "#/components/schemas/ChainEdge" }
+
+    ChainMode:
+      type: string
+      enum: [first_success, full_chain]
+      default: first_success
+      description: >
+        first_success — the first block with a usable result stops the chain;
+        full_chain — walk every block reachable from the start along next edges and merge
+        all collected links (deduped by normalized URL: lowercase scheme/host, no www.,
+        no trailing slash, no fragment, no utm_*/tracking params).
+
+    ChainInput:
+      allOf:
+        - $ref: "#/components/schemas/ChainGraph"
+        - type: object
+          properties:
+            name: { type: string, minLength: 1 }
+            mode: { $ref: "#/components/schemas/ChainMode" }
+
+    Chain:
+      type: object
+      required: [id, name, active, mode, version, nodes, edges, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        active: { type: boolean, description: Exactly one chain is active at a time }
+        mode: { $ref: "#/components/schemas/ChainMode" }
+        version: { type: integer }
+        nodes:
+          type: array
+          items: { $ref: "#/components/schemas/ChainNode" }
+        edges:
+          type: array
+          items: { $ref: "#/components/schemas/ChainEdge" }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ChainSummary:
+      type: object
+      required: [id, name, active, mode, version, updated_at, nodes_count]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        active: { type: boolean }
+        mode: { $ref: "#/components/schemas/ChainMode" }
+        version: { type: integer }
+        nodes_count: { type: integer }
+        updated_at: { type: string, format: date-time }
+
+    ValidationIssue:
+      type: object
+      properties:
+        node_key: { type: string, nullable: true }
+        field: { type: string, nullable: true }
+        message: { type: string, example: "cycle detected: blk-2 -> blk-4 -> blk-2" }
+
+    # ---------- providers ----------
+    CredentialMeta:
+      type: object
+      description: Masked view of a stored credential (secret value is never returned)
+      properties:
+        name: { type: string, example: api_key }
+        set: { type: boolean }
+        masked: { type: string, example: "***" }
+
+    Provider:
+      type: object
+      required: [id, code, name, enabled]
+      description: |
+        A provider *instance*. Several instances may share the same `code`
+        (driver type) with different `name` and credentials.
+      properties:
+        id: { type: string, description: Instance id referenced by chain nodes }
+        code: { type: string, example: searxng, description: Driver type from the provider registry }
+        name: { type: string, example: "searxng work", description: User-defined unique instance name }
+        enabled: { type: boolean }
+        base_url:
+          type: string
+          nullable: true
+          description: "Plain editable URL (NOT a secret); may contain a {query} template (searxng)"
+        credentials_set:
+          type: object
+          additionalProperties: { type: boolean }
+          description: Which write-only credentials are currently set (values are never returned)
+        params:
+          type: object
+          additionalProperties: { type: string }
+        updated_at: { type: string, format: date-time }
+
+    ProviderInput:
+      type: object
+      description: |
+        Create (`POST`, `code` required) or full update (`PUT`). `code` is the driver
+        type from the registry; `name` must be unique across instances.
+      properties:
+        code: { type: string, pattern: "^[a-z0-9_]+$", description: Required on create only }
+        name: { type: string, description: Unique instance name }
+        enabled: { type: boolean, default: true }
+        base_url: { type: string, nullable: true }
+        credentials:
+          type: object
+          additionalProperties: { type: string }
+          description: Secret values to store (write-only on input too)
+        params:
+          type: object
+          additionalProperties: { type: string }
+
+    ProviderPatch:
+      type: object
+      description: Lightweight update used by the card toggle (enabled) and the URL field.
+      properties:
+        enabled: { type: boolean, description: Toggle the provider instance on/off }
+        base_url: { type: string, nullable: true }
+
+    ProviderTestResult:
+      type: object
+      required: [ok, kind]
+      properties:
+        ok: { type: boolean }
+        kind: { $ref: "#/components/schemas/StepKind" }
+        http: { type: integer, nullable: true }
+        engine: { type: string, nullable: true }
+        took_ms: { type: integer, format: int64 }
+        error: { type: string, nullable: true, description: Redacted }
+        results:
+          type: array
+          maxItems: 3
+          items: { $ref: "#/components/schemas/Row" }
+        answer: { type: string, nullable: true, description: Generated answer text (answer-type drivers) }
+
+    # ---------- settings ----------
+    SettingSource:
+      type: string
+      enum: [env, db, default]
+
+    SettingItem:
+      type: object
+      required: [key, value, source, readonly]
+      properties:
+        key: { type: string, example: HISTORY_RETENTION_DAYS }
+        value: { type: string, nullable: true, description: Secrets are delivered masked }
+        source: { $ref: "#/components/schemas/SettingSource" }
+        readonly: { type: boolean, description: true when managed by env }
+        description: { type: string, nullable: true }
+
+    SettingsResponse:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/SettingItem" }
+
+    SettingsUpdateRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: object
+          additionalProperties: { type: string }
+          description: key → new value (db-managed keys only)
+
+    SettingsUpdateResponse:
+      type: object
+      properties:
+        applied:
+          type: array
+          items: { type: string }
+        restart_required:
+          type: array
+          items: { type: string }
+          description: Keys that take effect only after container restart (e.g. STORAGE_DRIVER)
+
+    # ---------- logs ----------
+    LogEntry:
+      type: object
+      required: [id, ts, level, message]
+      properties:
+        id: { type: integer, format: int64 }
+        ts: { type: string, format: date-time }
+        level: { $ref: "#/components/schemas/LogLevel" }
+        rid: { type: string, nullable: true }
+        api: { type: string, nullable: true, description: 'Provider tag from [rid|api]' }
+        message: { type: string, description: Already redacted server-side }
+
+    # ---------- maintenance / stats ----------
+    DeletedResponse:
+      type: object
+      properties: { deleted: { type: integer, format: int64 } }
+
+    CleanupResponse:
+      type: object
+      properties:
+        requests_deleted: { type: integer, format: int64 }
+        logs_deleted: { type: integer, format: int64 }
+        sessions_deleted: { type: integer, format: int64 }
+        took_ms: { type: integer, format: int64 }
+
+    StatsSummary:
+      type: object
+      properties:
+        today:
+          type: object
+          properties:
+            requests: { type: integer }
+            ok_rate: { type: number, example: 0.92 }
+            avg_ms: { type: integer }
+            fail: { type: integer }
+        week:
+          type: array
+          maxItems: 7
+          items:
+            type: object
+            properties:
+              date: { type: string, format: date }
+              requests: { type: integer }
+              ok: { type: integer }
+        providers:
+          type: array
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              name: { type: string }
+              enabled: { type: boolean }
+              healthy: { type: boolean, description: From the last provider test }
+              last_test_ms: { type: integer, nullable: true }
+
+    # ---------- auth ----------
+    User:
+      type: object
+      required: [id, name, role, disabled, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        role: { type: string, enum: [admin, viewer] }
+        disabled: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    UserInput:
+      type: object
+      required: [name, role]
+      properties:
+        name: { type: string, minLength: 1 }
+        role: { type: string, enum: [admin, viewer], default: viewer }
+
+    UserPatch:
+      type: object
+      properties:
+        name: { type: string }
+        role: { type: string, enum: [admin, viewer] }
+        disabled: { type: boolean }
+
+    ApiKeyScope:
+      type: string
+      enum: [search, read, admin]
+
+    ApiKey:
+      type: object
+      required: [id, user_id, name, prefix, scope, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        name: { type: string }
+        prefix: { type: string, description: Identifiable prefix only, e.g. seek_ak_ab12cd34 }
+        scope: { $ref: "#/components/schemas/ApiKeyScope" }
+        last_used_at: { type: string, format: date-time, nullable: true }
+        expires_at: { type: string, format: date-time, nullable: true }
+        revoked_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    ApiKeyCreateInput:
+      type: object
+      required: [user_id, name]
+      properties:
+        user_id: { type: string, format: uuid }
+        name: { type: string }
+        scope: { $ref: "#/components/schemas/ApiKeyScope", default: search }
+        expires_at: { type: string, format: date-time, nullable: true }
+
+    ApiKeyCreated:
+      allOf:
+        - $ref: "#/components/schemas/ApiKey"
+        - type: object
+          required: [secret]
+          properties:
+            secret:
+              type: string
+              description: Full key material — returned ONCE at creation, never stored or shown again
+              example: "seek_ak_ab12cd34.8f3a1c9d7b2e4a5f6c0d1e2b3a4c5d6e7f"
+
+    PasskeyCredential:
+      type: object
+      required: [id, user_id, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        user_id: { type: string, format: uuid }
+        name: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        last_used_at: { type: string, format: date-time, nullable: true }
+
+    MeResponse:
+      type: object
+      required: [auth_enabled]
+      properties:
+        auth_enabled: { type: boolean, description: false → open-admin mode (banner in UI) }
+        passkeys_available:
+          type: boolean
+          description: false when PUBLIC_ORIGIN is http:// or an IP (WebAuthn requires HTTPS + domain)
+        user:
+          allOf:
+            - $ref: "#/components/schemas/User"
+          nullable: true
+        passkeys:
+          type: array
+          items: { $ref: "#/components/schemas/PasskeyCredential" }
+
+    # ---------- playground / sse payloads ----------
+    PlaygroundResponse:
+      type: object
+      required: [request_id, rid, stream_url]
+      properties:
+        request_id: { type: string, format: uuid }
+        rid: { type: string, example: "0008-1c77" }
+        stream_url: { type: string, example: "/api/requests/6f2f…/events" }
+
+    SSEStepStarted:
+      type: object
+      description: Payload of event `step_started`
+      properties:
+        idx: { type: integer }
+        node: { type: string }
+        provider: { type: string }
+        engine: { type: string, nullable: true }
+        t0: { type: string, format: date-time }
+
+    SSEStepFinished:
+      type: object
+      description: Payload of event `step_finished`
+      properties:
+        idx: { type: integer }
+        node: { type: string }
+        provider: { type: string }
+        engine: { type: string, nullable: true }
+        http: { type: integer, nullable: true }
+        kind: { $ref: "#/components/schemas/StepKind" }
+        results: { type: integer }
+        took_ms: { type: integer, format: int64 }
+        wait_before_ms: { type: integer, format: int64 }
+        permanent: { type: boolean }
+        error: { type: string, nullable: true }
+
+    SSEProviderDead:
+      type: object
+      description: Payload of event `provider_dead`
+      properties:
+        provider: { type: string }
+        reason: { type: string }
+
+    SSEMergeProgress:
+      type: object
+      description: Payload of event `merge_progress` (full-chain mode, live counter)
+      properties:
+        collected: { type: integer, description: Rows fed into the merger so far (incl. duplicates) }
+        unique: { type: integer, description: Distinct normalized links so far }
+
+    SSEMergeDone:
+      type: object
+      description: Payload of event `merge_done` (full-chain mode, terminal merge counters)
+      properties:
+        collected_total: { type: integer }
+        unique_links: { type: integer }
+        duplicates_removed: { type: integer }
+
+    SSERequestDone:
+      type: object
+      description: Payload of event `request_done` — terminal, stream closes after it
+      required: [status]
+      properties:
+        status: { $ref: "#/components/schemas/RequestStatus" }
+        used: { type: string, nullable: true }
+        steps: { type: integer }
+        total_ms: { type: integer, format: int64 }
+        results: { type: integer }
+        error: { type: string, nullable: true }
+        collected_total: { type: integer, description: Full-chain mode only }
+        unique_links: { type: integer, description: Full-chain mode only }
+        duplicates_removed: { type: integer, description: Full-chain mode only }
+
+    SSERequestCreated:
+      type: object
+      description: Payload of event `request_created` (global feed)
+      properties:
+        request: { $ref: "#/components/schemas/RequestSummary" }

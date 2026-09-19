@@ -8,6 +8,18 @@ web/.svelte-kit/
 web/build/*
 !web/build/.keep
 .env
-serpentseek
+.env.local
+.env.*.local
+/serpentseek
 /dist/
 coverage.out
+*.test
+*.prof
+
+# OS / editor noise
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~

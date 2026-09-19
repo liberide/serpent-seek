@@ -1,0 +1,15 @@
+# Example Caddy configuration for HTTPS termination.
+# Passkeys (WebAuthn) require HTTPS and a stable domain. Point your DNS at this
+# host and set PUBLIC_ORIGIN=https://seek.example.com and RP_ID=seek.example.com
+# in SerpentSeek's .env.
+
+seek.example.com {
+	encode gzip
+	reverse_proxy serpentseek:8080
+
+	# SSE: disable buffering so live tracing is immediate.
+	@events path /api/events /api/requests/*/events
+	reverse_proxy @events serpentseek:8080 {
+		flush_interval -1
+	}
+}
