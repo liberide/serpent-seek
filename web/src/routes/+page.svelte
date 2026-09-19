@@ -27,6 +27,8 @@
 			const data = await get<any>('/api/stats/summary');
 			summary = data.summary;
 			providers = data.providers;
+		} catch (error) {
+			console.error('failed to load dashboard summary', error);
 		} finally {
 			loading = false;
 		}

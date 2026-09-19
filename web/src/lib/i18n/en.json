@@ -18,7 +18,9 @@
 		"enabled": "enabled",
 		"disabled": "disabled",
 		"active": "active",
-		"unknown": "unknown"
+		"unknown": "unknown",
+		"copy": "Copy",
+		"copied": "Copied"
 	},
 	"nav": {
 		"dashboard": "Dashboard",
@@ -148,6 +150,8 @@
 		"namePlaceholder": "e.g. apiserpent work",
 		"enabledLabel": "Enabled",
 		"baseUrl": "Base URL",
+		"baseUrlOverrideHint": "Leave empty to use the default endpoint; set a value to override it.",
+		"baseUrlRequiredHint": "No default endpoint — enter the Base URL (e.g. a self-hosted SearXNG).",
 		"params": "Params",
 		"resetJson": "Reset",
 		"added": "Provider added",
@@ -288,7 +292,7 @@
 		"select": "— select —",
 		"type": "Type",
 		"create": "Create",
-		"keyOnce": "The key is shown only once:",
+		"keyOnce": "Save the key — it is shown only once:",
 		"done": "Done",
 		"created": "User created",
 		"deleted": "User deleted",

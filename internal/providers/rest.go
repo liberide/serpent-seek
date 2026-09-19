@@ -378,6 +378,9 @@ func commonFatal() []int { return []int{400, 401, 403, 404} }
 func newRestRegistry(client *HTTPClient) []Provider {
 	var providers []Provider
 	for _, spec := range restSpecs() {
+		if spec.schema.DefaultBaseURL == "" {
+			spec.schema.DefaultBaseURL = spec.baseURL
+		}
 		providers = append(providers, restProvider{http: client, spec: spec})
 	}
 	return providers

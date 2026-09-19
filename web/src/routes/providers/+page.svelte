@@ -33,6 +33,7 @@
 		code: string;
 		name: string;
 		deprecated: boolean;
+		default_base_url?: string;
 		credentials: CredentialField[];
 		params: ParamField[];
 		hints?: string[];
@@ -58,6 +59,13 @@
 
 	const selectedSchema = $derived<DriverSchema | undefined>(
 		driverSchemas.find((d) => d.code === form.code)
+	);
+
+	const baseUrlPlaceholder = $derived(selectedSchema?.default_base_url ?? '');
+	const baseUrlHint = $derived(
+		selectedSchema?.default_base_url
+			? t('providers.baseUrlOverrideHint')
+			: t('providers.baseUrlRequiredHint')
 	);
 
 	const sortedDrivers = $derived(
@@ -382,7 +390,12 @@
 			<label class="flex items-center gap-2 text-sm">
 				<input type="checkbox" bind:checked={form.enabled} /> {t('providers.enabledLabel')}
 			</label>
-			<UrlField label={t('providers.baseUrl')} bind:value={form.base_url} />
+			<UrlField
+				label={t('providers.baseUrl')}
+				bind:value={form.base_url}
+				placeholder={baseUrlPlaceholder}
+				hint={baseUrlHint}
+			/>
 
 			{#each selectedSchema?.credentials ?? [] as field (field.key)}
 				<SecretField

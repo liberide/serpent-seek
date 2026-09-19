@@ -25,9 +25,10 @@ func (p vertexSearchProvider) Code() string { return "vertex_search" }
 // Schema describes the provider configuration UI.
 func (p vertexSearchProvider) Schema() ProviderSchema {
 	return ProviderSchema{
-		Code:        "vertex_search",
-		Name:        "Vertex AI Search",
-		Credentials: []CredentialField{{Key: "service_account_json", Multiline: true}},
+		Code:           "vertex_search",
+		Name:           "Vertex AI Search",
+		DefaultBaseURL: "https://discoveryengine.googleapis.com",
+		Credentials:    []CredentialField{{Key: "service_account_json", Multiline: true}},
 		Params: []ParamField{
 			requiredTextParam("project_id", "Project ID", "", "GCP project hosting the engine"),
 			requiredTextParam("engine_id", "Engine ID", "", "Discovery Engine engine id"),

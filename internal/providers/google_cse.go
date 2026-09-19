@@ -21,10 +21,11 @@ func (p googleCSEProvider) Code() string { return "google_cse" }
 // Schema describes the provider configuration UI.
 func (p googleCSEProvider) Schema() ProviderSchema {
 	return ProviderSchema{
-		Code:        "google_cse",
-		Name:        "Google Custom Search (legacy)",
-		Deprecated:  true,
-		Credentials: []CredentialField{{Key: "api_key"}, {Key: "cx"}},
+		Code:           "google_cse",
+		Name:           "Google Custom Search (legacy)",
+		Deprecated:     true,
+		DefaultBaseURL: "https://www.googleapis.com/customsearch/v1",
+		Credentials:    []CredentialField{{Key: "api_key"}, {Key: "cx"}},
 		Params: []ParamField{
 			{Key: "fatal_http", Label: "Fatal HTTP codes", Type: ParamTypeText, Default: "400,401,403"},
 			{Key: "retry_http_codes", Label: "Retry HTTP codes", Type: ParamTypeText, Default: "429,500,502,503,504"},

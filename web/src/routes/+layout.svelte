@@ -68,7 +68,7 @@
 
 <Toast />
 <SupportModal />
-{#if isPublic || !$session}
+{#if ready && (isPublic || !$session)}
 	<main class="flex min-h-screen flex-col items-center justify-center gap-6 p-6">
 		{@render children()}
 		<div class="flex flex-col items-center">
@@ -83,7 +83,7 @@
 			<SupportButton />
 		</div>
 	</main>
-{:else}
+{:else if ready}
 	<div class="flex min-h-screen">
 		<aside class="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-slate-800 bg-slate-900/60 p-4 md:flex">
 			<div class="mb-6 flex items-center gap-2 px-2">

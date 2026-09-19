@@ -24,9 +24,10 @@ func (p anthropicProvider) Code() string { return "anthropic" }
 // Schema describes the provider configuration UI.
 func (p anthropicProvider) Schema() ProviderSchema {
 	return ProviderSchema{
-		Code:        "anthropic",
-		Name:        "Anthropic (web search)",
-		Credentials: credentialFields("api_key"),
+		Code:           "anthropic",
+		Name:           "Anthropic (web search)",
+		DefaultBaseURL: "https://api.anthropic.com",
+		Credentials:    credentialFields("api_key"),
 		Params: []ParamField{
 			textParam("model", "Model", "claude-sonnet-4-5", "Anthropic model id"),
 			numberParam("max_tokens", "Max tokens", "1024", "Answer length budget"),

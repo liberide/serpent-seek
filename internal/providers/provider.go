@@ -48,12 +48,15 @@ type ParamField struct {
 // ProviderSchema is the static metadata the UI uses to render the provider
 // configuration form (credentials, parameters, hints).
 type ProviderSchema struct {
-	Code        string            `json:"code"`
-	Name        string            `json:"name"`
-	Deprecated  bool              `json:"deprecated"`
-	Credentials []CredentialField `json:"credentials"`
-	Params      []ParamField      `json:"params"`
-	Hints       []string          `json:"hints,omitempty"`
+	Code       string `json:"code"`
+	Name       string `json:"name"`
+	Deprecated bool   `json:"deprecated"`
+	// DefaultBaseURL is the endpoint used when the instance's Base URL field
+	// is left empty. Empty means the driver has no default (self-hosted).
+	DefaultBaseURL string            `json:"default_base_url,omitempty"`
+	Credentials    []CredentialField `json:"credentials"`
+	Params         []ParamField      `json:"params"`
+	Hints          []string          `json:"hints,omitempty"`
 }
 
 // Query is a normalized search request handed to a provider.
