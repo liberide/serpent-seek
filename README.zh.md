@@ -74,6 +74,9 @@ docker compose up --build
 
 界面：<http://localhost:8080>。健康检查：`curl http://localhost:8080/healthz`。
 
+若想使用 Docker Hub 上预构建的镜像而不是从源码构建 ——
+请参阅 [DEPLOY.md](DEPLOY.md)。
+
 首次启动时会在日志中打印一次性令牌：
 
 ```text

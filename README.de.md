@@ -83,6 +83,9 @@ docker compose up --build
 
 UI: <http://localhost:8080>. Health-Check: `curl http://localhost:8080/healthz`.
 
+Um das vorgefertigte Image von Docker Hub zu verwenden, statt aus dem Quellcode
+zu bauen — siehe [DEPLOY.md](DEPLOY.md).
+
 Beim ersten Start wird ein Einmal-Token in die Logs geschrieben:
 
 ```text
