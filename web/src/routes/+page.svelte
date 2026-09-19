@@ -15,7 +15,7 @@
 		daily: { date: string; requests: number; ok: number; empty: number; fail: number }[];
 		recent: any[];
 	};
-	type Provider = { code: string; name: string; enabled: boolean; credentials_set: Record<string, boolean> };
+	type Provider = { id: string; code: string; name: string; enabled: boolean; credentials_set: Record<string, boolean> };
 
 	let summary = $state<Summary | null>(null);
 	let providers = $state<Provider[]>([]);
@@ -123,9 +123,9 @@
 			<div class="card">
 				<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">{t('dashboard.providers')}</h2>
 				<ul class="space-y-1 text-sm">
-					{#each providers as provider (provider.code)}
+					{#each providers as provider (provider.id)}
 						<li class="flex items-center justify-between">
-							<span>{provider.code}</span>
+							<span>{provider.name} <span class="text-xs text-slate-500">{provider.code}</span></span>
 							<span class="text-xs {provider.enabled ? 'text-emerald-300' : 'text-slate-500'}">
 								{provider.enabled ? t('common.enabled') : t('common.disabled')}
 							</span>
