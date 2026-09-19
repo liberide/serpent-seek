@@ -81,7 +81,11 @@ func TestTreatEmptyAsFailOverride(t *testing.T) {
 }
 
 func TestStartAsync(t *testing.T) {
-	provider := &scriptedProvider{code: "p_ok", results: []providers.Result{okResult()}}
+	// Gate the provider so the background run is guaranteed to still be in
+	// flight when Start returns; otherwise a fast provider can finish before
+	// the returned row is inspected, making the assertion timing-dependent.
+	gate := make(chan struct{})
+	provider := &scriptedProvider{code: "p_ok", results: []providers.Result{okResult()}, gate: gate}
 	h := newHarness(t, chainWith([]store.ChainNode{node("a", "p_ok")}, nil), provider)
 	req, err := h.engine.Start(context.Background(), Input{Query: "hello", Count: 2})
 	if err != nil {
@@ -90,6 +94,14 @@ func TestStartAsync(t *testing.T) {
 	if req.Status != "running" {
 		t.Fatalf("expected running request, got %s", req.Status)
 	}
+	// The provider is still blocked, so the persisted row must also be running.
+	h.sink.mu.Lock()
+	persisted := h.sink.req.Status
+	h.sink.mu.Unlock()
+	if persisted != "running" {
+		t.Fatalf("expected persisted running request, got %s", persisted)
+	}
+	close(gate)
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		h.sink.mu.Lock()

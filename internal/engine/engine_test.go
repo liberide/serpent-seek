@@ -139,6 +139,9 @@ type scriptedProvider struct {
 	mu      sync.Mutex
 	results []providers.Result
 	idx     int
+	// gate, when non-nil, blocks Search until it is closed or ctx is done.
+	// Tests use it to hold an async run in the "running" state deterministically.
+	gate chan struct{}
 }
 
 func (p *scriptedProvider) Code() string { return p.code }
@@ -147,7 +150,14 @@ func (p *scriptedProvider) Schema() providers.ProviderSchema {
 	return providers.ProviderSchema{Code: p.code, Name: p.code}
 }
 
-func (p *scriptedProvider) Search(context.Context, providers.Query, providers.Credentials, providers.Params) providers.Result {
+func (p *scriptedProvider) Search(ctx context.Context, _ providers.Query, _ providers.Credentials, _ providers.Params) providers.Result {
+	if p.gate != nil {
+		select {
+		case <-p.gate:
+		case <-ctx.Done():
+			return providers.Result{Provider: p.code, Kind: providers.KindNet, Error: ctx.Err().Error()}
+		}
+	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if len(p.results) == 0 {

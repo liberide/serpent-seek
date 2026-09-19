@@ -122,6 +122,11 @@ func (e *Engine) Start(ctx context.Context, in Input) (*store.Request, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Snapshot the initial row before handing the live pointer to the
+	// background runner. run/finalize mutate rc.req in place (status, results,
+	// timings), so returning rc.req directly would let callers observe - and
+	// race with - those writes.
+	snapshot := *rc.req
 	go func() {
 		runCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
@@ -129,7 +134,7 @@ func (e *Engine) Start(ctx context.Context, in Input) (*store.Request, error) {
 			e.log.Error(rc.req.RID, "", "async run failed: "+err.Error())
 		}
 	}()
-	return rc.req, nil
+	return &snapshot, nil
 }
 
 func (e *Engine) prepare(ctx context.Context, in Input) (*runContext, error) {
