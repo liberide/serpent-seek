@@ -29,9 +29,10 @@ func (p yandexProvider) Code() string { return "yandex" }
 // Schema describes the provider configuration UI.
 func (p yandexProvider) Schema() ProviderSchema {
 	return ProviderSchema{
-		Code:        "yandex",
-		Name:        "Yandex Search API",
-		Credentials: []CredentialField{{Key: "api_key"}, {Key: "folder_id"}},
+		Code:           "yandex",
+		Name:           "Yandex Search API",
+		DefaultBaseURL: "https://searchapi.api.cloud.yandex.net",
+		Credentials:    []CredentialField{{Key: "api_key"}, {Key: "folder_id"}},
 		Params: []ParamField{
 			{Key: "search_type", Label: "Search type", Type: ParamTypeSelect, Default: "SEARCH_TYPE_RU", Options: []ParamOption{{"RU", "SEARCH_TYPE_RU"}, {"TR", "SEARCH_TYPE_TR"}, {"COM", "SEARCH_TYPE_COM"}}},
 			{Key: "family_mode", Label: "Family mode", Type: ParamTypeSelect, Default: "FAMILY_MODE_NONE", Options: []ParamOption{{"None", "FAMILY_MODE_NONE"}, {"Moderate", "FAMILY_MODE_MODERATE"}, {"Strict", "FAMILY_MODE_STRICT"}}},
@@ -210,9 +211,10 @@ func (p yandexGenProvider) Code() string { return "yandex_gen" }
 // Schema describes the provider configuration UI.
 func (p yandexGenProvider) Schema() ProviderSchema {
 	return ProviderSchema{
-		Code:        "yandex_gen",
-		Name:        "Yandex AI Studio (generative answer)",
-		Credentials: []CredentialField{{Key: "api_key"}, {Key: "folder_id"}},
+		Code:           "yandex_gen",
+		Name:           "Yandex AI Studio (generative answer)",
+		DefaultBaseURL: "https://searchapi.api.cloud.yandex.net",
+		Credentials:    []CredentialField{{Key: "api_key"}, {Key: "folder_id"}},
 		Params: []ParamField{
 			{Key: "search_type", Label: "Search type", Type: ParamTypeSelect, Default: "SEARCH_TYPE_RU", Options: []ParamOption{{"RU", "SEARCH_TYPE_RU"}, {"TR", "SEARCH_TYPE_TR"}, {"COM", "SEARCH_TYPE_COM"}}},
 			{Key: "family_mode", Label: "Family mode", Type: ParamTypeSelect, Default: "FAMILY_MODE_NONE", Options: []ParamOption{{"None", "FAMILY_MODE_NONE"}, {"Moderate", "FAMILY_MODE_MODERATE"}, {"Strict", "FAMILY_MODE_STRICT"}}},

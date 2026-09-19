@@ -21,9 +21,10 @@ func (p serpbaseProvider) Code() string { return "serpbase" }
 // Schema describes the provider configuration UI.
 func (p serpbaseProvider) Schema() ProviderSchema {
 	return ProviderSchema{
-		Code:        "serpbase",
-		Name:        "SerpBase",
-		Credentials: []CredentialField{{Key: "api_key"}},
+		Code:           "serpbase",
+		Name:           "SerpBase",
+		DefaultBaseURL: "https://api.serpbase.dev",
+		Credentials:    []CredentialField{{Key: "api_key"}},
 		Params: []ParamField{
 			{Key: "hl", Label: "Interface language", Type: ParamTypeText, Default: "en"},
 			{Key: "gl", Label: "Country code", Type: ParamTypeText, Default: "us"},

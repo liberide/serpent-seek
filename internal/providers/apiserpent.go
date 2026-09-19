@@ -25,9 +25,10 @@ func (p apiserpentProvider) Code() string { return "apiserpent" }
 // Schema describes the provider configuration UI.
 func (p apiserpentProvider) Schema() ProviderSchema {
 	return ProviderSchema{
-		Code:        "apiserpent",
-		Name:        "ApiSerpent",
-		Credentials: []CredentialField{{Key: "api_key"}},
+		Code:           "apiserpent",
+		Name:           "ApiSerpent",
+		DefaultBaseURL: "https://apiserpent.com",
+		Credentials:    []CredentialField{{Key: "api_key"}},
 		Params: []ParamField{
 			{Key: "engine", Label: "Engine", Type: ParamTypeSelect, Default: "google", Options: []ParamOption{{"Google", "google"}, {"Bing", "bing"}, {"Yahoo", "yahoo"}, {"DuckDuckGo", "ddg"}, {"Brave", "brave"}}},
 			{Key: "country", Label: "Country", Type: ParamTypeText, Default: "us"},

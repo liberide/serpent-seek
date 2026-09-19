@@ -66,12 +66,13 @@ func (s *Server) handleListProviders(w http.ResponseWriter, r *http.Request) {
 
 // driverSchema is the public driver metadata used by the provider form.
 type driverSchema struct {
-	Code        string                      `json:"code"`
-	Name        string                      `json:"name"`
-	Deprecated  bool                        `json:"deprecated"`
-	Credentials []providers.CredentialField `json:"credentials"`
-	Params      []providers.ParamField      `json:"params"`
-	Hints       []string                    `json:"hints,omitempty"`
+	Code           string                      `json:"code"`
+	Name           string                      `json:"name"`
+	Deprecated     bool                        `json:"deprecated"`
+	DefaultBaseURL string                      `json:"default_base_url,omitempty"`
+	Credentials    []providers.CredentialField `json:"credentials"`
+	Params         []providers.ParamField      `json:"params"`
+	Hints          []string                    `json:"hints,omitempty"`
 }
 
 func (s *Server) handleListDrivers(w http.ResponseWriter, r *http.Request) {
@@ -84,12 +85,13 @@ func (s *Server) handleListDrivers(w http.ResponseWriter, r *http.Request) {
 			}
 			schema := p.Schema()
 			out = append(out, driverSchema{
-				Code:        schema.Code,
-				Name:        schema.Name,
-				Deprecated:  schema.Deprecated,
-				Credentials: schema.Credentials,
-				Params:      schema.Params,
-				Hints:       schema.Hints,
+				Code:           schema.Code,
+				Name:           schema.Name,
+				Deprecated:     schema.Deprecated,
+				DefaultBaseURL: schema.DefaultBaseURL,
+				Credentials:    schema.Credentials,
+				Params:         schema.Params,
+				Hints:          schema.Hints,
 			})
 		}
 	}

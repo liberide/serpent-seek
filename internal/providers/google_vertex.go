@@ -24,9 +24,10 @@ func (p googleProvider) Code() string { return "google_vertex" }
 // Schema describes the provider configuration UI.
 func (p googleProvider) Schema() ProviderSchema {
 	return ProviderSchema{
-		Code:        "google_vertex",
-		Name:        "Google / Vertex AI",
-		Credentials: []CredentialField{{Key: "api_key"}, {Key: "project_id"}, {Key: "engine_id"}},
+		Code:           "google_vertex",
+		Name:           "Google / Vertex AI",
+		DefaultBaseURL: "https://generativelanguage.googleapis.com",
+		Credentials:    []CredentialField{{Key: "api_key"}, {Key: "project_id"}, {Key: "engine_id"}},
 		Params: []ParamField{
 			{Key: "driver_mode", Label: "Driver mode", Type: ParamTypeSelect, Default: "gemini", Options: []ParamOption{{"Gemini grounding", "gemini"}, {"Vertex AI Search", "vertex_search"}, {"Enterprise", "enterprise"}, {"Search", "search"}}},
 			{Key: "model", Label: "Gemini model", Type: ParamTypeText, Default: "gemini-2.0-flash"},

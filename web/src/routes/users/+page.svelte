@@ -3,6 +3,7 @@
 	import { del, get, patch, post } from '$lib/api';
 	import { notify, session } from '$lib/stores';
 	import Modal from '$lib/components/Modal.svelte';
+	import CopyButton from '$lib/components/CopyButton.svelte';
 	import { dateTime } from '$lib/format';
 	import { t } from '$lib/i18n.svelte';
 
@@ -230,7 +231,10 @@
 		</div>
 	{:else}
 		<p class="mb-2 text-sm text-emerald-300">{t('users.keyOnce')}</p>
-		<pre class="overflow-x-auto rounded bg-slate-950 p-3 text-xs text-emerald-200">{createdKey}</pre>
+		<div class="flex items-center gap-2">
+			<pre class="flex-1 overflow-x-auto rounded bg-slate-950 p-3 text-xs text-emerald-200">{createdKey}</pre>
+			<CopyButton text={createdKey} />
+		</div>
 		<button class="btn btn-primary mt-3 w-full" onclick={() => (keyModal = false)}>{t('users.done')}</button>
 	{/if}
 </Modal>

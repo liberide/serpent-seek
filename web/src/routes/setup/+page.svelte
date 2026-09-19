@@ -4,6 +4,7 @@
 	import { api, post } from '$lib/api';
 	import { notify } from '$lib/stores';
 	import { t } from '$lib/i18n.svelte';
+	import CopyButton from '$lib/components/CopyButton.svelte';
 
 	let token = $state('');
 	let name = $state('admin');
@@ -55,7 +56,10 @@
 		</form>
 	{:else}
 		<p class="mb-2 text-sm text-emerald-300">{t('setup.saveKey')}</p>
-		<pre class="overflow-x-auto rounded-lg bg-slate-950 p-3 text-xs text-emerald-200">{createdKey}</pre>
+		<div class="flex items-center gap-2">
+			<pre class="flex-1 overflow-x-auto rounded-lg bg-slate-950 p-3 text-xs text-emerald-200">{createdKey}</pre>
+			<CopyButton text={createdKey} />
+		</div>
 		<a class="btn btn-primary mt-4 w-full" href="/login">{t('setup.goLogin')}</a>
 	{/if}
 </div>

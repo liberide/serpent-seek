@@ -30,9 +30,10 @@ func (p pubmedProvider) Code() string { return "pubmed" }
 // Schema describes the provider configuration UI.
 func (p pubmedProvider) Schema() ProviderSchema {
 	return ProviderSchema{
-		Code:        "pubmed",
-		Name:        "PubMed (NCBI)",
-		Credentials: credentialFields("api_key"),
+		Code:           "pubmed",
+		Name:           "PubMed (NCBI)",
+		DefaultBaseURL: "https://eutils.ncbi.nlm.nih.gov/entrez/eutils",
+		Credentials:    credentialFields("api_key"),
 		Params: []ParamField{
 			numberParam("retmax", "Max results", "10", "esearch retmax"),
 			selectParam("sort", "Sort", "relevance", ParamOption{"Relevance", "relevance"}, ParamOption{"Pub date", "pub date"}),
