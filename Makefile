@@ -1,5 +1,5 @@
 SHELL := /bin/sh
-VERSION ?= 1.0.0
+VERSION ?= 1.0.1
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -s -w \
