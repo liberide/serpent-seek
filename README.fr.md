@@ -84,6 +84,9 @@ docker compose up --build
 
 Interface : <http://localhost:8080>. Contrôle de santé : `curl http://localhost:8080/healthz`.
 
+Pour utiliser l'image préconstruite de Docker Hub au lieu de compiler depuis
+les sources — voir [DEPLOY.md](DEPLOY.md).
+
 Au premier démarrage, un jeton à usage unique est écrit dans les logs :
 
 ```text

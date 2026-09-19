@@ -79,6 +79,9 @@ docker compose up --build
 
 UI: <http://localhost:8080>. Проверка здоровья: `curl http://localhost:8080/healthz`.
 
+Чтобы использовать готовый образ из Docker Hub вместо сборки из исходников —
+см. [DEPLOY.md](DEPLOY.md).
+
 При первом запуске в логах печатается одноразовый токен:
 
 ```text
