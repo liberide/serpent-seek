@@ -5,7 +5,7 @@ package version
 // -ldflags "-X github.com/liberide/serpent-seek/internal/version.Version=x.y.z".
 var (
 	// Version is the application version string (semver).
-	Version = "1.0.1"
+	Version = "1.0.2"
 	// Commit is the VCS revision the binary was built from.
 	Commit = "dev"
 	// BuildDate is the RFC3339 timestamp of the build.
