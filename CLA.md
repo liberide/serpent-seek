@@ -1,4 +1,4 @@
-# Individual Contributor License Agreement (v1.2, Liberide)
+# Individual Contributor License Agreement (v1.0, Liberide)
 
 _Based on the Apache Software Foundation Individual CLA v2.2._
 
