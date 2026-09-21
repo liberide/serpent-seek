@@ -1,4 +1,4 @@
-# 🐍 SerpentSeek — self-hosted search gateway for Open WebUI, MCP & 37+ search APIs
+# 🐍 SerpentSeek — self-hosted search gateway for Open WebUI, MCP & 39+ search APIs
 
 **English** | [Русский](README.ru.md "README по-русски") | [Deutsch](README.de.md "Auf Deutsch lesen") | [Français](README.fr.md "Lire en français") | [中文](README.zh.md "阅读中文版")
 
@@ -7,12 +7,12 @@
 [![CI](https://github.com/liberide/serpent-seek/actions/workflows/ci.yml/badge.svg)](https://github.com/liberide/serpent-seek/actions/workflows/ci.yml "CI: build, vet, tests")
 [![Docker — single container](https://img.shields.io/badge/docker-single_container-2496ED?logo=docker&logoColor=white)](Dockerfile "Ships as a single Docker container")
 [![OpenAPI 3.1](https://img.shields.io/badge/API-OpenAPI_3.1-6BA539)](api/openapi.yaml "OpenAPI 3.1 specification")
-[![37 search providers](https://img.shields.io/badge/built--in_search_providers-37-orange)](#providers "37 built-in search provider drivers")
+[![39 search providers](https://img.shields.io/badge/built--in_search_providers-39-orange)](#providers "39 built-in search provider drivers")
 
 **SerpentSeek** is an open-source, **self-hosted search gateway** — a unified
 web-search API (metasearch proxy) written in Go with a multilingual web admin
 UI built for **Open WebUI**. Every query runs through configurable chains of
-**37 built-in search providers** (SearXNG, Brave, Google Vertex AI Search /
+**39 built-in search providers** (SearXNG, Brave, Google Vertex AI Search /
 Grounding, Yandex, SerpApi, Serper, DataForSEO, Exa, Tavily, Kagi, Perplexity
 and more), designed in a visual node-and-edge editor. Built in: request history
 with live tracing (SSE), API keys and Passkeys (WebAuthn), an **MCP search
@@ -34,7 +34,7 @@ liable for such charges or any other material damage (GPLv3 §§15–16, details
 
 ## Key features
 
-* 🔎 **One endpoint for 37 search providers** — web/SERP (SearXNG, Brave,
+* 🔎 **One endpoint for 39 search providers** — web/SERP (SearXNG, Brave,
   Google, Yandex, SerpApi…), AI/neural (Exa, Tavily, Perplexity, Kagi…),
   academic (OpenAlex, PubMed, Crossref, Semantic Scholar…) and enterprise
   (Azure AI Search, Vertex AI Search, Vectara…)
@@ -182,6 +182,8 @@ Full list of built-in search drivers. Credentials are write-only and set per ins
 | `valyu` | Valyu | `api_key` | proprietary search needs a subscription |
 | `parallel` | Parallel | `api_key` | `search_queries` built from the query |
 | `kagi` | Kagi | `api_key` | FastGPT/enrich endpoints |
+| `kimi` | Kimi (Moonshot) Web Search | `api_key` | title/url/snippet; `include_content` fetches page text |
+| `kimi_pro` | Kimi (Moonshot) Web Search Pro | `api_key` | ranked content chunks; `sites`/`time_window` filters |
 
 ### Academic & developer
 

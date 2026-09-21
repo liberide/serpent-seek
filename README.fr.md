@@ -1,4 +1,4 @@
-# 🐍 SerpentSeek — passerelle de recherche auto-hébergée pour Open WebUI, MCP et 37+ API
+# 🐍 SerpentSeek — passerelle de recherche auto-hébergée pour Open WebUI, MCP et 39+ API
 
 [English](README.md "Read in English") | [Русский](README.ru.md "README по-русски") | [Deutsch](README.de.md "Auf Deutsch lesen") | **Français** | [中文](README.zh.md "阅读中文版")
 
@@ -7,12 +7,12 @@
 [![CI](https://github.com/liberide/serpent-seek/actions/workflows/ci.yml/badge.svg)](https://github.com/liberide/serpent-seek/actions/workflows/ci.yml "CI : build, vet, tests")
 [![Docker — single container](https://img.shields.io/badge/docker-single_container-2496ED?logo=docker&logoColor=white)](Dockerfile "Tout tient dans un seul conteneur Docker")
 [![OpenAPI 3.1](https://img.shields.io/badge/API-OpenAPI_3.1-6BA539)](api/openapi.yaml "Spécification OpenAPI 3.1")
-[![37 search providers](https://img.shields.io/badge/built--in_search_providers-37-orange)](#fournisseurs "37 fournisseurs de recherche intégrés")
+[![39 search providers](https://img.shields.io/badge/built--in_search_providers-39-orange)](#fournisseurs "39 fournisseurs de recherche intégrés")
 
 **SerpentSeek** est une **passerelle de recherche** open source et
 auto-hébergée — une API unifiée de recherche web (proxy de métarecherche)
 écrite en Go, avec une interface d'administration web multilingue conçue pour
-**Open WebUI**. Chaque requête transite par des chaînes configurables de **37
+**Open WebUI**. Chaque requête transite par des chaînes configurables de **39
 fournisseurs de recherche intégrés** (SearXNG, Brave, Google Vertex AI Search /
 Grounding, Yandex, SerpApi, Serper, DataForSEO, Exa, Tavily, Kagi, Perplexity,
 etc.), assemblées dans un éditeur visuel de nœuds et d'arêtes. Inclus :
@@ -37,7 +37,7 @@ dommage matériel (GPLv3 §§15–16, détails dans `NOTICE`).
 
 ## Fonctionnalités clés
 
-* 🔎 **Un point d'accès pour 37 fournisseurs** — web/SERP (SearXNG, Brave,
+* 🔎 **Un point d'accès pour 39 fournisseurs** — web/SERP (SearXNG, Brave,
   Google, Yandex, SerpApi…), IA/neuronale (Exa, Tavily, Perplexity, Kagi…),
   académique (OpenAlex, PubMed, Crossref, Semantic Scholar…) et entreprise
   (Azure AI Search, Vertex AI Search, Vectara…)
@@ -196,6 +196,8 @@ seed `google_vertex` lit `GOOGLE_*` depuis l'environnement).
 | `valyu` | Valyu | `api_key` | recherche propriétaire sur abonnement |
 | `parallel` | Parallel | `api_key` | `search_queries` construit depuis la requête |
 | `kagi` | Kagi | `api_key` | points d'entrée FastGPT/enrich |
+| `kimi` | Kimi (Moonshot) Web Search | `api_key` | titre/url/extrait ; `include_content` récupère le texte |
+| `kimi_pro` | Kimi (Moonshot) Web Search Pro | `api_key` | extraits classés ; filtres `sites`/`time_window` |
 
 ### Recherche académique et développement
 

@@ -1,4 +1,4 @@
-# 🐍 SerpentSeek — поисковый шлюз (self-hosted) для Open WebUI, MCP и 37+ поисковых API
+# 🐍 SerpentSeek — поисковый шлюз (self-hosted) для Open WebUI, MCP и 39+ поисковых API
 
 [English](README.md "Read in English") | **Русский** | [Deutsch](README.de.md "Auf Deutsch lesen") | [Français](README.fr.md "Lire en français") | [中文](README.zh.md "阅读中文版")
 
@@ -7,11 +7,11 @@
 [![CI](https://github.com/liberide/serpent-seek/actions/workflows/ci.yml/badge.svg)](https://github.com/liberide/serpent-seek/actions/workflows/ci.yml "CI: сборка, vet, тесты")
 [![Docker — single container](https://img.shields.io/badge/docker-single_container-2496ED?logo=docker&logoColor=white)](Dockerfile "Всё в одном Docker-контейнере")
 [![OpenAPI 3.1](https://img.shields.io/badge/API-OpenAPI_3.1-6BA539)](api/openapi.yaml "Спецификация OpenAPI 3.1")
-[![37 search providers](https://img.shields.io/badge/built--in_search_providers-37-orange)](#провайдеры "37 встроенных поисковых провайдеров")
+[![39 search providers](https://img.shields.io/badge/built--in_search_providers-39-orange)](#провайдеры "39 встроенных поисковых провайдеров")
 
 **SerpentSeek** — open-source «**поисковый шлюз**» (self-hosted): единый
 API веб-поиска (метапоисковый прокси) на Go с мультиязычной веб-админкой для
-**Open WebUI**. Каждый запрос проходит через настраиваемые цепочки из **37
+**Open WebUI**. Каждый запрос проходит через настраиваемые цепочки из **39
 встроенных поисковых провайдеров** (SearXNG, Brave, Google Vertex AI Search /
 Grounding, Yandex, SerpApi, Serper, DataForSEO, Exa, Tavily, Kagi, Perplexity и
 др.), собранные в визуальном редакторе нод и стрелок. Внутри: история запросов
@@ -32,7 +32,7 @@ Grounding, Yandex, SerpApi, Serper, DataForSEO, Exa, Tavily, Kagi, Perplexity и
 
 ## Возможности
 
-* 🔎 **Один эндпоинт для 37 провайдеров** — веб/SERP (SearXNG, Brave, Google,
+* 🔎 **Один эндпоинт для 39 провайдеров** — веб/SERP (SearXNG, Brave, Google,
   Yandex, SerpApi…), нейропоиск (Exa, Tavily, Perplexity, Kagi…), академический
   (OpenAlex, PubMed, Crossref, Semantic Scholar…) и корпоративный (Azure AI
   Search, Vertex AI Search, Vectara…)
@@ -179,6 +179,8 @@ npx mcp-remote http://<host>:8080/mcp --header "Authorization=Bearer seek_ak_...
 | `valyu` | Valyu | `api_key` | proprietary-поиск по подписке |
 | `parallel` | Parallel | `api_key` | `search_queries` из запроса |
 | `kagi` | Kagi | `api_key` | FastGPT/enrich |
+| `kimi` | Kimi (Moonshot) Web Search | `api_key` | title/url/snippet; `include_content` — текст страницы |
+| `kimi_pro` | Kimi (Moonshot) Web Search Pro | `api_key` | ранжированные chunks; фильтры `sites`/`time_window` |
 
 ### Академический и разработческий поиск
 

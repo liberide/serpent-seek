@@ -175,6 +175,8 @@ func NewRegistry(client *HTTPClient) *Registry {
 	r.add(vertexSearchProvider{http: client})
 	r.add(pubmedProvider{http: client})
 	r.add(anthropicProvider{http: client})
+	r.add(kimiProvider{http: client})
+	r.add(kimiProProvider{http: client})
 	for _, p := range newRestRegistry(client) {
 		r.add(p)
 	}
