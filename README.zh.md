@@ -1,4 +1,4 @@
-# 🐍 SerpentSeek — 自托管搜索网关，面向 Open WebUI、MCP 及 37+ 搜索 API
+# 🐍 SerpentSeek — 自托管搜索网关，面向 Open WebUI、MCP 及 39+ 搜索 API
 
 [English](README.md "Read in English") | [Русский](README.ru.md "README по-русски") | [Deutsch](README.de.md "Auf Deutsch lesen") | [Français](README.fr.md "Lire en français") | **中文**
 
@@ -7,11 +7,11 @@
 [![CI](https://github.com/liberide/serpent-seek/actions/workflows/ci.yml/badge.svg)](https://github.com/liberide/serpent-seek/actions/workflows/ci.yml "CI：构建、vet、测试")
 [![Docker — single container](https://img.shields.io/badge/docker-single_container-2496ED?logo=docker&logoColor=white)](Dockerfile "所有内容打包在单个 Docker 容器中")
 [![OpenAPI 3.1](https://img.shields.io/badge/API-OpenAPI_3.1-6BA539)](api/openapi.yaml "OpenAPI 3.1 规范")
-[![37 search providers](https://img.shields.io/badge/built--in_search_providers-37-orange)](#提供方 "37 个内置搜索提供方")
+[![39 search providers](https://img.shields.io/badge/built--in_search_providers-39-orange)](#提供方 "39 个内置搜索提供方")
 
 **SerpentSeek** 是一个开源、可自托管的「**搜索网关**」——用 Go 编写的统一 Web
 搜索 API（元搜索代理），带有面向 **Open WebUI** 的多语言 Web 管理界面。每个请求都会
-经过在可视化节点/连线编辑器中配置的、由 **37 个内置搜索提供方**（SearXNG、Brave、
+经过在可视化节点/连线编辑器中配置的、由 **39 个内置搜索提供方**（SearXNG、Brave、
 Google Vertex AI Search / Grounding、Yandex、SerpApi、Serper、DataForSEO、Exa、
 Tavily、Kagi、Perplexity 等）组成的链路。内置：带实时追踪（SSE）的请求历史、API
 密钥与 Passkeys（WebAuthn）、面向 AI 助手（Claude、Cursor、VS Code 等）的 **MCP 搜索
@@ -28,7 +28,7 @@ API；任何费用均由运维方与其提供方之间解决。作者不对这�
 
 ## 主要特性
 
-* 🔎 **一个端点接入 37 个搜索提供方** — Web/SERP（SearXNG、Brave、Google、
+* 🔎 **一个端点接入 39 个搜索提供方** — Web/SERP（SearXNG、Brave、Google、
   Yandex、SerpApi…）、AI/神经搜索（Exa、Tavily、Perplexity、Kagi…）、学术
   （OpenAlex、PubMed、Crossref、Semantic Scholar…）与企业级（Azure AI
   Search、Vertex AI Search、Vectara…）
@@ -175,6 +175,8 @@ npx mcp-remote http://<host>:8080/mcp --header "Authorization=Bearer seek_ak_...
 | `valyu` | Valyu | `api_key` | 专有搜索需订阅 |
 | `parallel` | Parallel | `api_key` | 由查询构造 `search_queries` |
 | `kagi` | Kagi | `api_key` | FastGPT/enrich 端点 |
+| `kimi` | Kimi (Moonshot) Web Search | `api_key` | 标题/网址/摘要；`include_content` 获取正文 |
+| `kimi_pro` | Kimi (Moonshot) Web Search Pro | `api_key` | 排序内容块；`sites`/`time_window` 过滤 |
 
 ### 学术与开发者搜索
 

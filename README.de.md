@@ -1,4 +1,4 @@
-# 🐍 SerpentSeek — Self-hosted Search-Gateway für Open WebUI, MCP & 37+ Such-APIs
+# 🐍 SerpentSeek — Self-hosted Search-Gateway für Open WebUI, MCP & 39+ Such-APIs
 
 [English](README.md "Read in English") | [Русский](README.ru.md "README по-русски") | **Deutsch** | [Français](README.fr.md "Lire en français") | [中文](README.zh.md "阅读中文版")
 
@@ -7,12 +7,12 @@
 [![CI](https://github.com/liberide/serpent-seek/actions/workflows/ci.yml/badge.svg)](https://github.com/liberide/serpent-seek/actions/workflows/ci.yml "CI: Build, Vet, Tests")
 [![Docker — single container](https://img.shields.io/badge/docker-single_container-2496ED?logo=docker&logoColor=white)](Dockerfile "Alles in einem einzigen Docker-Container")
 [![OpenAPI 3.1](https://img.shields.io/badge/API-OpenAPI_3.1-6BA539)](api/openapi.yaml "OpenAPI-3.1-Spezifikation")
-[![37 search providers](https://img.shields.io/badge/built--in_search_providers-37-orange)](#suchanbieter "37 eingebaute Suchanbieter")
+[![39 search providers](https://img.shields.io/badge/built--in_search_providers-39-orange)](#suchanbieter "39 eingebaute Suchanbieter")
 
 **SerpentSeek** ist ein Open-Source-**Search-Gateway** zum Selbsthosten — eine
 vereinheitlichte Websuche-API (Metasuch-Proxy) in Go mit mehrsprachiger
 Web-Admin-UI für **Open WebUI**. Jede Anfrage läuft über konfigurierbare Ketten
-aus **37 eingebauten Suchanbietern** (SearXNG, Brave, Google Vertex AI Search /
+aus **39 eingebauten Suchanbietern** (SearXNG, Brave, Google Vertex AI Search /
 Grounding, Yandex, SerpApi, Serper, DataForSEO, Exa, Tavily, Kagi, Perplexity
 u. a.), die in einem visuellen Knoten-und-Kanten-Editor zusammengestellt
 werden. An Bord: Anfrageverlauf mit Live-Tracing (SSE), API-Schlüssel und
@@ -36,7 +36,7 @@ Details in `NOTICE`).
 
 ## Funktionen
 
-* 🔎 **Ein Endpunkt für 37 Suchanbieter** — Web/SERP (SearXNG, Brave, Google,
+* 🔎 **Ein Endpunkt für 39 Suchanbieter** — Web/SERP (SearXNG, Brave, Google,
   Yandex, SerpApi…), KI/neural (Exa, Tavily, Perplexity, Kagi…),
   wissenschaftlich (OpenAlex, PubMed, Crossref, Semantic Scholar…) und
   Enterprise (Azure AI Search, Vertex AI Search, Vectara…)
@@ -195,6 +195,8 @@ beim ersten Start über `GOOGLE_*` aus der Umgebung befüllt).
 | `valyu` | Valyu | `api_key` | proprietäre Suche per Abo |
 | `parallel` | Parallel | `api_key` | `search_queries` aus der Query |
 | `kagi` | Kagi | `api_key` | FastGPT/Enrich |
+| `kimi` | Kimi (Moonshot) Web Search | `api_key` | Titel/URL/Snippet; `include_content` lädt Seitentext |
+| `kimi_pro` | Kimi (Moonshot) Web Search Pro | `api_key` | gerankte Content-Chunks; `sites`/`time_window`-Filter |
 
 ### Wissenschaft & Entwicklung
 
