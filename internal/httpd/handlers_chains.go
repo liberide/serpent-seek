@@ -82,6 +82,7 @@ func (s *Server) handleUpdateChain(w http.ResponseWriter, r *http.Request) {
 	}
 	chain.ID = id
 	chain.Active = existing.Active
+	chain.Version = existing.Version
 	chain.CreatedAt = existing.CreatedAt
 	if err := s.store.SaveChain(r.Context(), &chain); err != nil {
 		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
