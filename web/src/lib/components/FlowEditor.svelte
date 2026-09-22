@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { tick } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { SvelteFlow, Background, Controls } from '@xyflow/svelte';
 	import '@xyflow/svelte/dist/style.css';
 	import GraphNode from './GraphNode.svelte';
@@ -54,7 +54,6 @@
 	let selectedKey = $state<string | null>(null);
 	let selectedEdgeId = $state<string | null>(null);
 	let history = $state<string[]>([]);
-	let loadedId: string | undefined = undefined;
 	let mode = $state<string>('first_success');
 	let pendingMode = $state<string | null>(null);
 	let localErrors = $state<string[]>([]);
@@ -64,11 +63,8 @@
 		null | ((options?: { padding?: number; minZoom?: number; maxZoom?: number; duration?: number }) => void)
 	>(null);
 
-	$effect(() => {
-		if (loadedId !== chain.id) {
-			loadedId = chain.id;
-			load(chain);
-		}
+	onMount(() => {
+		load(chain);
 	});
 
 	const enabledProviders = $derived(providers.filter((p) => p.enabled));
