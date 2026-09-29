@@ -4,6 +4,7 @@
 	import { dateTime, ms } from '$lib/format';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import { subscribeSSE } from '$lib/sse';
+	import { session } from '$lib/stores';
 	import { t } from '$lib/i18n.svelte';
 
 	type Request = {
@@ -52,10 +53,16 @@
 
 	onMount(() => {
 		load();
-		unsubscribe = subscribeSSE('/api/events', (event) => {
-			if (event === 'request_created' || event === 'request_done') scheduleRefresh();
+		// Global feed is admin-only.
+		const unsubSession = session.subscribe((s) => {
+			if (s?.admin && !unsubscribe) {
+				unsubscribe = subscribeSSE('/api/events', (event) => {
+					if (event === 'request_created' || event === 'request_done') scheduleRefresh();
+				});
+			}
 		});
 		return () => {
+			unsubSession();
 			unsubscribe?.();
 			clearTimeout(refreshTimer);
 		};

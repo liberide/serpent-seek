@@ -152,6 +152,10 @@ func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 		p.Enabled = *body.Enabled
 	}
 	if body.BaseURL != nil {
+		if err := providers.ValidateBaseURL(*body.BaseURL); err != nil {
+			writeError(w, r, http.StatusBadRequest, "invalid_base_url", err.Error())
+			return
+		}
 		p.BaseURL = *body.BaseURL
 	}
 	if body.ProxyID != nil {
@@ -206,6 +210,10 @@ func (s *Server) handleUpdateProvider(w http.ResponseWriter, r *http.Request) {
 		existing.Enabled = *body.Enabled
 	}
 	if body.BaseURL != nil {
+		if err := providers.ValidateBaseURL(*body.BaseURL); err != nil {
+			writeError(w, r, http.StatusBadRequest, "invalid_base_url", err.Error())
+			return
+		}
 		existing.BaseURL = *body.BaseURL
 	}
 	if body.ProxyID != nil {
@@ -268,6 +276,10 @@ func (s *Server) handlePatchProvider(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if body.BaseURL != nil {
+		if err := providers.ValidateBaseURL(*body.BaseURL); err != nil {
+			writeError(w, r, http.StatusBadRequest, "invalid_base_url", err.Error())
+			return
+		}
 		if err := s.store.UpdateProviderBaseURL(ctx, id, *body.BaseURL); err != nil {
 			if err == store.ErrNotFound {
 				writeError(w, r, http.StatusNotFound, "not_found", "provider not found")

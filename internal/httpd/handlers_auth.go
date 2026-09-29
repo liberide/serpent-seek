@@ -30,6 +30,10 @@ type setupRequest struct {
 
 // handleSetup creates the first admin user and its admin key.
 func (s *Server) handleSetup(w http.ResponseWriter, r *http.Request) {
+	// Serialize setup requests.
+	s.setupRun.Lock()
+	defer s.setupRun.Unlock()
+
 	ctx := r.Context()
 	admins, err := s.store.CountAdmins(ctx)
 	if err != nil {
@@ -107,6 +111,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	identity, err := s.authn.LoginWithKey(r.Context(), body.Key)
 	if err != nil {
 		writeError(w, r, http.StatusUnauthorized, "invalid_key", "invalid API key")
+		return
+	}
+	// Browser sign-in requires the read scope.
+	if !identity.HasScope("read") {
+		writeError(w, r, http.StatusForbidden, "insufficient_scope", "this API key cannot be used for browser sign-in (read scope required)")
 		return
 	}
 	token, err := auth.CreateSession(r.Context(), s.store, identity.User.ID, auth.ClientIP(r), r.UserAgent())

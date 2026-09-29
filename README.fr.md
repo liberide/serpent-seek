@@ -430,8 +430,11 @@ un service séparé, pas une dépendance de code).
   ce dépôt.
 * **SQLite** est mono-écrivain ; WAL + busy_timeout suffisent pour une réplique.
 * **Les identifiants des fournisseurs** sont en écriture seule et masqués dans
-  l'API et les logs ; `base_url` n'est pas un secret. `ENCRYPTION_KEY` (AES-GCM)
-  optionnel pour le chiffrement au repos.
+  l'API et les logs ; `base_url` n'est pas un secret. `ENCRYPTION_KEY` active
+  optionnellement le chiffrement au repos (AES-256-GCM).
+* `TRUSTED_PROXIES` liste les proxys dont les en-têtes forwarded sont acceptés ;
+  `BLOCK_PRIVATE_NETWORKS=true` limite les connexions sortantes aux adresses
+  publiques.
 
 ## Captures d'écran
 

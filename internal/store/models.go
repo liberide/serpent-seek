@@ -172,8 +172,10 @@ type Request struct {
 	StepsCount    int    `json:"steps_count"`
 	ChainID       string `json:"chain_id"`
 	ChainSnapshot *Chain `json:"chain_snapshot,omitempty"`
-	Client        string `json:"client"`
-	Error         string `json:"error"`
+	// UserID is the owning user (empty when unset).
+	UserID string `json:"user_id,omitempty"`
+	Client string `json:"client"`
+	Error  string `json:"error"`
 	// Answer is the generated text of the last answer-mode node (empty when
 	// the chain only has search nodes).
 	Answer    string          `json:"answer,omitempty"`

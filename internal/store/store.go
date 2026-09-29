@@ -18,6 +18,8 @@ type RequestFilter struct {
 	From     string
 	To       string
 	Query    string
+	// UserID restricts the listing to one owner.
+	UserID string
 }
 
 // LogFilter narrows a log listing.
@@ -123,6 +125,7 @@ type Storage interface {
 
 	// Stats
 	Summary(ctx context.Context, days int) (*StatsSummary, error)
+	SummaryForUser(ctx context.Context, days int, userID string) (*StatsSummary, error)
 	RecomputeDailyStats(ctx context.Context, date string) error
 
 	// Maintenance

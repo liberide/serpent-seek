@@ -33,6 +33,11 @@ type Config struct {
 	RPID         string
 	RPName       string
 
+	// TrustedProxies lists proxy IPs/CIDRs whose forwarded headers may be trusted.
+	TrustedProxies []string
+	// BlockPrivateNetworks rejects outbound connections to non-public addresses.
+	BlockPrivateNetworks bool
+
 	// Storage
 	DataDir       string
 	SQLitePath    string
@@ -158,6 +163,8 @@ func Load() (*Config, error) {
 	c.PublicOrigin = envStr("PUBLIC_ORIGIN", "")
 	c.RPID = envStr("RP_ID", "")
 	c.RPName = envStr("RP_NAME", "SerpentSeek")
+	c.TrustedProxies = envList("TRUSTED_PROXIES")
+	c.BlockPrivateNetworks = envBool("BLOCK_PRIVATE_NETWORKS", false)
 
 	// Default is relative so it resolves to /app/data inside the container
 	// (WORKDIR /app) and to ./data when running the binary locally.
@@ -487,6 +494,21 @@ func envStrList(key string) []string {
 		p = strings.TrimSpace(p)
 		if p != "" {
 			out = append(out, strings.ToUpper(p))
+		}
+	}
+	return out
+}
+
+// envList splits a comma separated environment value without changing case.
+func envList(key string) []string {
+	v, ok := os.LookupEnv(key)
+	if !ok {
+		return nil
+	}
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
 		}
 	}
 	return out

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/liberide/serpent-seek/internal/crypt"
 	"github.com/liberide/serpent-seek/internal/store"
 )
 
@@ -17,12 +18,20 @@ type Store struct {
 	db        *sql.DB
 	driver    string
 	migrateFn func(context.Context) error
+	cipher    *crypt.Cipher
 }
 
 // New wraps an open *sql.DB. driver is "sqlite" or "postgres".
 func New(db *sql.DB, driver string) *Store {
 	return &Store{db: db, driver: driver}
 }
+
+// SetCipher installs the at-rest encryption cipher.
+func (s *Store) SetCipher(c *crypt.Cipher) { s.cipher = c }
+
+// enc/dec encrypt and decrypt stored values.
+func (s *Store) enc(v string) string { return s.cipher.Encrypt(v) }
+func (s *Store) dec(v string) string { return s.cipher.Decrypt(v) }
 
 // SetMigrate registers the driver-specific migration function.
 func (s *Store) SetMigrate(fn func(context.Context) error) { s.migrateFn = fn }
@@ -87,7 +96,7 @@ func (s *Store) GetSetting(ctx context.Context, key string) (string, error) {
 	if err == sql.ErrNoRows {
 		return "", store.ErrNotFound
 	}
-	return value, err
+	return s.dec(value), err
 }
 
 // SetSetting upserts a settings value.
@@ -95,7 +104,7 @@ func (s *Store) SetSetting(ctx context.Context, key, value string) error {
 	_, err := s.exec(ctx,
 		`INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
 		 ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
-		key, value, store.Now())
+		key, s.enc(value), store.Now())
 	return err
 }
 
@@ -112,7 +121,7 @@ func (s *Store) AllSettings(ctx context.Context) (map[string]string, error) {
 		if err := rows.Scan(&k, &v); err != nil {
 			return nil, err
 		}
-		out[k] = v
+		out[k] = s.dec(v)
 	}
 	return out, rows.Err()
 }
@@ -395,7 +404,7 @@ func (s *Store) DeleteExpiredSessions(ctx context.Context, now string) (int64, e
 
 // --- Providers ---
 
-func scanProvider(row interface{ Scan(...any) error }) (*store.Provider, error) {
+func (s *Store) scanProvider(row interface{ Scan(...any) error }) (*store.Provider, error) {
 	var p store.Provider
 	var enabled store.Bool
 	var creds, params string
@@ -404,7 +413,7 @@ func scanProvider(row interface{ Scan(...any) error }) (*store.Provider, error) 
 		return nil, err
 	}
 	p.Enabled = bool(enabled)
-	p.Credentials = store.DecodeMap(creds)
+	p.Credentials = store.DecodeMap(s.dec(creds))
 	p.Params = store.DecodeMap(params)
 	return &p, nil
 }
@@ -420,7 +429,7 @@ func (s *Store) ListProviders(ctx context.Context) ([]*store.Provider, error) {
 	defer rows.Close()
 	var out []*store.Provider
 	for rows.Next() {
-		p, err := scanProvider(rows)
+		p, err := s.scanProvider(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -431,7 +440,7 @@ func (s *Store) ListProviders(ctx context.Context) ([]*store.Provider, error) {
 
 // GetProvider fetches a provider instance by id.
 func (s *Store) GetProvider(ctx context.Context, id string) (*store.Provider, error) {
-	p, err := scanProvider(s.queryRow(ctx, `SELECT `+providerCols+` FROM providers WHERE id = ?`, id))
+	p, err := s.scanProvider(s.queryRow(ctx, `SELECT `+providerCols+` FROM providers WHERE id = ?`, id))
 	if err == sql.ErrNoRows {
 		return nil, store.ErrNotFound
 	}
@@ -446,7 +455,7 @@ func (s *Store) UpsertProvider(ctx context.Context, p *store.Provider) error {
 		 ON CONFLICT (id) DO UPDATE SET code = excluded.code, name = excluded.name, enabled = excluded.enabled,
 		     base_url = excluded.base_url, proxy_id = excluded.proxy_id, credentials_json = excluded.credentials_json,
 		     params_json = excluded.params_json, updated_at = excluded.updated_at`,
-		p.ID, p.Code, p.Name, store.Bool(p.Enabled), p.BaseURL, p.ProxyID, store.EncodeMap(p.Credentials), store.EncodeMap(p.Params), store.Now())
+		p.ID, p.Code, p.Name, store.Bool(p.Enabled), p.BaseURL, p.ProxyID, s.enc(store.EncodeMap(p.Credentials)), store.EncodeMap(p.Params), store.Now())
 	return err
 }
 
@@ -484,7 +493,7 @@ func (s *Store) DeleteProvider(ctx context.Context, id string) error {
 
 const proxyCols = `id, name, enabled, type, COALESCE(host, ''), COALESCE(port, ''), COALESCE(username, ''), COALESCE(password, ''), created_at, updated_at`
 
-func scanProxy(row interface{ Scan(...any) error }) (*store.Proxy, error) {
+func (s *Store) scanProxy(row interface{ Scan(...any) error }) (*store.Proxy, error) {
 	var p store.Proxy
 	var enabled store.Bool
 	err := row.Scan(&p.ID, &p.Name, &enabled, &p.Type, &p.Host, &p.Port, &p.Username, &p.Password, &p.CreatedAt, &p.UpdatedAt)
@@ -492,6 +501,7 @@ func scanProxy(row interface{ Scan(...any) error }) (*store.Proxy, error) {
 		return nil, err
 	}
 	p.Enabled = bool(enabled)
+	p.Password = s.dec(p.Password)
 	return &p, nil
 }
 
@@ -504,7 +514,7 @@ func (s *Store) ListProxies(ctx context.Context) ([]*store.Proxy, error) {
 	defer rows.Close()
 	var out []*store.Proxy
 	for rows.Next() {
-		p, err := scanProxy(rows)
+		p, err := s.scanProxy(rows)
 		if err != nil {
 			return nil, err
 		}
@@ -515,7 +525,7 @@ func (s *Store) ListProxies(ctx context.Context) ([]*store.Proxy, error) {
 
 // GetProxy fetches a named proxy by id.
 func (s *Store) GetProxy(ctx context.Context, id string) (*store.Proxy, error) {
-	p, err := scanProxy(s.queryRow(ctx, `SELECT `+proxyCols+` FROM proxies WHERE id = ?`, id))
+	p, err := s.scanProxy(s.queryRow(ctx, `SELECT `+proxyCols+` FROM proxies WHERE id = ?`, id))
 	if err == sql.ErrNoRows {
 		return nil, store.ErrNotFound
 	}
@@ -530,7 +540,7 @@ func (s *Store) UpsertProxy(ctx context.Context, p *store.Proxy) error {
 		 ON CONFLICT (id) DO UPDATE SET name = excluded.name, enabled = excluded.enabled,
 		     type = excluded.type, host = excluded.host, port = excluded.port, username = excluded.username,
 		     password = excluded.password, updated_at = excluded.updated_at`,
-		p.ID, p.Name, store.Bool(p.Enabled), p.Type, p.Host, p.Port, p.Username, p.Password, p.CreatedAt, store.Now())
+		p.ID, p.Name, store.Bool(p.Enabled), p.Type, p.Host, p.Port, p.Username, s.enc(p.Password), p.CreatedAt, store.Now())
 	return err
 }
 
@@ -799,10 +809,10 @@ func (s *Store) CreateRequest(ctx context.Context, r *store.Request) error {
 	}
 	_, err := s.exec(ctx,
 		`INSERT INTO requests (id, rid, query, count, status, used_provider, results_count, total_ms, steps_count,
-		 chain_id, chain_snapshot_json, client, error, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 chain_id, chain_snapshot_json, user_id, client, error, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.ID, r.RID, r.Query, r.Count, r.Status, r.UsedProvider, r.ResultsCount, r.TotalMS, r.StepsCount,
-		r.ChainID, snapshot, r.Client, r.Error, r.CreatedAt)
+		r.ChainID, snapshot, r.UserID, r.Client, r.Error, r.CreatedAt)
 	return err
 }
 
@@ -827,7 +837,7 @@ func (s *Store) UpdateRequest(ctx context.Context, r *store.Request) error {
 }
 
 const requestCols = `id, rid, query, count, status, COALESCE(used_provider, ''), results_count, total_ms, steps_count,
-	COALESCE(chain_id, ''), COALESCE(chain_snapshot_json, ''), COALESCE(client, ''), COALESCE(error, ''), created_at,
+	COALESCE(chain_id, ''), COALESCE(chain_snapshot_json, ''), COALESCE(user_id, ''), COALESCE(client, ''), COALESCE(error, ''), created_at,
 	merge_collected, merge_unique, merge_duplicates, COALESCE(results_json, ''), COALESCE(answer, '')`
 
 func scanRequest(row interface{ Scan(...any) error }) (*store.Request, error) {
@@ -835,7 +845,7 @@ func scanRequest(row interface{ Scan(...any) error }) (*store.Request, error) {
 	var snapshot, results string
 	var mergeCollected, mergeUnique, mergeDuplicates *int
 	if err := row.Scan(&r.ID, &r.RID, &r.Query, &r.Count, &r.Status, &r.UsedProvider, &r.ResultsCount,
-		&r.TotalMS, &r.StepsCount, &r.ChainID, &snapshot, &r.Client, &r.Error, &r.CreatedAt,
+		&r.TotalMS, &r.StepsCount, &r.ChainID, &snapshot, &r.UserID, &r.Client, &r.Error, &r.CreatedAt,
 		&mergeCollected, &mergeUnique, &mergeDuplicates, &results, &r.Answer); err != nil {
 		return nil, err
 	}
@@ -907,6 +917,10 @@ func (s *Store) ListRequests(ctx context.Context, f store.RequestFilter, p store
 	if f.Query != "" {
 		where = append(where, "query LIKE ?")
 		args = append(args, "%"+f.Query+"%")
+	}
+	if f.UserID != "" {
+		where = append(where, "user_id = ?")
+		args = append(args, f.UserID)
 	}
 	clause := strings.Join(where, " AND ")
 
@@ -1062,18 +1076,34 @@ func (s *Store) DeleteOldLogs(ctx context.Context, before string) (int64, error)
 
 // Summary computes dashboard aggregates.
 func (s *Store) Summary(ctx context.Context, days int) (*store.StatsSummary, error) {
+	return s.summary(ctx, days, "")
+}
+
+// SummaryForUser computes dashboard aggregates for one owner.
+func (s *Store) SummaryForUser(ctx context.Context, days int, userID string) (*store.StatsSummary, error) {
+	return s.summary(ctx, days, userID)
+}
+
+func (s *Store) summary(ctx context.Context, days int, userID string) (*store.StatsSummary, error) {
 	if days <= 0 {
 		days = 7
 	}
+	ownerClause := ""
+	var ownerArgs []any
+	if userID != "" {
+		ownerClause = " AND user_id = ?"
+		ownerArgs = []any{userID}
+	}
 	out := &store.StatsSummary{}
 	today := dayStartUTC()
+	todayArgs := append([]any{today}, ownerArgs...)
 	var reqToday, okToday, emptyToday, failToday int
 	if err := s.queryRow(ctx,
 		`SELECT COUNT(*),
 		        COALESCE(SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END), 0),
 		        COALESCE(SUM(CASE WHEN status = 'empty' THEN 1 ELSE 0 END), 0),
 		        COALESCE(SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END), 0)
-		 FROM requests WHERE created_at >= ?`, today).
+		 FROM requests WHERE created_at >= ?`+ownerClause, todayArgs...).
 		Scan(&reqToday, &okToday, &emptyToday, &failToday); err != nil {
 		return nil, err
 	}
@@ -1083,11 +1113,15 @@ func (s *Store) Summary(ctx context.Context, days int) (*store.StatsSummary, err
 		out.SuccessRate = float64(okToday) / float64(reqToday) * 100
 	}
 	var avg float64
-	if err := s.queryRow(ctx, `SELECT COALESCE(AVG(total_ms), 0) FROM requests WHERE created_at >= ?`, today).Scan(&avg); err != nil {
+	if err := s.queryRow(ctx, `SELECT COALESCE(AVG(total_ms), 0) FROM requests WHERE created_at >= ?`+ownerClause, todayArgs...).Scan(&avg); err != nil {
 		return nil, err
 	}
 	out.AvgMS = int(avg)
-	if err := s.queryRow(ctx, `SELECT COUNT(*) FROM requests`).Scan(&out.TotalRequests); err != nil {
+	if userID != "" {
+		if err := s.queryRow(ctx, `SELECT COUNT(*) FROM requests WHERE user_id = ?`, userID).Scan(&out.TotalRequests); err != nil {
+			return nil, err
+		}
+	} else if err := s.queryRow(ctx, `SELECT COUNT(*) FROM requests`).Scan(&out.TotalRequests); err != nil {
 		return nil, err
 	}
 
@@ -1100,7 +1134,7 @@ func (s *Store) Summary(ctx context.Context, days int) (*store.StatsSummary, err
 		        COALESCE(SUM(CASE WHEN status = 'empty' THEN 1 ELSE 0 END), 0),
 		        COALESCE(SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END), 0),
 		        COALESCE(AVG(total_ms), 0)
-		 FROM requests WHERE created_at >= ? GROUP BY d ORDER BY d`, from)
+		 FROM requests WHERE created_at >= ?`+ownerClause+` GROUP BY d ORDER BY d`, append([]any{from}, ownerArgs...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -1127,7 +1161,12 @@ func (s *Store) Summary(ctx context.Context, days int) (*store.StatsSummary, err
 		}
 	}
 
-	recentRows, err := s.query(ctx, `SELECT `+requestCols+` FROM requests ORDER BY created_at DESC LIMIT 10`)
+	recentQuery := `SELECT ` + requestCols + ` FROM requests`
+	if userID != "" {
+		recentQuery += ` WHERE user_id = ?`
+	}
+	recentQuery += ` ORDER BY created_at DESC LIMIT 10`
+	recentRows, err := s.query(ctx, recentQuery, ownerArgs...)
 	if err != nil {
 		return nil, err
 	}

@@ -20,6 +20,10 @@ func (s *Server) handleListRequests(w http.ResponseWriter, r *http.Request) {
 		To:       q.Get("to"),
 		Query:    q.Get("q"),
 	}
+	// Scope to the caller for non-admins.
+	if !s.isAdmin(r) {
+		filter.UserID = s.identityUserID(r)
+	}
 	items, total, err := s.store.ListRequests(ctx, filter, store.Page{Limit: limit, Offset: offset})
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
@@ -43,6 +47,12 @@ func (s *Server) handleGetRequest(w http.ResponseWriter, r *http.Request) {
 		}
 		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
 		return
+	}
+	if !s.isAdmin(r) {
+		if owner := s.identityUserID(r); owner == "" || req.UserID != owner {
+			writeError(w, r, http.StatusNotFound, "not_found", "request not found")
+			return
+		}
 	}
 	writeJSON(w, http.StatusOK, req)
 }

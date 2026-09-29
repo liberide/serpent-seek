@@ -32,12 +32,14 @@ type Server struct {
 	log         *logging.Logger
 	authn       *auth.Authenticator
 	mw          *auth.Middleware
+	clientIP    *auth.ClientIPResolver
 	passkeys    *auth.PasskeyService
 	jobs        *jobs.Manager
 	limiter     *auth.RateLimiter
 	mcpSessions *mcpSessionStore
 
 	setupMu    sync.Mutex
+	setupRun   sync.Mutex
 	setupToken string
 	startedAt  time.Time
 }
@@ -66,6 +68,9 @@ func New(
 			if err != nil {
 				return nil, nil, err
 			}
+			if user.Disabled {
+				return nil, nil, store.ErrNotFound
+			}
 			pks, err := st.ListPasskeys(ctx, pk.UserID)
 			if err != nil {
 				return nil, nil, err
@@ -82,6 +87,7 @@ func New(
 		log:         log,
 		authn:       authn,
 		mw:          &auth.Middleware{Auth: authn},
+		clientIP:    auth.NewClientIPResolver(cfg.TrustedProxies),
 		passkeys:    passkeys,
 		jobs:        jobManager,
 		limiter:     auth.NewRateLimiter(10, time.Minute),
@@ -117,16 +123,23 @@ func (s *Server) Routes() http.Handler {
 			r.Use(s.mw.Authenticate)
 			r.Get("/me", s.handleMe)
 			r.Post("/auth/logout", s.handleLogout)
-			r.Post("/auth/passkey/register/begin", s.handlePasskeyRegisterBegin)
-			r.Post("/auth/passkey/register/finish", s.handlePasskeyRegisterFinish)
-			r.Get("/requests", s.handleListRequests)
-			r.Get("/requests/{id}", s.handleGetRequest)
-			r.Get("/requests/{id}/events", s.handleRequestEvents)
-			r.Get("/events", s.handleGlobalEvents)
-			r.Get("/stats/summary", s.handleStatsSummary)
-			r.Get("/logs", s.handleListLogs)
-			r.Get("/settings", s.handleGetSettings)
+			r.With(s.mw.RequireScope("read")).Post("/auth/passkey/register/begin", s.handlePasskeyRegisterBegin)
+			r.With(s.mw.RequireScope("read")).Post("/auth/passkey/register/finish", s.handlePasskeyRegisterFinish)
 			r.With(s.mw.RequireScope("search")).Post("/search/ui", s.handleSearchUI)
+
+			// Read-only endpoints require the read scope.
+			r.Group(func(r chi.Router) {
+				r.Use(s.mw.RequireScope("read"))
+				r.Get("/requests", s.handleListRequests)
+				r.Get("/requests/{id}", s.handleGetRequest)
+				r.Get("/requests/{id}/events", s.handleRequestEvents)
+				r.Get("/stats/summary", s.handleStatsSummary)
+				r.Get("/logs", s.handleListLogs)
+				r.Get("/settings", s.handleGetSettings)
+			})
+
+			// Global feed (administrators only).
+			r.With(s.mw.RequireAdmin).Get("/events", s.handleGlobalEvents)
 
 			r.Group(func(r chi.Router) {
 				r.Use(s.mw.RequireAdmin)
@@ -206,9 +219,19 @@ func (s *Server) requestContext(next http.Handler) http.Handler {
 // securityHeaders applies conservative defaults for the SPA and API.
 func (s *Server) securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Referrer-Policy", "same-origin")
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "same-origin")
+		h.Set("Permissions-Policy", "geolocation=(), microphone=(), camera=(), payment=()")
+		// 'unsafe-inline' allows the SPA's inline theme script.
+		h.Set("Content-Security-Policy",
+			"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "+
+				"img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; "+
+				"base-uri 'self'; form-action 'self'; frame-ancestors 'none'")
+		if s.authn != nil && s.authn.Secure(r) {
+			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
 		next.ServeHTTP(w, r)
 	})
 }
@@ -216,7 +239,7 @@ func (s *Server) securityHeaders(next http.Handler) http.Handler {
 // rateLimit limits /auth/* attempts per IP.
 func (s *Server) rateLimit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.limiter.Allow(auth.ClientIP(r)) {
+		if !s.limiter.Allow(s.clientIP.ClientIP(r)) {
 			writeError(w, r, http.StatusTooManyRequests, "rate_limited", "too many authentication attempts")
 			return
 		}
@@ -251,9 +274,13 @@ func (s *Server) handleSPA(w http.ResponseWriter, r *http.Request) {
 		path = "index.html"
 	}
 	if f, err := fsys.Open(path); err == nil {
+		info, statErr := f.Stat()
 		_ = f.Close()
-		http.FileServer(http.FS(fsys)).ServeHTTP(w, r)
-		return
+		// Serve files, falling back to the SPA index for directories.
+		if statErr == nil && !info.IsDir() {
+			http.FileServer(http.FS(fsys)).ServeHTTP(w, r)
+			return
+		}
 	}
 	index, err := fs.ReadFile(fsys, "index.html")
 	if err != nil {
@@ -277,7 +304,7 @@ func (s *Server) Run(ctx context.Context) error {
 		Handler:           s.Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       60 * time.Second,
-		WriteTimeout:      0, // SSE streams must not be cut off
+		WriteTimeout:      60 * time.Second, // SSE handlers clear their own deadline
 		IdleTimeout:       120 * time.Second,
 	}
 	errCh := make(chan error, 1)

@@ -407,8 +407,11 @@ License) and external `searxng/searxng` (not part of this repository; **AGPLv3**
   part of this repository.
 * **SQLite** is single-writer; WAL + busy_timeout is enough for one replica.
 * **Provider credentials** are write-only and masked in the API and logs;
-  `base_url` is not a secret. Optional `ENCRYPTION_KEY` (AES-GCM) for at-rest
-  encryption.
+  `base_url` is not a secret. Optional `ENCRYPTION_KEY` enables AES-256-GCM
+  at-rest encryption.
+* `TRUSTED_PROXIES` lists proxies whose forwarded headers are honored;
+  `BLOCK_PRIVATE_NETWORKS=true` restricts outbound connections to public
+  addresses.
 
 ## Screenshots
 

@@ -74,6 +74,7 @@ const (
 // mcpSession holds one client session for the streamable HTTP transport.
 type mcpSession struct {
 	id       string
+	owner    string
 	ctx      context.Context
 	cancel   context.CancelFunc
 	outgoing chan rpcResponse
@@ -94,12 +95,13 @@ func newMCPSessionStore() *mcpSessionStore {
 	}
 }
 
-func (st *mcpSessionStore) create() *mcpSession {
+func (st *mcpSessionStore) create(owner string) *mcpSession {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &mcpSession{
 		id:       uuid.NewString(),
+		owner:    owner,
 		ctx:      ctx,
 		cancel:   cancel,
 		outgoing: make(chan rpcResponse, 256),
@@ -109,10 +111,15 @@ func (st *mcpSessionStore) create() *mcpSession {
 	return s
 }
 
-func (st *mcpSessionStore) get(id string) *mcpSession {
+// get returns the session belonging to owner.
+func (st *mcpSessionStore) get(id, owner string) *mcpSession {
 	st.mu.RLock()
 	defer st.mu.RUnlock()
-	return st.sessions[id]
+	s := st.sessions[id]
+	if s == nil || (owner != "" && s.owner != owner) {
+		return nil
+	}
+	return s
 }
 
 func (st *mcpSessionStore) remove(id string) {
@@ -174,9 +181,10 @@ func (s *Server) handleMCPStream(w http.ResponseWriter, r *http.Request) {
 		writeRPC(w, nil, nil, &rpcError{Code: rpcInternalError, Message: "streaming unsupported"})
 		return
 	}
+	disableWriteDeadline(w)
 
 	s.mcpSessions.reap()
-	session := s.mcpSessions.create()
+	session := s.mcpSessions.create(s.identityUserID(r))
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -243,7 +251,7 @@ func (s *Server) handleMCPPost(w http.ResponseWriter, r *http.Request) {
 	if sid != "" {
 		// Streamable HTTP: deliver the response (or a notification result)
 		// over the SSE stream associated with this session.
-		session := s.mcpSessions.get(sid)
+		session := s.mcpSessions.get(sid, s.identityUserID(r))
 		if session == nil {
 			writeRPC(w, req.ID, nil, &rpcError{Code: rpcInvalidRequest, Message: "unknown session"})
 			return
@@ -295,7 +303,9 @@ func (s *Server) handleMCPDelete(w http.ResponseWriter, r *http.Request) {
 		writeRPC(w, nil, nil, &rpcError{Code: rpcInvalidRequest, Message: "missing Mcp-Session-Id"})
 		return
 	}
-	s.mcpSessions.remove(sid)
+	if session := s.mcpSessions.get(sid, s.identityUserID(r)); session != nil {
+		s.mcpSessions.remove(sid)
+	}
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -400,7 +410,7 @@ func (s *Server) mcpToolCall(r *http.Request, req *rpcRequest) (any, *rpcError) 
 	if id := s.identity(r); id != nil && id.User != nil {
 		client = id.User.Name
 	}
-	out, err := s.engine.Execute(r.Context(), engine.Input{Query: query, Count: count, Client: client})
+	out, err := s.engine.Execute(r.Context(), engine.Input{Query: query, Count: count, Client: client, UserID: s.identityUserID(r)})
 	if err != nil {
 		s.log.Error("", "", "mcp search failed: "+err.Error())
 		return map[string]any{

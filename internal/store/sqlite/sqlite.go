@@ -24,7 +24,7 @@ func Open(ctx context.Context, path string) (*sqlstore.Store, error) {
 	if path == ":memory:" || path == "" {
 		dsn = "file::memory:?cache=shared&_pragma=busy_timeout(5000)&_pragma=foreign_keys(ON)"
 	} else {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			return nil, fmt.Errorf("sqlite: create data dir: %w", err)
 		}
 		dsn = "file:" + path +
@@ -43,6 +43,10 @@ func Open(ctx context.Context, path string) (*sqlstore.Store, error) {
 	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("sqlite: ping: %w", err)
+	}
+	// Tighten database file permissions.
+	for _, suffix := range []string{"", "-wal", "-shm"} {
+		_ = os.Chmod(path+suffix, 0o600)
 	}
 	st := sqlstore.New(db, "sqlite")
 	st.SetMigrate(func(ctx context.Context) error {

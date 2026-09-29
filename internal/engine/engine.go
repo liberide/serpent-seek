@@ -26,6 +26,8 @@ type Input struct {
 	Query  string
 	Count  int
 	Client string
+	// UserID is the authenticated owner.
+	UserID string
 }
 
 // Output is the engine result.
@@ -183,6 +185,7 @@ func (e *Engine) prepare(ctx context.Context, in Input) (*runContext, error) {
 		Status:        "running",
 		ChainID:       chain.ID,
 		ChainSnapshot: plan.Snapshot(),
+		UserID:        in.UserID,
 		Client:        in.Client,
 		CreatedAt:     store.Now(),
 	}

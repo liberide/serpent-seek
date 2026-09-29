@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/liberide/serpent-seek/internal/providers"
 	"github.com/liberide/serpent-seek/internal/store"
 )
 
@@ -98,6 +99,14 @@ func (s *Server) handleCreateProxy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusBadRequest, "invalid_request", "host is required")
 		return
 	}
+	if err := providers.ValidateProxyHost(host); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_host", err.Error())
+		return
+	}
+	if err := providers.ValidateProxyPort(body.Port); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_port", err.Error())
+		return
+	}
 	proxyType, ok := normalizeProxyType(body.Type)
 	if !ok {
 		writeError(w, r, http.StatusBadRequest, "invalid_request", "invalid proxy type: "+body.Type)
@@ -139,7 +148,15 @@ func (s *Server) handleUpdateProxy(w http.ResponseWriter, r *http.Request) {
 		existing.Name = name
 	}
 	if host := strings.TrimSpace(body.Host); host != "" {
+		if err := providers.ValidateProxyHost(host); err != nil {
+			writeError(w, r, http.StatusBadRequest, "invalid_host", err.Error())
+			return
+		}
 		existing.Host = host
+	}
+	if err := providers.ValidateProxyPort(body.Port); err != nil {
+		writeError(w, r, http.StatusBadRequest, "invalid_port", err.Error())
+		return
 	}
 	if proxyType, ok := normalizeProxyType(body.Type); ok {
 		existing.Type = proxyType

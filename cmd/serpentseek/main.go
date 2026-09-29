@@ -3,8 +3,6 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"os/signal"
@@ -14,6 +12,7 @@ import (
 
 	"github.com/liberide/serpent-seek/internal/auth"
 	"github.com/liberide/serpent-seek/internal/config"
+	"github.com/liberide/serpent-seek/internal/crypt"
 	"github.com/liberide/serpent-seek/internal/engine"
 	"github.com/liberide/serpent-seek/internal/httpd"
 	"github.com/liberide/serpent-seek/internal/jobs"
@@ -23,6 +22,7 @@ import (
 	"github.com/liberide/serpent-seek/internal/store"
 	"github.com/liberide/serpent-seek/internal/store/postgres"
 	"github.com/liberide/serpent-seek/internal/store/sqlite"
+	"github.com/liberide/serpent-seek/internal/store/sqlstore"
 	"github.com/liberide/serpent-seek/internal/version"
 )
 
@@ -50,16 +50,24 @@ func run() error {
 
 	ctx := context.Background()
 
-	var st store.Storage
+	var storeImpl *sqlstore.Store
 	switch cfg.StorageDriver {
 	case "postgres":
-		st, err = postgres.Open(ctx, cfg.DatabaseURL)
+		storeImpl, err = postgres.Open(ctx, cfg.DatabaseURL)
 	default:
-		st, err = sqlite.Open(ctx, cfg.SQLitePath)
+		storeImpl, err = sqlite.Open(ctx, cfg.SQLitePath)
 	}
 	if err != nil {
 		return err
 	}
+	cipher, err := crypt.New(cfg.EncryptionKey)
+	if err != nil {
+		return fmt.Errorf("encryption: %w", err)
+	}
+	if cipher.Enabled() {
+		storeImpl.SetCipher(cipher)
+	}
+	var st store.Storage = storeImpl
 	defer func() { _ = st.Close() }()
 	if err := st.Migrate(ctx); err != nil {
 		return fmt.Errorf("migrations: %w", err)
@@ -86,6 +94,7 @@ func run() error {
 
 	client := providers.NewHTTPClient(cfg.UserAgent)
 	client.SetRedactor(log.Redact)
+	client.SetBlockPrivateNetworks(cfg.BlockPrivateNetworks)
 	registry := providers.NewRegistry(client)
 	hub := sse.NewHub()
 	engineSink := engine.NewStoreSink(st, hub, log)
@@ -121,7 +130,11 @@ func run() error {
 			if stored, serr := st.GetSetting(ctx, config.KeySetupToken); serr == nil && strings.TrimSpace(stored) != "" {
 				setupToken = stored
 			} else {
-				setupToken = randomToken()
+				token, terr := auth.RandomToken(32)
+				if terr != nil {
+					return fmt.Errorf("generate setup token: %w", terr)
+				}
+				setupToken = token
 				if err := st.SetSetting(ctx, config.KeySetupToken, setupToken); err != nil {
 					log.Warn("", "", "failed to persist setup token: "+err.Error())
 				}
@@ -174,10 +187,4 @@ func logBootLine(cfg *config.Config, registry *providers.Registry, passkeys *aut
 	line := fmt.Sprintf("start version=%s %s providers=%s searxng=%s url=%s key=%s passkeys=%s ua=%q",
 		version.String(), storageInfo, providerList, searxngState, pathOnly, keyState, passkeyState, cfg.UserAgent)
 	log.Info("", "", line)
-}
-
-func randomToken() string {
-	var buf [4]byte
-	_, _ = rand.Read(buf[:])
-	return hex.EncodeToString(buf[:])
 }

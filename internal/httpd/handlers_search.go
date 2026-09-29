@@ -4,7 +4,6 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/liberide/serpent-seek/internal/auth"
 	"github.com/liberide/serpent-seek/internal/engine"
 	"github.com/liberide/serpent-seek/internal/providers"
 )
@@ -29,7 +28,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	if id := s.identity(r); id != nil && id.User != nil {
 		client = id.User.Name
 	}
-	out, err := s.engine.Execute(r.Context(), engine.Input{Query: body.Query, Count: body.Count, Client: client})
+	out, err := s.engine.Execute(r.Context(), engine.Input{Query: body.Query, Count: body.Count, Client: client, UserID: s.identityUserID(r)})
 	if err != nil {
 		s.log.Error("", "", "search failed: "+err.Error())
 		w.Header().Set("X-Serpent-Api", "-")
@@ -65,12 +64,10 @@ func (s *Server) handleSearchUI(w http.ResponseWriter, r *http.Request) {
 	if id := s.identity(r); id != nil && id.User != nil {
 		client = id.User.Name
 	}
-	req, err := s.engine.Start(r.Context(), engine.Input{Query: body.Query, Count: body.Count, Client: client})
+	req, err := s.engine.Start(r.Context(), engine.Input{Query: body.Query, Count: body.Count, Client: client, UserID: s.identityUserID(r)})
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "search_start_failed", err.Error())
 		return
 	}
 	writeJSON(w, http.StatusAccepted, map[string]any{"id": req.ID, "rid": req.RID})
 }
-
-var _ = auth.ClientIP

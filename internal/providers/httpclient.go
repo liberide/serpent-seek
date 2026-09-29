@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -21,14 +22,21 @@ const MaxResponseBytes = 4 * 1024 * 1024
 // target, leaking credentials to third-party hosts. This mirrors serpent-shim.
 type HTTPClient struct {
 	client    *http.Client
+	dialer    *net.Dialer
 	userAgent string
 	redact    func(string) string
+	// blockPrivate rejects non-public destinations.
+	blockPrivate atomic.Bool
 }
 
 // NewHTTPClient builds the shared client with the given User-Agent.
 func NewHTTPClient(userAgent string) *HTTPClient {
 	if strings.TrimSpace(userAgent) == "" {
 		userAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+	}
+	h := &HTTPClient{
+		userAgent: userAgent,
+		dialer:    &net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second},
 	}
 	transport := &http.Transport{
 		// Per-request proxy override (providers.WithProxy) wins over the
@@ -39,6 +47,7 @@ func NewHTTPClient(userAgent string) *HTTPClient {
 			}
 			return http.ProxyFromEnvironment(req)
 		},
+		DialContext:           h.dialContext,
 		MaxIdleConns:          100,
 		MaxIdleConnsPerHost:   16,
 		IdleConnTimeout:       90 * time.Second,
@@ -46,16 +55,45 @@ func NewHTTPClient(userAgent string) *HTTPClient {
 		ExpectContinueTimeout: 1 * time.Second,
 		ForceAttemptHTTP2:     true,
 	}
-	return &HTTPClient{
-		client: &http.Client{
-			Transport: transport,
-			Timeout:   60 * time.Second, // safety net; per-node ctx deadlines are tighter
-			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
-				return http.ErrUseLastResponse
-			},
+	h.client = &http.Client{
+		Transport: transport,
+		Timeout:   60 * time.Second, // safety net; per-node ctx deadlines are tighter
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
 		},
-		userAgent: userAgent,
 	}
+	return h
+}
+
+// SetBlockPrivateNetworks enables/disables the private-network filter.
+func (h *HTTPClient) SetBlockPrivateNetworks(block bool) { h.blockPrivate.Store(block) }
+
+// dialContext optionally filters private destinations.
+func (h *HTTPClient) dialContext(ctx context.Context, network, addr string) (net.Conn, error) {
+	if h.blockPrivate.Load() {
+		host, port, err := net.SplitHostPort(addr)
+		if err == nil {
+			ips, lerr := net.DefaultResolver.LookupIPAddr(ctx, host)
+			if lerr != nil {
+				return nil, lerr
+			}
+			for _, ip := range ips {
+				if isBlockedIP(ip.IP) {
+					return nil, fmt.Errorf("outbound connection to %s blocked by BLOCK_PRIVATE_NETWORKS", ip.IP)
+				}
+			}
+			if len(ips) > 0 {
+				return h.dialer.DialContext(ctx, network, net.JoinHostPort(ips[0].IP.String(), port))
+			}
+		}
+	}
+	return h.dialer.DialContext(ctx, network, addr)
+}
+
+// isBlockedIP reports whether ip is a non-public address.
+func isBlockedIP(ip net.IP) bool {
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() ||
+		ip.IsLinkLocalMulticast() || ip.IsUnspecified() || ip.IsMulticast()
 }
 
 // SetRedactor registers the secret masking function used when building errors.
