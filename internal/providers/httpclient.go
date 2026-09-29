@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -30,7 +31,14 @@ func NewHTTPClient(userAgent string) *HTTPClient {
 		userAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 	}
 	transport := &http.Transport{
-		Proxy:                 http.ProxyFromEnvironment,
+		// Per-request proxy override (providers.WithProxy) wins over the
+		// process environment proxy.
+		Proxy: func(req *http.Request) (*url.URL, error) {
+			if cfg := proxyFromContext(req.Context()); cfg != nil {
+				return cfg.URL()
+			}
+			return http.ProxyFromEnvironment(req)
+		},
 		MaxIdleConns:          100,
 		MaxIdleConnsPerHost:   16,
 		IdleConnTimeout:       90 * time.Second,

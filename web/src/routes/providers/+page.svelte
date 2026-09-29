@@ -14,6 +14,7 @@
 		name: string;
 		enabled: boolean;
 		base_url: string;
+		proxy_id: string;
 		params: Record<string, string>;
 		credentials_set: Record<string, boolean>;
 	};
@@ -46,7 +47,9 @@
 
 	let editing = $state<Provider | null>(null);
 	let creating = $state(false);
-	let form = $state({ code: '', name: '', enabled: true, base_url: '' });
+	let form = $state({ code: '', name: '', enabled: true, base_url: '', proxy_id: '' });
+	// Named proxies available for selection (Settings → Proxy).
+	let proxies = $state<{ id: string; name: string; enabled: boolean }[]>([]);
 	let credentials = $state<Record<string, string>>({});
 	let paramValues = $state<Record<string, string>>({});
 	let paramsText = $state('{}');
@@ -75,6 +78,12 @@
 			.map((d) => ({ code: d.code, name: d.name, deprecated: d.deprecated }))
 	);
 
+	const proxyName = $derived.by(() => {
+		const map: Record<string, string> = {};
+		for (const proxy of proxies) map[proxy.id] = proxy.name;
+		return map;
+	});
+
 	async function load() {
 		loading = true;
 		try {
@@ -97,9 +106,18 @@
 		}
 	}
 
+	async function loadProxies() {
+		try {
+			proxies = await get<{ id: string; name: string; enabled: boolean }[]>('/api/proxies');
+		} catch {
+			proxies = [];
+		}
+	}
+
 	onMount(() => {
 		load();
 		loadDrivers();
+		loadProxies();
 	});
 
 	function emptyCredentials(): Record<string, string> {
@@ -130,7 +148,7 @@
 	function openCreate() {
 		creating = true;
 		editing = null;
-		form = { code: sortedDrivers[0]?.code ?? '', name: '', enabled: true, base_url: '' };
+		form = { code: sortedDrivers[0]?.code ?? '', name: '', enabled: true, base_url: '', proxy_id: '' };
 		credentials = emptyCredentials();
 		paramValues = defaultParams(selectedSchema);
 		rawJsonMode = false;
@@ -140,7 +158,13 @@
 	function openEdit(provider: Provider) {
 		creating = false;
 		editing = $state.snapshot(provider) as Provider;
-		form = { code: provider.code, name: provider.name, enabled: provider.enabled, base_url: provider.base_url };
+		form = {
+			code: provider.code,
+			name: provider.name,
+			enabled: provider.enabled,
+			base_url: provider.base_url,
+			proxy_id: provider.proxy_id ?? ''
+		};
 		credentials = emptyCredentials();
 		paramValues = { ...defaultParams(selectedSchema), ...(provider.params ?? {}) };
 		rawJsonMode = false;
@@ -191,6 +215,7 @@
 					name: form.name,
 					enabled: form.enabled,
 					base_url: form.base_url,
+					proxy_id: form.proxy_id,
 					params,
 					credentials
 				});
@@ -200,6 +225,7 @@
 					name: form.name,
 					enabled: form.enabled,
 					base_url: form.base_url,
+					proxy_id: form.proxy_id,
 					params,
 					credentials
 				});
@@ -274,6 +300,11 @@
 								<span class="badge bg-slate-700/40 text-slate-300">{provider.code}</span>
 								{#if driverSchemas.find((d) => d.code === provider.code)?.deprecated}
 									<span class="badge bg-amber-500/15 text-amber-300">{t('providers.deprecated')}</span>
+								{/if}
+								{#if provider.proxy_id}
+									<span class="badge bg-sky-500/15 text-sky-300"
+										>{t('providers.proxyBadge')}: {proxyName[provider.proxy_id] ?? provider.proxy_id}</span
+									>
 								{/if}
 							</div>
 							<p class="mt-1 truncate font-mono text-xs text-slate-400">{provider.base_url || '—'}</p>
@@ -396,6 +427,19 @@
 				placeholder={baseUrlPlaceholder}
 				hint={baseUrlHint}
 			/>
+
+			<div>
+				<span class="label">{t('providers.proxy')}</span>
+				<select class="input" bind:value={form.proxy_id}>
+					<option value="">{t('providers.proxyNone')}</option>
+					{#each proxies as proxy (proxy.id)}
+						<option value={proxy.id}>
+							{proxy.name}{proxy.enabled ? '' : ` (${t('common.disabled')})`}
+						</option>
+					{/each}
+				</select>
+				<p class="mt-1 text-xs text-slate-500">{t('providers.proxyHint')}</p>
+			</div>
 
 			{#each selectedSchema?.credentials ?? [] as field (field.key)}
 				<SecretField

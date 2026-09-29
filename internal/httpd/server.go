@@ -158,6 +158,14 @@ func (s *Server) Routes() http.Handler {
 					r.Delete("/{id}", s.handleDeleteProvider)
 					r.Post("/{id}/test", s.handleTestProvider)
 				})
+				r.Route("/proxies", func(r chi.Router) {
+					r.Get("/", s.handleListProxies)
+					r.Post("/", s.handleCreateProxy)
+					r.Get("/{id}", s.handleGetProxy)
+					r.Put("/{id}", s.handleUpdateProxy)
+					r.Patch("/{id}", s.handlePatchProxy)
+					r.Delete("/{id}", s.handleDeleteProxy)
+				})
 				r.Route("/users", func(r chi.Router) {
 					r.Get("/", s.handleListUsers)
 					r.Post("/", s.handleCreateUser)

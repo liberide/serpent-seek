@@ -399,7 +399,7 @@ func scanProvider(row interface{ Scan(...any) error }) (*store.Provider, error) 
 	var p store.Provider
 	var enabled store.Bool
 	var creds, params string
-	err := row.Scan(&p.ID, &p.Code, &p.Name, &enabled, &p.BaseURL, &creds, &params, &p.UpdatedAt)
+	err := row.Scan(&p.ID, &p.Code, &p.Name, &enabled, &p.BaseURL, &p.ProxyID, &creds, &params, &p.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -409,7 +409,7 @@ func scanProvider(row interface{ Scan(...any) error }) (*store.Provider, error) 
 	return &p, nil
 }
 
-const providerCols = `id, code, name, enabled, COALESCE(base_url, ''), COALESCE(credentials_json, '{}'), COALESCE(params_json, '{}'), updated_at`
+const providerCols = `id, code, name, enabled, COALESCE(base_url, ''), COALESCE(proxy_id, ''), COALESCE(credentials_json, '{}'), COALESCE(params_json, '{}'), updated_at`
 
 // ListProviders returns all provider instances.
 func (s *Store) ListProviders(ctx context.Context) ([]*store.Provider, error) {
@@ -441,12 +441,12 @@ func (s *Store) GetProvider(ctx context.Context, id string) (*store.Provider, er
 // UpsertProvider creates or fully updates a provider instance row.
 func (s *Store) UpsertProvider(ctx context.Context, p *store.Provider) error {
 	_, err := s.exec(ctx,
-		`INSERT INTO providers (id, code, name, enabled, base_url, credentials_json, params_json, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		`INSERT INTO providers (id, code, name, enabled, base_url, proxy_id, credentials_json, params_json, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		 ON CONFLICT (id) DO UPDATE SET code = excluded.code, name = excluded.name, enabled = excluded.enabled,
-		     base_url = excluded.base_url, credentials_json = excluded.credentials_json,
+		     base_url = excluded.base_url, proxy_id = excluded.proxy_id, credentials_json = excluded.credentials_json,
 		     params_json = excluded.params_json, updated_at = excluded.updated_at`,
-		p.ID, p.Code, p.Name, store.Bool(p.Enabled), p.BaseURL, store.EncodeMap(p.Credentials), store.EncodeMap(p.Params), store.Now())
+		p.ID, p.Code, p.Name, store.Bool(p.Enabled), p.BaseURL, p.ProxyID, store.EncodeMap(p.Credentials), store.EncodeMap(p.Params), store.Now())
 	return err
 }
 
@@ -478,6 +478,88 @@ func (s *Store) SetProviderEnabled(ctx context.Context, id string, enabled bool)
 func (s *Store) DeleteProvider(ctx context.Context, id string) error {
 	_, err := s.exec(ctx, `DELETE FROM providers WHERE id = ?`, id)
 	return err
+}
+
+// --- Proxies ---
+
+const proxyCols = `id, name, enabled, type, COALESCE(host, ''), COALESCE(port, ''), COALESCE(username, ''), COALESCE(password, ''), created_at, updated_at`
+
+func scanProxy(row interface{ Scan(...any) error }) (*store.Proxy, error) {
+	var p store.Proxy
+	var enabled store.Bool
+	err := row.Scan(&p.ID, &p.Name, &enabled, &p.Type, &p.Host, &p.Port, &p.Username, &p.Password, &p.CreatedAt, &p.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	p.Enabled = bool(enabled)
+	return &p, nil
+}
+
+// ListProxies returns every named proxy ordered by name.
+func (s *Store) ListProxies(ctx context.Context) ([]*store.Proxy, error) {
+	rows, err := s.query(ctx, `SELECT `+proxyCols+` FROM proxies ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*store.Proxy
+	for rows.Next() {
+		p, err := scanProxy(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// GetProxy fetches a named proxy by id.
+func (s *Store) GetProxy(ctx context.Context, id string) (*store.Proxy, error) {
+	p, err := scanProxy(s.queryRow(ctx, `SELECT `+proxyCols+` FROM proxies WHERE id = ?`, id))
+	if err == sql.ErrNoRows {
+		return nil, store.ErrNotFound
+	}
+	return p, err
+}
+
+// UpsertProxy creates or fully updates a named proxy row.
+func (s *Store) UpsertProxy(ctx context.Context, p *store.Proxy) error {
+	_, err := s.exec(ctx,
+		`INSERT INTO proxies (id, name, enabled, type, host, port, username, password, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		 ON CONFLICT (id) DO UPDATE SET name = excluded.name, enabled = excluded.enabled,
+		     type = excluded.type, host = excluded.host, port = excluded.port, username = excluded.username,
+		     password = excluded.password, updated_at = excluded.updated_at`,
+		p.ID, p.Name, store.Bool(p.Enabled), p.Type, p.Host, p.Port, p.Username, p.Password, p.CreatedAt, store.Now())
+	return err
+}
+
+// SetProxyEnabled toggles a named proxy on/off.
+func (s *Store) SetProxyEnabled(ctx context.Context, id string, enabled bool) error {
+	res, err := s.exec(ctx, `UPDATE proxies SET enabled = ?, updated_at = ? WHERE id = ?`, store.Bool(enabled), store.Now(), id)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return store.ErrNotFound
+	}
+	return nil
+}
+
+// DeleteProxy removes a named proxy row.
+func (s *Store) DeleteProxy(ctx context.Context, id string) error {
+	_, err := s.exec(ctx, `DELETE FROM proxies WHERE id = ?`, id)
+	return err
+}
+
+// ClearProxyRefs unsets providers.proxy_id for every provider selecting the
+// given proxy and returns the number of providers affected.
+func (s *Store) ClearProxyRefs(ctx context.Context, id string) (int64, error) {
+	res, err := s.exec(ctx, `UPDATE providers SET proxy_id = NULL, updated_at = ? WHERE proxy_id = ?`, store.Now(), id)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // --- Chains ---

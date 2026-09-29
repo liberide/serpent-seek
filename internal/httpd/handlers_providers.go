@@ -18,6 +18,7 @@ type providerView struct {
 	Name           string            `json:"name"`
 	Enabled        bool              `json:"enabled"`
 	BaseURL        string            `json:"base_url"`
+	ProxyID        string            `json:"proxy_id"`
 	Params         map[string]string `json:"params"`
 	CredentialsSet map[string]bool   `json:"credentials_set"`
 	UpdatedAt      string            `json:"updated_at"`
@@ -36,7 +37,8 @@ func toProviderView(p *store.Provider) providerView {
 	}
 	return providerView{
 		ID: p.ID, Code: p.Code, Name: p.Name, Enabled: p.Enabled, BaseURL: p.BaseURL,
-		Params: params, CredentialsSet: set, UpdatedAt: p.UpdatedAt,
+		ProxyID: p.ProxyID,
+		Params:  params, CredentialsSet: set, UpdatedAt: p.UpdatedAt,
 	}
 }
 
@@ -112,6 +114,7 @@ type providerPayload struct {
 	Name        string            `json:"name"`
 	Enabled     *bool             `json:"enabled"`
 	BaseURL     *string           `json:"base_url"`
+	ProxyID     *string           `json:"proxy_id"`
 	Params      map[string]string `json:"params"`
 	Credentials map[string]string `json:"credentials"`
 }
@@ -150,6 +153,16 @@ func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.BaseURL != nil {
 		p.BaseURL = *body.BaseURL
+	}
+	if body.ProxyID != nil {
+		proxyID := strings.TrimSpace(*body.ProxyID)
+		if proxyID != "" {
+			if _, perr := s.store.GetProxy(ctx, proxyID); perr != nil {
+				writeError(w, r, http.StatusBadRequest, "unknown_proxy", "unknown proxy: "+proxyID)
+				return
+			}
+		}
+		p.ProxyID = proxyID
 	}
 	for k, v := range body.Params {
 		p.Params[k] = v
@@ -194,6 +207,16 @@ func (s *Server) handleUpdateProvider(w http.ResponseWriter, r *http.Request) {
 	}
 	if body.BaseURL != nil {
 		existing.BaseURL = *body.BaseURL
+	}
+	if body.ProxyID != nil {
+		proxyID := strings.TrimSpace(*body.ProxyID)
+		if proxyID != "" {
+			if _, perr := s.store.GetProxy(ctx, proxyID); perr != nil {
+				writeError(w, r, http.StatusBadRequest, "unknown_proxy", "unknown proxy: "+proxyID)
+				return
+			}
+		}
+		existing.ProxyID = proxyID
 	}
 	if body.Params != nil {
 		existing.Params = body.Params
@@ -343,6 +366,22 @@ func (s *Server) chainsUsingProvider(ctx context.Context, id string) []string {
 				out = append(out, chain.Name)
 				break
 			}
+		}
+	}
+	return out
+}
+
+// providersUsingProxy returns the names of provider instances that select the
+// given proxy id.
+func (s *Server) providersUsingProxy(ctx context.Context, id string) []string {
+	providers, err := s.store.ListProviders(ctx)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, p := range providers {
+		if p.ProxyID == id {
+			out = append(out, p.Name)
 		}
 	}
 	return out
