@@ -18,10 +18,13 @@
 		"enabled": "已启用",
 		"disabled": "已禁用",
 		"active": "活动",
-		"unknown": "未知"
+		"unknown": "未知",
+		"copy": "复制",
+		"copied": "已复制"
 	},
 	"nav": {
 		"dashboard": "仪表盘",
+		"analytics": "分析",
 		"history": "历史",
 		"chains": "链路",
 		"providers": "提供商",
@@ -79,6 +82,84 @@
 		"days7": "7 天",
 		"requestsTitle": "{n} 个请求",
 		"providers": "提供商"
+	},
+	"analytics": {
+		"title": "统计与分析",
+		"subtitle": "负载、成功率与提供商活动",
+		"from": "从",
+		"to": "至",
+		"allProviders": "全部提供商",
+		"allStatuses": "全部状态",
+		"reset": "重置",
+		"live": "实时",
+		"liveHint": "有新请求时自动刷新",
+		"updatedAt": "更新时间：{time}",
+		"summaryPeriod": "{from} — {to}",
+		"presets": {
+			"today": "今天",
+			"yesterday": "昨天",
+			"last7": "7 天",
+			"last30": "30 天",
+			"thisMonth": "本月",
+			"lastMonth": "上月",
+			"thisYear": "今年"
+		},
+		"kpi": {
+			"total": "请求总数",
+			"successRate": "成功率",
+			"okOf": "{ok} / {total}",
+			"avgMs": "平均耗时",
+			"avgHint": "所有请求",
+			"p95": "95 分位",
+			"p95Hint": "最慢的 5%",
+			"fail": "错误",
+			"emptyCount": "无结果：{n}",
+			"activeDays": "活跃天数",
+			"busiest": "峰值 {date}：{n}",
+			"noBusiest": "暂无数据"
+		},
+		"chart": {
+			"volume": "总量",
+			"latency": "延迟",
+			"success": "成功率",
+			"perDay": "每日请求",
+			"perHour": "按小时活动",
+			"latencyTrend": "每日平均延迟",
+			"successTrend": "每日成功率",
+			"statusDist": "状态分布",
+			"avgLatency": "平均耗时",
+			"noData": "所选时段暂无数据",
+			"dayTotal": "{n} 个请求",
+			"dayBreakdown": "成功 {ok} · 无结果 {empty} · 错误 {fail} · {ms}",
+			"latencyHint": "每天的平均请求耗时。",
+			"successHint": "每天成功请求占已完成请求的比例。",
+			"utcHint": "时间以 UTC 显示"
+		},
+		"provider": {
+			"heading": "提供商对比",
+			"title": "提供商",
+			"hint": "所选时段内全部提供商的汇总。提供商与状态筛选不会影响此区块。",
+			"total": "总计",
+			"ok": "成功",
+			"empty": "无结果",
+			"fail": "错误",
+			"skip": "已跳过",
+			"success": "成功率",
+			"avg": "平均耗时",
+			"legacy": "旧版",
+			"noData": "所选时段暂无提供商数据"
+		},
+		"top": {
+			"title": "热门查询",
+			"empty": "所选时段暂无查询",
+			"okFail": "成功 {ok} · 错误 {fail}"
+		},
+		"status": {
+			"ok": "成功",
+			"empty": "无结果",
+			"fail": "错误",
+			"running": "进行中"
+		}
 	},
 	"history": {
 		"title": "请求历史",
@@ -148,6 +229,8 @@
 		"namePlaceholder": "例如 apiserpent work",
 		"enabledLabel": "已启用",
 		"baseUrl": "Base URL",
+		"baseUrlOverrideHint": "留空则使用默认地址；填写后将覆盖默认地址。",
+		"baseUrlRequiredHint": "没有默认地址——请填写 Base URL（例如自建的 SearXNG 实例）。",
 		"params": "参数",
 		"resetJson": "重置",
 		"added": "提供商已添加",

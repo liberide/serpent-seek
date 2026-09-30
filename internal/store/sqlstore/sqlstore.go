@@ -6,8 +6,10 @@ package sqlstore
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/liberide/serpent-seek/internal/crypt"
 	"github.com/liberide/serpent-seek/internal/store"
@@ -1179,6 +1181,220 @@ func (s *Store) summary(ctx context.Context, days int, userID string) (*store.St
 		out.Recent = append(out.Recent, r)
 	}
 	return out, recentRows.Err()
+}
+
+// Analytics aggregates request statistics for a date range. The provider
+// breakdown always covers the whole period (both successful and failed calls),
+// independently of the provider/status filters applied to the daily series.
+func (s *Store) Analytics(ctx context.Context, f store.AnalyticsFilter) (*store.AnalyticsReport, error) {
+	from := f.From
+	if from == "" {
+		from = dateOnlyMinus(29)
+	}
+	to := f.To
+	if to == "" {
+		to = dateOnlyMinus(0)
+	}
+	fromTS := dateStartUTC(from)
+	toTS := dateEndExclusiveUTC(to)
+	if fromTS == "" || toTS == "" {
+		return nil, fmt.Errorf("store: invalid analytics date range %q..%q", from, to)
+	}
+
+	where := []string{"created_at >= ?", "created_at < ?"}
+	args := []any{fromTS, toTS}
+	if f.Status != "" {
+		where = append(where, "status = ?")
+		args = append(args, f.Status)
+	}
+	if f.Provider != "" {
+		// Match requests that actually attempted this provider (successful,
+		// failed or skipped). Filtering on used_provider alone would miss
+		// failures and skips, where the provider never produced a result.
+		where = append(where, "id IN (SELECT request_id FROM request_steps WHERE provider = ?)")
+		args = append(args, f.Provider)
+	}
+	clause := strings.Join(where, " AND ")
+
+	out := &store.AnalyticsReport{}
+	var avg float64
+	if err := s.queryRow(ctx,
+		`SELECT COUNT(*),
+		        COALESCE(SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END), 0),
+		        COALESCE(SUM(CASE WHEN status = 'empty' THEN 1 ELSE 0 END), 0),
+		        COALESCE(SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END), 0),
+		        COALESCE(AVG(total_ms), 0)
+		 FROM requests WHERE `+clause, args...).
+		Scan(&out.TotalRequests, &out.OK, &out.Empty, &out.Fail, &avg); err != nil {
+		return nil, err
+	}
+	out.AvgMS = int(avg)
+	if out.TotalRequests > 0 {
+		out.SuccessRate = float64(out.OK) / float64(out.TotalRequests) * 100
+	}
+	out.P95MS = s.percentileMS(ctx, clause, args, out.TotalRequests, 95)
+
+	// Daily rollups, then fill every day in the range so the chart has a
+	// continuous x-axis even on quiet days.
+	dailyRows, err := s.query(ctx,
+		`SELECT substr(created_at, 1, 10) AS d,
+		        COUNT(*),
+		        COALESCE(SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END), 0),
+		        COALESCE(SUM(CASE WHEN status = 'empty' THEN 1 ELSE 0 END), 0),
+		        COALESCE(SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END), 0),
+		        COALESCE(AVG(total_ms), 0)
+		 FROM requests WHERE `+clause+` GROUP BY d ORDER BY d`, args...)
+	if err != nil {
+		return nil, err
+	}
+	daily := map[string]store.DailyStat{}
+	for dailyRows.Next() {
+		var d store.DailyStat
+		var avgMS float64
+		if err := dailyRows.Scan(&d.Date, &d.Requests, &d.OK, &d.Empty, &d.Fail, &avgMS); err != nil {
+			dailyRows.Close()
+			return nil, err
+		}
+		d.AvgMS = int(avgMS)
+		daily[d.Date] = d
+	}
+	dailyRows.Close()
+	if err := dailyRows.Err(); err != nil {
+		return nil, err
+	}
+	fromDate, _ := time.Parse("2006-01-02", from)
+	toDate, _ := time.Parse("2006-01-02", to)
+	out.Daily = []store.DailyStat{}
+	for day := fromDate; !day.After(toDate); day = day.AddDate(0, 0, 1) {
+		key := day.Format("2006-01-02")
+		stat, ok := daily[key]
+		if !ok {
+			stat = store.DailyStat{Date: key}
+		}
+		out.Daily = append(out.Daily, stat)
+		if stat.Requests > 0 {
+			out.ActiveDays++
+		}
+		if stat.Requests > out.BusiestCount {
+			out.BusiestCount = stat.Requests
+			out.BusiestDate = key
+		}
+	}
+
+	// Activity by hour of day (UTC).
+	hourRows, err := s.query(ctx,
+		`SELECT substr(created_at, 12, 2) AS h,
+		        COUNT(*),
+		        COALESCE(SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END), 0),
+		        COALESCE(SUM(CASE WHEN status = 'empty' THEN 1 ELSE 0 END), 0),
+		        COALESCE(SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END), 0)
+		 FROM requests WHERE `+clause+` GROUP BY h`, args...)
+	if err != nil {
+		return nil, err
+	}
+	byHour := make([]store.HourStat, 24)
+	for i := range byHour {
+		byHour[i].Hour = i
+	}
+	for hourRows.Next() {
+		var h string
+		var requests, ok, empty, fail int
+		if err := hourRows.Scan(&h, &requests, &ok, &empty, &fail); err != nil {
+			hourRows.Close()
+			return nil, err
+		}
+		n, err := strconv.Atoi(strings.TrimSpace(h))
+		if err != nil || n < 0 || n > 23 {
+			continue
+		}
+		byHour[n] = store.HourStat{Hour: n, Requests: requests, OK: ok, Empty: empty, Fail: fail}
+	}
+	hourRows.Close()
+	if err := hourRows.Err(); err != nil {
+		return nil, err
+	}
+	out.Hourly = byHour
+
+	// Most frequent queries.
+	topRows, err := s.query(ctx,
+		`SELECT query,
+		        COUNT(*),
+		        COALESCE(SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END), 0),
+		        COALESCE(SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END), 0)
+		 FROM requests WHERE `+clause+` GROUP BY query ORDER BY COUNT(*) DESC LIMIT 8`, args...)
+	if err != nil {
+		return nil, err
+	}
+	out.TopQueries = []store.TopQuery{}
+	for topRows.Next() {
+		var q store.TopQuery
+		if err := topRows.Scan(&q.Query, &q.Count, &q.OK, &q.Fail); err != nil {
+			topRows.Close()
+			return nil, err
+		}
+		out.TopQueries = append(out.TopQueries, q)
+	}
+	topRows.Close()
+	if err := topRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Per-provider outcomes from executed steps. Deliberately uses only the
+	// date range so the comparison panel stays complete and the provider filter
+	// selector keeps offering every provider.
+	provRows, err := s.query(ctx,
+		`SELECT COALESCE(s.provider, ''),
+		        COUNT(*),
+		        COALESCE(SUM(CASE WHEN s.status = 'ok' THEN 1 ELSE 0 END), 0),
+		        COALESCE(SUM(CASE WHEN s.status = 'empty' THEN 1 ELSE 0 END), 0),
+		        COALESCE(SUM(CASE WHEN s.status = 'fail' THEN 1 ELSE 0 END), 0),
+		        COALESCE(SUM(CASE WHEN s.status = 'skip' THEN 1 ELSE 0 END), 0),
+		        COALESCE(AVG(CASE WHEN s.status IN ('ok', 'empty', 'fail') THEN s.took_ms ELSE NULL END), 0)
+		 FROM request_steps s JOIN requests r ON r.id = s.request_id
+		 WHERE r.created_at >= ? AND r.created_at < ?
+		 GROUP BY COALESCE(s.provider, '') ORDER BY COUNT(*) DESC`, fromTS, toTS)
+	if err != nil {
+		return nil, err
+	}
+	out.Providers = []store.ProviderStat{}
+	for provRows.Next() {
+		var p store.ProviderStat
+		var avgMS float64
+		if err := provRows.Scan(&p.Provider, &p.Total, &p.OK, &p.Empty, &p.Fail, &p.Skip, &avgMS); err != nil {
+			provRows.Close()
+			return nil, err
+		}
+		p.AvgMS = int(avgMS)
+		if p.Total > 0 {
+			p.SuccessRate = float64(p.OK) / float64(p.Total) * 100
+		}
+		out.Providers = append(out.Providers, p)
+	}
+	provRows.Close()
+	if err := provRows.Err(); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// percentileMS returns the total_ms value at the given percentile (0-100) for
+// the filtered request set. It uses an ordered OFFSET lookup, which is portable
+// across SQLite and PostgreSQL.
+func (s *Store) percentileMS(ctx context.Context, clause string, args []any, count, pct int) int {
+	if count <= 0 {
+		return 0
+	}
+	offset := count * pct / 100
+	if offset >= count {
+		offset = count - 1
+	}
+	var value int
+	if err := s.queryRow(ctx,
+		`SELECT total_ms FROM requests WHERE `+clause+` ORDER BY total_ms ASC LIMIT 1 OFFSET ?`,
+		append(append([]any{}, args...), offset)...).Scan(&value); err != nil {
+		return 0
+	}
+	return value
 }
 
 // RecomputeDailyStats recalculates the rollup row for one date (YYYY-MM-DD).
