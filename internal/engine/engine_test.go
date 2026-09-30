@@ -47,6 +47,7 @@ type fakeStore struct {
 	store.Storage
 	chain     *store.Chain
 	providers []*store.Provider
+	proxies   []*store.Proxy
 	mu        sync.Mutex
 	req       *store.Request
 	steps     []*store.RequestStep
@@ -60,6 +61,17 @@ func (f *fakeStore) GetActiveChain(context.Context) (*store.Chain, error) {
 }
 func (f *fakeStore) ListProviders(context.Context) ([]*store.Provider, error) {
 	return f.providers, nil
+}
+func (f *fakeStore) ListProxies(context.Context) ([]*store.Proxy, error) {
+	return f.proxies, nil
+}
+func (f *fakeStore) GetProxy(_ context.Context, id string) (*store.Proxy, error) {
+	for _, p := range f.proxies {
+		if p.ID == id {
+			return p, nil
+		}
+	}
+	return nil, store.ErrNotFound
 }
 func (f *fakeStore) GetProvider(_ context.Context, code string) (*store.Provider, error) {
 	for _, p := range f.providers {
@@ -378,5 +390,48 @@ func TestBackoffDelayPolicies(t *testing.T) {
 	}
 	if got := backoffDelay(&n, 2, false); got != 0 {
 		t.Fatalf("failover delay mismatch: %v", got)
+	}
+}
+
+func TestProxyConfigResolution(t *testing.T) {
+	h := newHarness(t, chainWith(nil, nil))
+
+	if pc := h.engine.proxyConfig(nil); pc != nil {
+		t.Fatal("expected nil proxy for a missing row")
+	}
+	if pc := h.engine.proxyConfig(&store.Proxy{Enabled: false, Host: "proxy.local"}); pc != nil {
+		t.Fatal("expected nil proxy while disabled")
+	}
+	if pc := h.engine.proxyConfig(&store.Proxy{Enabled: true, Host: "  "}); pc != nil {
+		t.Fatal("expected nil proxy without a host")
+	}
+
+	pc := h.engine.proxyConfig(&store.Proxy{
+		Enabled: true, Type: "socks5", Host: " proxy.local ", Port: "1080",
+		Username: "u", Password: "supersecret",
+	})
+	if pc == nil {
+		t.Fatal("expected proxy config")
+	}
+	if pc.Type != "socks5" || pc.Host != "proxy.local" || pc.Port != "1080" || pc.Username != "u" || pc.Password != "supersecret" {
+		t.Fatalf("unexpected proxy config: %+v", pc)
+	}
+}
+
+// TestResolveNodeSelectsProviderProxy checks that a node whose provider opts
+// into a proxy resolves the matching proxy row from the run context.
+func TestResolveNodeSelectsProviderProxy(t *testing.T) {
+	provider := &scriptedProvider{code: "p_ok", results: []providers.Result{okResult()}}
+	h := newHarness(t, chainWith([]store.ChainNode{node("a", "p_ok")}, nil), provider)
+	proxy := &store.Proxy{ID: "px1", Name: "work", Enabled: true, Type: "http", Host: "proxy.local", Port: "8080"}
+	inst := &store.Provider{ID: "p_ok", Code: "p_ok", Name: "ok", Enabled: true, ProxyID: "px1"}
+	rc := &runContext{
+		req:       &store.Request{ChainSnapshot: h.store.chain},
+		providers: map[string]*store.Provider{"p_ok": inst},
+		proxies:   map[string]*store.Proxy{"px1": proxy},
+	}
+	target := h.engine.resolveNode(context.Background(), rc, &walkState{}, &rc.req.ChainSnapshot.Nodes[0])
+	if target.proxy != proxy {
+		t.Fatalf("proxy = %+v, want %+v", target.proxy, proxy)
 	}
 }

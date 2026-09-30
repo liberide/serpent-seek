@@ -18,6 +18,8 @@ type RequestFilter struct {
 	From     string
 	To       string
 	Query    string
+	// UserID restricts the listing to one owner.
+	UserID string
 }
 
 // LogFilter narrows a log listing.
@@ -86,6 +88,16 @@ type Storage interface {
 	SetProviderEnabled(ctx context.Context, id string, enabled bool) error
 	DeleteProvider(ctx context.Context, id string) error
 
+	// Named outbound proxies referenced by providers.proxy_id
+	ListProxies(ctx context.Context) ([]*Proxy, error)
+	GetProxy(ctx context.Context, id string) (*Proxy, error)
+	UpsertProxy(ctx context.Context, p *Proxy) error
+	SetProxyEnabled(ctx context.Context, id string, enabled bool) error
+	// ClearProxyRefs unsets providers.proxy_id for every provider selecting the
+	// given proxy (used before deleting it) and returns the affected count.
+	ClearProxyRefs(ctx context.Context, id string) (int64, error)
+	DeleteProxy(ctx context.Context, id string) error
+
 	// Chains
 	ListChains(ctx context.Context) ([]*Chain, error)
 	GetChain(ctx context.Context, id string) (*Chain, error)
@@ -113,6 +125,7 @@ type Storage interface {
 
 	// Stats
 	Summary(ctx context.Context, days int) (*StatsSummary, error)
+	SummaryForUser(ctx context.Context, days int, userID string) (*StatsSummary, error)
 	RecomputeDailyStats(ctx context.Context, date string) error
 
 	// Maintenance

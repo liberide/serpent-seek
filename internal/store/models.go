@@ -57,14 +57,32 @@ type Session struct {
 // share the same Code (driver) with different names and credentials; ID is the
 // identity referenced by chain nodes. Credentials are write-only.
 type Provider struct {
-	ID          string            `json:"id"`
-	Code        string            `json:"code"` // driver type registered in the provider registry
-	Name        string            `json:"name"`
-	Enabled     bool              `json:"enabled"`
-	BaseURL     string            `json:"base_url"`
+	ID      string `json:"id"`
+	Code    string `json:"code"` // driver type registered in the provider registry
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
+	BaseURL string `json:"base_url"`
+	// ProxyID optionally routes this instance's outbound requests through a
+	// named proxy from the proxies table. Empty means a direct connection.
+	ProxyID     string            `json:"proxy_id"`
 	Credentials map[string]string `json:"-"`
 	Params      map[string]string `json:"params"`
 	UpdatedAt   string            `json:"updated_at"`
+}
+
+// Proxy is a named outbound proxy that provider instances may route through.
+// Password is write-only: the API never returns it.
+type Proxy struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Enabled   bool   `json:"enabled"`
+	Type      string `json:"type"` // http|https|socks5
+	Host      string `json:"host"`
+	Port      string `json:"port"`
+	Username  string `json:"username"`
+	Password  string `json:"-"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 // Chain execution modes.
@@ -154,8 +172,10 @@ type Request struct {
 	StepsCount    int    `json:"steps_count"`
 	ChainID       string `json:"chain_id"`
 	ChainSnapshot *Chain `json:"chain_snapshot,omitempty"`
-	Client        string `json:"client"`
-	Error         string `json:"error"`
+	// UserID is the owning user (empty when unset).
+	UserID string `json:"user_id,omitempty"`
+	Client string `json:"client"`
+	Error  string `json:"error"`
 	// Answer is the generated text of the last answer-mode node (empty when
 	// the chain only has search nodes).
 	Answer    string          `json:"answer,omitempty"`

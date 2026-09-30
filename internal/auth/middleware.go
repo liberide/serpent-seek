@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -132,7 +131,7 @@ func (a *Authenticator) resolveKey(ctx context.Context, token string) (*Identity
 			scopes[s] = true
 		}
 	}
-	if kind == "admin" || user.Role == "admin" {
+	if kind == "admin" {
 		scopes["admin"] = true
 	}
 	scopes["search"] = true
@@ -149,17 +148,7 @@ func (a *Authenticator) LoginWithKey(ctx context.Context, token string) (*Identi
 
 // ClientIP extracts the best-effort client IP.
 func ClientIP(r *http.Request) string {
-	if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-		if comma := strings.IndexByte(forwarded, ','); comma > 0 {
-			return strings.TrimSpace(forwarded[:comma])
-		}
-		return strings.TrimSpace(forwarded)
-	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+	return NewClientIPResolver(nil).ClientIP(r)
 }
 
 // Middleware wires identity resolution, CSRF protection and scope guards.

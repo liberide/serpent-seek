@@ -25,6 +25,7 @@ func (s *Server) handleRequestEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	lastID := lastEventID(r)
 
+	disableWriteDeadline(w)
 	ch, past, unsub := s.hub.Subscribe(id, lastID)
 	defer unsub()
 
@@ -32,6 +33,12 @@ func (s *Server) handleRequestEvents(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, r, http.StatusNotFound, "not_found", "request not found")
 		return
+	}
+	if !s.isAdmin(r) {
+		if owner := s.identityUserID(r); owner == "" || req.UserID != owner {
+			writeError(w, r, http.StatusNotFound, "not_found", "request not found")
+			return
+		}
 	}
 
 	setSSEHeaders(w)
@@ -100,6 +107,7 @@ func (s *Server) handleGlobalEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	ch, past, unsub := s.hub.Subscribe("", lastEventID(r))
 	defer unsub()
+	disableWriteDeadline(w)
 	setSSEHeaders(w)
 	fmt.Fprint(w, "retry: 2000\n\n")
 	for _, ev := range past {
@@ -130,6 +138,11 @@ func setSSEHeaders(w http.ResponseWriter) {
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
+}
+
+// disableWriteDeadline clears the write deadline for an SSE stream.
+func disableWriteDeadline(w http.ResponseWriter) {
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
 }
 
 func writeEvent(w http.ResponseWriter, ev sse.Event) {

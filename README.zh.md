@@ -379,7 +379,9 @@ cd web && npx license-checker --production --excludePrivatePackages
   许可证，不属于本仓库。
 * **SQLite** 为单写入者；WAL + busy_timeout 对单副本足够。
 * **提供方凭据**为只写，并在 API 和日志中脱敏；`base_url` 不是秘密。
-  可选 `ENCRYPTION_KEY`（AES-GCM）用于静态加密。
+  可选 `ENCRYPTION_KEY` 启用静态加密（AES-256-GCM）。
+* `TRUSTED_PROXIES` 指定其 forwarded 头可被信任的代理；
+  `BLOCK_PRIVATE_NETWORKS=true` 将出站连接限制为公共地址。
 
 ## 截图
 

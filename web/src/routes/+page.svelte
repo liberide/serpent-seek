@@ -4,6 +4,7 @@
 	import { dateTime, ms } from '$lib/format';
 	import StatusBadge from '$lib/components/StatusBadge.svelte';
 	import { subscribeSSE } from '$lib/sse';
+	import { session } from '$lib/stores';
 	import { t } from '$lib/i18n.svelte';
 
 	type Summary = {
@@ -36,10 +37,18 @@
 
 	onMount(() => {
 		load();
-		unsubscribe = subscribeSSE('/api/events', (event) => {
-			if (event === 'request_done') load();
+		// Global feed is admin-only.
+		const unsubSession = session.subscribe((s) => {
+			if (s?.admin && !unsubscribe) {
+				unsubscribe = subscribeSSE('/api/events', (event) => {
+					if (event === 'request_done') load();
+				});
+			}
 		});
-		return () => unsubscribe?.();
+		return () => {
+			unsubSession();
+			unsubscribe?.();
+		};
 	});
 
 	const maxDaily = $derived(Math.max(1, ...(summary?.daily ?? []).map((d) => d.requests)));

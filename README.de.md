@@ -431,8 +431,11 @@ Repositories; **AGPLv3** — ein separater Dienst, keine Code-Abhängigkeit).
   nicht Teil dieses Repositories.
 * **SQLite** ist Single-Writer; WAL + busy_timeout reichen für eine Replik.
 * **Anbieter-Credentials** sind write-only und werden in API und Logs maskiert;
-  `base_url` ist kein Geheimnis. Optional `ENCRYPTION_KEY` (AES-GCM) für die
-  Verschlüsselung auf der Platte.
+  `base_url` ist kein Geheimnis. Optional aktiviert `ENCRYPTION_KEY` die
+  Verschlüsselung auf der Platte (AES-256-GCM).
+* `TRUSTED_PROXIES` listet Proxys, deren Forwarded-Header akzeptiert werden;
+  `BLOCK_PRIVATE_NETWORKS=true` beschränkt ausgehende Verbindungen auf öffentliche
+  Adressen.
 
 ## Screenshots
 
