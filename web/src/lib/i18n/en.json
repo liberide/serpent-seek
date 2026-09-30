@@ -24,6 +24,7 @@
 	},
 	"nav": {
 		"dashboard": "Dashboard",
+		"analytics": "Analytics",
 		"history": "History",
 		"chains": "Chains",
 		"providers": "Providers",
@@ -81,6 +82,84 @@
 		"days7": "7 days",
 		"requestsTitle": "{n} requests",
 		"providers": "Providers"
+	},
+	"analytics": {
+		"title": "Statistics & analytics",
+		"subtitle": "Load, success and provider activity",
+		"from": "From",
+		"to": "To",
+		"allProviders": "All providers",
+		"allStatuses": "All statuses",
+		"reset": "Reset",
+		"live": "live",
+		"liveHint": "Auto-refresh on new requests",
+		"updatedAt": "Updated: {time}",
+		"summaryPeriod": "{from} — {to}",
+		"presets": {
+			"today": "Today",
+			"yesterday": "Yesterday",
+			"last7": "7 days",
+			"last30": "30 days",
+			"thisMonth": "This month",
+			"lastMonth": "Last month",
+			"thisYear": "This year"
+		},
+		"kpi": {
+			"total": "Total requests",
+			"successRate": "Success rate",
+			"okOf": "{ok} of {total}",
+			"avgMs": "Average time",
+			"avgHint": "across all requests",
+			"p95": "95th percentile",
+			"p95Hint": "slowest 5%",
+			"fail": "Errors",
+			"emptyCount": "no results: {n}",
+			"activeDays": "Active days",
+			"busiest": "peak {date}: {n}",
+			"noBusiest": "no data"
+		},
+		"chart": {
+			"volume": "Volume",
+			"latency": "Latency",
+			"success": "Success",
+			"perDay": "Requests per day",
+			"perHour": "Activity by hour",
+			"latencyTrend": "Average latency per day",
+			"successTrend": "Success rate per day",
+			"statusDist": "Status distribution",
+			"avgLatency": "Average time",
+			"noData": "No data for the selected period",
+			"dayTotal": "{n} requests",
+			"dayBreakdown": "ok {ok} · empty {empty} · fail {fail} · {ms}",
+			"latencyHint": "Average request duration per day.",
+			"successHint": "Share of successful requests per day (of completed ones).",
+			"utcHint": "Times are shown in UTC"
+		},
+		"provider": {
+			"heading": "Provider comparison",
+			"title": "Provider",
+			"hint": "Totals for the selected period across all providers. The provider and status filters do not affect this block.",
+			"total": "Total",
+			"ok": "OK",
+			"empty": "Empty",
+			"fail": "Fail",
+			"skip": "Skipped",
+			"success": "Success",
+			"avg": "Avg time",
+			"legacy": "legacy",
+			"noData": "No provider data for the selected period"
+		},
+		"top": {
+			"title": "Top queries",
+			"empty": "No queries for the selected period",
+			"okFail": "ok {ok} · fail {fail}"
+		},
+		"status": {
+			"ok": "OK",
+			"empty": "No results",
+			"fail": "Fail",
+			"running": "Running"
+		}
 	},
 	"history": {
 		"title": "Request history",

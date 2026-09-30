@@ -181,6 +181,68 @@ func TestSearchAndHistory(t *testing.T) {
 	}
 }
 
+func TestStatsAnalyticsEndpoint(t *testing.T) {
+	ts := newTestServer(t, true)
+	// Run a search so there is at least one request and one provider step today.
+	if rec := ts.do(t, http.MethodPost, "/search", map[string]any{"query": "analytics", "count": 1}, true); rec.Code != http.StatusOK {
+		t.Fatalf("search status %d body %s", rec.Code, rec.Body.String())
+	}
+
+	rec := ts.do(t, http.MethodGet, "/api/stats/analytics", nil, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("analytics status %d body %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, needle := range []string{`"report"`, `"providers"`, `"range"`, `"daily"`, `"hourly"`, `"top_queries"`, `"Stub"`} {
+		if !bytes.Contains(rec.Body.Bytes(), []byte(needle)) {
+			t.Fatalf("analytics response missing %s: %s", needle, body)
+		}
+	}
+
+	// Decode the payload to catch serialization/tag regressions.
+	var payload struct {
+		Report struct {
+			TotalRequests int `json:"total_requests"`
+			Daily         []struct {
+				Date     string `json:"date"`
+				Requests int    `json:"requests"`
+			} `json:"daily"`
+			Providers any `json:"providers"`
+		} `json:"report"`
+		Providers []struct {
+			Provider string `json:"provider"`
+			Code     string `json:"code"`
+			Total    int    `json:"total"`
+			OK       int    `json:"ok"`
+			Fail     int    `json:"fail"`
+		} `json:"providers"`
+		Range struct {
+			From string `json:"from"`
+			To   string `json:"to"`
+		} `json:"range"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode analytics: %v", err)
+	}
+	if payload.Report.TotalRequests < 1 || len(payload.Report.Daily) == 0 {
+		t.Fatalf("unexpected report totals: %+v", payload.Report)
+	}
+	if payload.Report.Providers != nil {
+		t.Fatalf("report.providers must not be serialised (got %v)", payload.Report.Providers)
+	}
+	if len(payload.Providers) == 0 || payload.Providers[0].Provider != "Stub" {
+		t.Fatalf("expected Stub in provider table: %+v", payload.Providers)
+	}
+	if payload.Range.From == "" || payload.Range.To == "" {
+		t.Fatalf("missing effective range: %+v", payload.Range)
+	}
+
+	bad := ts.do(t, http.MethodGet, "/api/stats/analytics?from=nope", nil, true)
+	if bad.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for invalid range, got %d", bad.Code)
+	}
+}
+
 func TestAuthDisabledBypass(t *testing.T) {
 	ts := newTestServer(t, false)
 	rec := ts.do(t, http.MethodGet, "/api/me", nil, false)

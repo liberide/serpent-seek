@@ -239,3 +239,80 @@ type StatsSummary struct {
 	Daily         []DailyStat `json:"daily"`
 	Recent        []*Request  `json:"recent"`
 }
+
+// AnalyticsFilter narrows an analytics report. From and To are inclusive
+// calendar dates (YYYY-MM-DD) interpreted in UTC; empty values fall back to the
+// last 30 days.
+type AnalyticsFilter struct {
+	From     string
+	To       string
+	Provider string
+	Status   string
+}
+
+// ProviderStat aggregates request outcomes for one provider over a period.
+// Counts are derived from executed request steps, so a provider that was called
+// several times within one request contributes one entry per call.
+type ProviderStat struct {
+	Provider    string  `json:"provider"`
+	Total       int     `json:"total"`
+	OK          int     `json:"ok"`
+	Empty       int     `json:"empty"`
+	Fail        int     `json:"fail"`
+	Skip        int     `json:"skip"`
+	AvgMS       int     `json:"avg_ms"`
+	SuccessRate float64 `json:"success_rate"`
+}
+
+// HourStat holds request counts for one hour of the day (0-23, UTC).
+type HourStat struct {
+	Hour     int `json:"hour"`
+	Requests int `json:"requests"`
+	OK       int `json:"ok"`
+	Empty    int `json:"empty"`
+	Fail     int `json:"fail"`
+}
+
+// TopQuery is a frequently requested query within the selected period.
+type TopQuery struct {
+	Query string `json:"query"`
+	Count int    `json:"count"`
+	OK    int    `json:"ok"`
+	Fail  int    `json:"fail"`
+}
+
+// AnalyticsReport aggregates request statistics over a date range.
+type AnalyticsReport struct {
+	TotalRequests int         `json:"total_requests"`
+	OK            int         `json:"ok"`
+	Empty         int         `json:"empty"`
+	Fail          int         `json:"fail"`
+	SuccessRate   float64     `json:"success_rate"`
+	AvgMS         int         `json:"avg_ms"`
+	P95MS         int         `json:"p95_ms"`
+	ActiveDays    int         `json:"active_days"`
+	BusiestDate   string      `json:"busiest_date"`
+	BusiestCount  int         `json:"busiest_count"`
+	Daily         []DailyStat `json:"daily"`
+	Hourly        []HourStat  `json:"hourly"`
+	TopQueries    []TopQuery  `json:"top_queries"`
+	// Providers is consumed by the HTTP layer to build the enriched provider
+	// table; it is not serialised inside the report to avoid duplication.
+	Providers []ProviderStat `json:"-"`
+}
+
+// AnalyticsProvider is a provider stat enriched with configuration metadata and
+// returned by the analytics endpoint (the store only knows display names).
+type AnalyticsProvider struct {
+	Provider    string  `json:"provider"`
+	Code        string  `json:"code"`
+	Enabled     bool    `json:"enabled"`
+	Configured  bool    `json:"configured"`
+	Total       int     `json:"total"`
+	OK          int     `json:"ok"`
+	Empty       int     `json:"empty"`
+	Fail        int     `json:"fail"`
+	Skip        int     `json:"skip"`
+	AvgMS       int     `json:"avg_ms"`
+	SuccessRate float64 `json:"success_rate"`
+}

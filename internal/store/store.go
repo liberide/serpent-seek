@@ -126,6 +126,7 @@ type Storage interface {
 	// Stats
 	Summary(ctx context.Context, days int) (*StatsSummary, error)
 	SummaryForUser(ctx context.Context, days int, userID string) (*StatsSummary, error)
+	Analytics(ctx context.Context, f AnalyticsFilter) (*AnalyticsReport, error)
 	RecomputeDailyStats(ctx context.Context, date string) error
 
 	// Maintenance

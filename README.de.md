@@ -439,7 +439,8 @@ Repositories; **AGPLv3** — ein separater Dienst, keine Code-Abhängigkeit).
 
 ## Screenshots
 
-Nach dem Start stehen folgende Ansichten zur Verfügung: Dashboard, History (mit
+Nach dem Start stehen folgende Ansichten zur Verfügung: Dashboard, Analytics
+(Anfrage-Diagramme, Filter und Erfolg/Fehler je Anbieter), History (mit
 farbiger Chain-Grafik und Schritt-Timeline), Chains (visueller Editor),
 Providers, Playground, MCP, Logs, Users, Settings. Lege eigene Screenshots unter
 `docs/screenshots/` ab (sie sind nicht im Repository enthalten, um das Image

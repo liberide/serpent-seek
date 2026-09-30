@@ -20,6 +20,7 @@
 
 	const nav = [
 		{ href: '/', labelKey: 'nav.dashboard', icon: '📊' },
+		{ href: '/analytics', labelKey: 'nav.analytics', icon: '📈' },
 		{ href: '/history', labelKey: 'nav.history', icon: '🕘' },
 		{ href: '/chains', labelKey: 'nav.chains', icon: '🔗' },
 		{ href: '/providers', labelKey: 'nav.providers', icon: '🧩' },
