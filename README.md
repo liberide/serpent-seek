@@ -415,8 +415,9 @@ License) and external `searxng/searxng` (not part of this repository; **AGPLv3**
 
 ## Screenshots
 
-After startup you get the following screens: Dashboard, History (with a colored
-chain graph and a step timeline), Chains (visual editor), Providers, Playground,
+After startup you get the following screens: Dashboard, Analytics (request charts,
+filters and per-provider success/failure), History (with a colored chain graph
+and a step timeline), Chains (visual editor), Providers, Playground,
 MCP, Logs, Users, Settings. Add your screenshots to `docs/screenshots/` (they are
 not included in the repository to avoid bloating the image).
 

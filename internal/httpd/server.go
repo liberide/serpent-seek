@@ -134,6 +134,7 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/requests/{id}", s.handleGetRequest)
 				r.Get("/requests/{id}/events", s.handleRequestEvents)
 				r.Get("/stats/summary", s.handleStatsSummary)
+				r.Get("/stats/analytics", s.handleStatsAnalytics)
 				r.Get("/logs", s.handleListLogs)
 				r.Get("/settings", s.handleGetSettings)
 			})

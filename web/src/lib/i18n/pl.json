@@ -18,10 +18,13 @@
 		"enabled": "włączony",
 		"disabled": "wyłączony",
 		"active": "aktywna",
-		"unknown": "nieznany"
+		"unknown": "nieznany",
+		"copy": "Kopiuj",
+		"copied": "Skopiowano"
 	},
 	"nav": {
 		"dashboard": "Pulpit",
+		"analytics": "Analityka",
 		"history": "Historia",
 		"chains": "Łańcuchy",
 		"providers": "Dostawcy",
@@ -79,6 +82,84 @@
 		"days7": "7 dni",
 		"requestsTitle": "{n} zapytań",
 		"providers": "Dostawcy"
+	},
+	"analytics": {
+		"title": "Statystyki i analityka",
+		"subtitle": "Obciążenie, skuteczność i aktywność dostawców",
+		"from": "Od",
+		"to": "Do",
+		"allProviders": "Wszyscy dostawcy",
+		"allStatuses": "Wszystkie statusy",
+		"reset": "Resetuj",
+		"live": "na żywo",
+		"liveHint": "Autoodświeżanie przy nowych zapytaniach",
+		"updatedAt": "Zaktualizowano: {time}",
+		"summaryPeriod": "{from} — {to}",
+		"presets": {
+			"today": "Dzisiaj",
+			"yesterday": "Wczoraj",
+			"last7": "7 dni",
+			"last30": "30 dni",
+			"thisMonth": "Ten miesiąc",
+			"lastMonth": "Poprzedni miesiąc",
+			"thisYear": "Ten rok"
+		},
+		"kpi": {
+			"total": "Wszystkie zapytania",
+			"successRate": "Skuteczność",
+			"okOf": "{ok} z {total}",
+			"avgMs": "Średni czas",
+			"avgHint": "dla wszystkich zapytań",
+			"p95": "95. percentyl",
+			"p95Hint": "najwolniejsze 5%",
+			"fail": "Błędy",
+			"emptyCount": "bez wyników: {n}",
+			"activeDays": "Aktywne dni",
+			"busiest": "szczyt {date}: {n}",
+			"noBusiest": "brak danych"
+		},
+		"chart": {
+			"volume": "Wolumen",
+			"latency": "Opóźnienie",
+			"success": "Skuteczność",
+			"perDay": "Zapytania dziennie",
+			"perHour": "Aktywność godzinowa",
+			"latencyTrend": "Średni czas dziennie",
+			"successTrend": "Skuteczność dziennie",
+			"statusDist": "Rozkład statusów",
+			"avgLatency": "Średni czas",
+			"noData": "Brak danych dla wybranego okresu",
+			"dayTotal": "{n} zapytań",
+			"dayBreakdown": "ok {ok} · puste {empty} · błędy {fail} · {ms}",
+			"latencyHint": "Średni czas zapytania w ciągu dnia.",
+			"successHint": "Udział udanych zapytań w ciągu dnia (wśród zakończonych).",
+			"utcHint": "Czasy podano w UTC"
+		},
+		"provider": {
+			"heading": "Porównanie dostawców",
+			"title": "Dostawca",
+			"hint": "Podsumowanie wybranego okresu dla wszystkich dostawców. Filtry dostawcy i statusu nie wpływają na ten blok.",
+			"total": "Razem",
+			"ok": "OK",
+			"empty": "Puste",
+			"fail": "Błędy",
+			"skip": "Pominięte",
+			"success": "Skuteczność",
+			"avg": "Śr. czas",
+			"legacy": "starszy",
+			"noData": "Brak danych dostawców dla wybranego okresu"
+		},
+		"top": {
+			"title": "Najpopularniejsze zapytania",
+			"empty": "Brak zapytań w wybranym okresie",
+			"okFail": "ok {ok} · błędy {fail}"
+		},
+		"status": {
+			"ok": "OK",
+			"empty": "Bez wyników",
+			"fail": "Błędy",
+			"running": "W trakcie"
+		}
 	},
 	"history": {
 		"title": "Historia zapytań",
@@ -148,6 +229,8 @@
 		"namePlaceholder": "np. apiserpent work",
 		"enabledLabel": "Włączony",
 		"baseUrl": "Base URL",
+		"baseUrlOverrideHint": "Pozostaw puste, aby użyć domyślnego adresu; podaj wartość, aby go zastąpić.",
+		"baseUrlRequiredHint": "Brak domyślnego adresu — podaj Base URL (np. własny serwer SearXNG).",
 		"params": "Parametry",
 		"resetJson": "Resetuj",
 		"added": "Dostawca dodany",

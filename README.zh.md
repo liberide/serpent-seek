@@ -385,8 +385,9 @@ cd web && npx license-checker --production --excludePrivatePackages
 
 ## 截图
 
-启动后可看到以下界面：Dashboard、History（带彩色链路图和步骤时间线）、Chains（可视化
-编辑器）、Providers、Playground、MCP、Logs、Users、Settings。请将截图放入
+启动后可看到以下界面：Dashboard、Analytics（请求图表、筛选以及各提供商成功/失败）、
+History（带彩色链路图和步骤时间线）、Chains（可视化编辑器）、Providers、Playground、
+MCP、Logs、Users、Settings。请将截图放入
 `docs/screenshots/`（为避免镜像体积膨胀，仓库中未包含截图）。
 
 ## 目录结构

@@ -18,10 +18,13 @@
 		"enabled": "aktiviert",
 		"disabled": "deaktiviert",
 		"active": "aktiv",
-		"unknown": "unbekannt"
+		"unknown": "unbekannt",
+		"copy": "Kopieren",
+		"copied": "Kopiert"
 	},
 	"nav": {
 		"dashboard": "Dashboard",
+		"analytics": "Analyse",
 		"history": "Verlauf",
 		"chains": "Ketten",
 		"providers": "Anbieter",
@@ -79,6 +82,84 @@
 		"days7": "7 Tage",
 		"requestsTitle": "{n} Anfragen",
 		"providers": "Anbieter"
+	},
+	"analytics": {
+		"title": "Statistiken & Analyse",
+		"subtitle": "Last, Erfolgsquote und Anbieteraktivität",
+		"from": "Von",
+		"to": "Bis",
+		"allProviders": "Alle Anbieter",
+		"allStatuses": "Alle Status",
+		"reset": "Zurücksetzen",
+		"live": "live",
+		"liveHint": "Automatische Aktualisierung bei neuen Anfragen",
+		"updatedAt": "Aktualisiert: {time}",
+		"summaryPeriod": "{from} — {to}",
+		"presets": {
+			"today": "Heute",
+			"yesterday": "Gestern",
+			"last7": "7 Tage",
+			"last30": "30 Tage",
+			"thisMonth": "Dieser Monat",
+			"lastMonth": "Letzter Monat",
+			"thisYear": "Dieses Jahr"
+		},
+		"kpi": {
+			"total": "Anfragen gesamt",
+			"successRate": "Erfolgsquote",
+			"okOf": "{ok} von {total}",
+			"avgMs": "Durchschnittszeit",
+			"avgHint": "über alle Anfragen",
+			"p95": "95. Perzentil",
+			"p95Hint": "langsamste 5%",
+			"fail": "Fehler",
+			"emptyCount": "ohne Ergebnis: {n}",
+			"activeDays": "Aktive Tage",
+			"busiest": "Spitze {date}: {n}",
+			"noBusiest": "keine Daten"
+		},
+		"chart": {
+			"volume": "Volumen",
+			"latency": "Latenz",
+			"success": "Erfolg",
+			"perDay": "Anfragen pro Tag",
+			"perHour": "Aktivität nach Stunde",
+			"latencyTrend": "Durchschnittliche Latenz pro Tag",
+			"successTrend": "Erfolgsquote pro Tag",
+			"statusDist": "Statusverteilung",
+			"avgLatency": "Durchschnittszeit",
+			"noData": "Keine Daten für den gewählten Zeitraum",
+			"dayTotal": "{n} Anfragen",
+			"dayBreakdown": "ok {ok} · leer {empty} · Fehler {fail} · {ms}",
+			"latencyHint": "Durchschnittliche Anfragedauer pro Tag.",
+			"successHint": "Anteil erfolgreicher Anfragen pro Tag (der abgeschlossenen).",
+			"utcHint": "Zeiten in UTC"
+		},
+		"provider": {
+			"heading": "Anbietervergleich",
+			"title": "Anbieter",
+			"hint": "Summen für den gewählten Zeitraum über alle Anbieter. Die Anbieter- und Statusfilter beeinflussen diesen Block nicht.",
+			"total": "Gesamt",
+			"ok": "OK",
+			"empty": "Leer",
+			"fail": "Fehler",
+			"skip": "Übersprungen",
+			"success": "Erfolg",
+			"avg": "Ø Zeit",
+			"legacy": "veraltet",
+			"noData": "Keine Anbieterdaten für den gewählten Zeitraum"
+		},
+		"top": {
+			"title": "Top-Anfragen",
+			"empty": "Keine Anfragen im gewählten Zeitraum",
+			"okFail": "ok {ok} · Fehler {fail}"
+		},
+		"status": {
+			"ok": "OK",
+			"empty": "Ohne Ergebnis",
+			"fail": "Fehler",
+			"running": "Läuft"
+		}
 	},
 	"history": {
 		"title": "Anfrageverlauf",
@@ -148,6 +229,8 @@
 		"namePlaceholder": "z. B. apiserpent work",
 		"enabledLabel": "Aktiviert",
 		"baseUrl": "Base URL",
+		"baseUrlOverrideHint": "Leer lassen, um die Standardadresse zu verwenden; einen Wert angeben, um sie zu überschreiben.",
+		"baseUrlRequiredHint": "Keine Standardadresse – Base-URL angeben (z. B. eigener SearXNG-Server).",
 		"params": "Parameter",
 		"resetJson": "Zurücksetzen",
 		"added": "Anbieter hinzugefügt",

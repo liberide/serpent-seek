@@ -438,7 +438,8 @@ un service séparé, pas une dépendance de code).
 
 ## Captures d'écran
 
-Après le démarrage, vous obtenez les écrans suivants : Dashboard, History (avec un
+Après le démarrage, vous obtenez les écrans suivants : Dashboard, Analytics
+(graphiques de requêtes, filtres et réussite/échecs par fournisseur), History (avec un
 graphe de chaîne coloré et une chronologie des étapes), Chains (éditeur visuel),
 Providers, Playground, MCP, Logs, Users, Settings. Ajoutez vos captures d'écran
 dans `docs/screenshots/` (elles ne sont pas incluses dans le dépôt pour ne pas

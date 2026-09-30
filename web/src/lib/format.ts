@@ -19,6 +19,56 @@ const intlLocales: Record<Locale, string> = {
 	zh: 'zh-CN'
 };
 
+const numberFormatters = new Map<string, Intl.NumberFormat>();
+
+function numberFormatter(locale: Locale, options: Intl.NumberFormatOptions): Intl.NumberFormat {
+	const cacheKey = `${locale}:${JSON.stringify(options)}`;
+	let formatter = numberFormatters.get(cacheKey);
+	if (!formatter) {
+		formatter = new Intl.NumberFormat(intlLocales[locale], options);
+		numberFormatters.set(cacheKey, formatter);
+	}
+	return formatter;
+}
+
+/** Formats an integer with locale-aware grouping. */
+export function formatInt(value: number | undefined | null): string {
+	if (value === undefined || value === null || Number.isNaN(value)) return '—';
+	return numberFormatter(getLocale(), { maximumFractionDigits: 0 }).format(value);
+}
+
+/** Formats a percentage with the given number of fraction digits. */
+export function formatPct(value: number | undefined | null, digits = 1): string {
+	if (value === undefined || value === null || Number.isNaN(value)) return '—';
+	return `${numberFormatter(getLocale(), {
+		minimumFractionDigits: digits,
+		maximumFractionDigits: digits
+	}).format(value)}%`;
+}
+
+const dayFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * Formats a UTC calendar date (YYYY-MM-DD) for charts. Day buckets come from the
+ * backend in UTC, so formatting is pinned to UTC to avoid shifting labels.
+ */
+export function dayLabel(value: string, style: 'short' | 'long' = 'short'): string {
+	const parsed = new Date(`${value.slice(0, 10)}T00:00:00Z`);
+	if (Number.isNaN(parsed.getTime())) return value;
+	const locale = getLocale();
+	const options: Intl.DateTimeFormatOptions =
+		style === 'short'
+			? { day: 'numeric', month: 'short', timeZone: 'UTC' }
+			: { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' };
+	const key = `${locale}:${style}`;
+	let formatter = dayFormatters.get(key);
+	if (!formatter) {
+		formatter = new Intl.DateTimeFormat(intlLocales[locale], options);
+		dayFormatters.set(key, formatter);
+	}
+	return formatter.format(parsed);
+}
+
 const dateFormatters = new Map<Locale, Intl.DateTimeFormat>();
 
 function dateFormatter(locale: Locale): Intl.DateTimeFormat {
