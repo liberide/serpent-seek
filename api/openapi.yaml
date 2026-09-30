@@ -751,6 +751,96 @@ paths:
               schema: { $ref: "#/components/schemas/ProviderTestResult" }
         "404": { $ref: "#/components/responses/NotFound" }
 
+  # ---------------- proxies ----------------
+  /api/proxies:
+    get:
+      tags: [providers]
+      summary: List named outbound proxies (password values are never returned)
+      responses:
+        "200":
+          description: Proxies
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Proxy" }
+    post:
+      tags: [providers]
+      summary: Create a named proxy (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProxyInput" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Proxy" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/proxies/{id}:
+    parameters: [ { $ref: "#/components/parameters/ProxyId" } ]
+    get:
+      tags: [providers]
+      summary: Proxy details
+      responses:
+        "200":
+          description: Proxy
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Proxy" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [providers]
+      summary: Full replace of a proxy (blank password keeps the stored secret)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProxyInput" }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Proxy" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    patch:
+      tags: [providers]
+      summary: Enable or disable a proxy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties: { enabled: { type: boolean } }
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Proxy" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [providers]
+      summary: Delete a proxy (providers using it fall back to a direct connection)
+      responses:
+        "200":
+          description: "`cleared` is the number of providers switched to a direct connection"
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  cleared: { type: integer }
+                  providers: { type: array, items: { type: string } }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   # ---------------- settings ----------------
   /api/settings:
     get:
@@ -942,6 +1032,14 @@ components:
         type: string
         description: Provider *instance* id (providers.id), not the driver code
         example: 3f9c2b1a-1c2d-4e5f-8a9b-0c1d2e3f4a5b
+    ProxyId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        description: Named proxy id (proxies.id)
+        example: 7a1b2c3d-4e5f-6789-abcd-ef0123456789
     Cursor:
       name: cursor
       in: query
@@ -1277,6 +1375,10 @@ components:
         code: { type: string, example: searxng, description: Driver type from the provider registry }
         name: { type: string, example: "searxng work", description: User-defined unique instance name }
         enabled: { type: boolean }
+        proxy_id:
+          type: string
+          nullable: true
+          description: Optional named proxy (proxies.id) this instance routes through; empty = direct
         base_url:
           type: string
           nullable: true
@@ -1299,6 +1401,7 @@ components:
         code: { type: string, pattern: "^[a-z0-9_]+$", description: Required on create only }
         name: { type: string, description: Unique instance name }
         enabled: { type: boolean, default: true }
+        proxy_id: { type: string, nullable: true, description: Optional proxies.id to route this instance through }
         base_url: { type: string, nullable: true }
         credentials:
           type: object
@@ -1314,6 +1417,35 @@ components:
       properties:
         enabled: { type: boolean, description: Toggle the provider instance on/off }
         base_url: { type: string, nullable: true }
+
+    Proxy:
+      type: object
+      required: [id, name, enabled, type, host]
+      description: A named outbound proxy selectable per provider (password is write-only).
+      properties:
+        id: { type: string }
+        name: { type: string, description: Unique display name }
+        enabled: { type: boolean, description: Disabled proxies are kept but not used }
+        type: { type: string, enum: [http, https, socks5] }
+        host: { type: string, example: proxy.example.com }
+        port: { type: string, nullable: true, example: "1080" }
+        username: { type: string, nullable: true }
+        password_set: { type: boolean, description: Whether a password is stored (value is never returned) }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    ProxyInput:
+      type: object
+      description: Create or replace a named proxy. A blank password on update keeps the stored secret.
+      required: [name, host]
+      properties:
+        name: { type: string }
+        enabled: { type: boolean, default: true }
+        type: { type: string, enum: [http, https, socks5], default: http }
+        host: { type: string }
+        port: { type: string, nullable: true }
+        username: { type: string, nullable: true }
+        password: { type: string, description: Write-only; omit or leave blank to keep the existing secret }
 
     ProviderTestResult:
       type: object

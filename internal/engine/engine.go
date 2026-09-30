@@ -26,6 +26,8 @@ type Input struct {
 	Query  string
 	Count  int
 	Client string
+	// UserID is the authenticated owner.
+	UserID string
 }
 
 // Output is the engine result.
@@ -91,6 +93,13 @@ func (e *Engine) TestProvider(ctx context.Context, id string) TestResult {
 	creds := e.buildCredentials(inst)
 	testCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
+	if inst != nil && inst.ProxyID != "" {
+		if proxy, perr := e.store.GetProxy(ctx, inst.ProxyID); perr == nil {
+			if pc := e.proxyConfig(proxy); pc != nil {
+				testCtx = providers.WithProxy(testCtx, pc)
+			}
+		}
+	}
 	r := provider.Search(testCtx, providers.Query{Text: "test", Count: 3, Extra: map[string]string{}}, creds, params)
 	r.Provider = e.providerDisplay(id, inst)
 	r.Error = e.log.Redact(r.Error)
@@ -102,6 +111,7 @@ type runContext struct {
 	req        *store.Request
 	plan       *Plan
 	providers  map[string]*store.Provider
+	proxies    map[string]*store.Proxy
 	startedAt  time.Time
 	stepsTaken int
 }
@@ -175,6 +185,7 @@ func (e *Engine) prepare(ctx context.Context, in Input) (*runContext, error) {
 		Status:        "running",
 		ChainID:       chain.ID,
 		ChainSnapshot: plan.Snapshot(),
+		UserID:        in.UserID,
 		Client:        in.Client,
 		CreatedAt:     store.Now(),
 	}
@@ -198,8 +209,16 @@ func (e *Engine) prepare(ctx context.Context, in Input) (*runContext, error) {
 	for _, p := range rows {
 		byID[p.ID] = p
 	}
+	proxyRows, err := e.store.ListProxies(ctx)
+	if err != nil {
+		return nil, err
+	}
+	proxiesByID := map[string]*store.Proxy{}
+	for _, p := range proxyRows {
+		proxiesByID[p.ID] = p
+	}
 
-	rc := &runContext{req: req, plan: plan, providers: byID, startedAt: time.Now()}
+	rc := &runContext{req: req, plan: plan, providers: byID, proxies: proxiesByID, startedAt: time.Now()}
 	e.emitDeadProviders(ctx, rc)
 	return rc, nil
 }
@@ -328,6 +347,7 @@ type walkState struct {
 // nodeTarget is the resolved execution context of one graph node.
 type nodeTarget struct {
 	inst     *store.Provider
+	proxy    *store.Proxy
 	driver   string
 	display  string
 	provider providers.Provider
@@ -362,6 +382,9 @@ func (e *Engine) resolveNode(ctx context.Context, rc *runContext, ws *walkState,
 		driver = strings.ToLower(inst.Code)
 	}
 	target := nodeTarget{inst: inst, driver: driver, known: true}
+	if inst != nil && inst.ProxyID != "" {
+		target.proxy = rc.proxies[inst.ProxyID]
+	}
 	target.display = e.providerDisplay(node.ProviderID, inst)
 	provider, known := e.reg.Get(driver)
 	target.provider = provider
@@ -418,6 +441,9 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, no
 		stages := &stageCollector{}
 		callCtx, cancel := context.WithTimeout(ctx, timeout)
 		callCtx = providers.WithStepReporter(callCtx, stages)
+		if pc := e.proxyConfig(target.proxy); pc != nil {
+			callCtx = providers.WithProxy(callCtx, pc)
+		}
 		release, acquireErr := e.limiter.acquire(callCtx)
 		if acquireErr != nil {
 			cancel()
@@ -791,6 +817,23 @@ func (e *Engine) buildParams(ctx context.Context, driver string, inst *store.Pro
 		params[k] = v
 	}
 	return params
+}
+
+// proxyConfig converts a stored proxy into a request-scoped config, or returns
+// nil when the proxy is missing, disabled or has no host. The password is
+// registered with the log redactor so it never leaks through transport errors.
+func (e *Engine) proxyConfig(p *store.Proxy) *providers.ProxyConfig {
+	if p == nil || !p.Enabled || strings.TrimSpace(p.Host) == "" {
+		return nil
+	}
+	e.log.AddSecret(p.Password)
+	return &providers.ProxyConfig{
+		Type:     p.Type,
+		Host:     strings.TrimSpace(p.Host),
+		Port:     strings.TrimSpace(p.Port),
+		Username: p.Username,
+		Password: p.Password,
+	}
 }
 
 func (e *Engine) buildCredentials(inst *store.Provider) providers.Credentials {

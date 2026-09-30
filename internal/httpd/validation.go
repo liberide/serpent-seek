@@ -85,3 +85,17 @@ func newID() string { return uuid.NewString() }
 func (s *Server) identity(r *http.Request) *auth.Identity {
 	return auth.IdentityFrom(r.Context())
 }
+
+// identityUserID returns the authenticated owner's user id, or "".
+func (s *Server) identityUserID(r *http.Request) string {
+	if id := s.identity(r); id != nil && id.User != nil {
+		return id.User.ID
+	}
+	return ""
+}
+
+// isAdmin reports whether the current identity has the admin scope.
+func (s *Server) isAdmin(r *http.Request) bool {
+	id := s.identity(r)
+	return id != nil && id.IsAdmin()
+}

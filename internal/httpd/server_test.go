@@ -345,3 +345,62 @@ func TestSetupFlow(t *testing.T) {
 		t.Fatalf("persisted setup token should be cleared, got %q", stored)
 	}
 }
+
+func TestProxiesCRUDAndDeleteClearsProvider(t *testing.T) {
+	ts := newTestServer(t, true)
+
+	rec := ts.do(t, http.MethodPost, "/api/proxies", map[string]any{
+		"name": "work", "type": "socks5", "host": "proxy.local", "port": "1080",
+		"username": "u", "password": "p",
+	}, true)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create proxy: %d %s", rec.Code, rec.Body.String())
+	}
+	var created proxyView
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode proxy: %v", err)
+	}
+	if created.Type != "socks5" || !created.PasswordSet || created.Host != "proxy.local" || created.Port != "1080" {
+		t.Fatalf("unexpected proxy view: %+v", created)
+	}
+
+	// Attach the proxy to the seeded provider.
+	rec = ts.do(t, http.MethodPut, "/api/providers/stub_ok", map[string]any{"proxy_id": created.ID}, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("attach proxy: %d %s", rec.Code, rec.Body.String())
+	}
+	p, err := ts.store.GetProvider(context.Background(), "stub_ok")
+	if err != nil || p.ProxyID != created.ID {
+		t.Fatalf("provider proxy not set: %+v %v", p, err)
+	}
+
+	// Enable/disable via PATCH.
+	rec = ts.do(t, http.MethodPatch, "/api/proxies/"+created.ID, map[string]any{"enabled": false}, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch proxy: %d %s", rec.Code, rec.Body.String())
+	}
+	var patched proxyView
+	_ = json.Unmarshal(rec.Body.Bytes(), &patched)
+	if patched.Enabled {
+		t.Fatalf("proxy should be disabled: %+v", patched)
+	}
+
+	// Deleting clears the provider reference rather than refusing.
+	rec = ts.do(t, http.MethodDelete, "/api/proxies/"+created.ID, nil, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete proxy: %d %s", rec.Code, rec.Body.String())
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte(`"cleared":1`)) {
+		t.Fatalf("expected cleared=1 in %s", rec.Body.String())
+	}
+	p, _ = ts.store.GetProvider(context.Background(), "stub_ok")
+	if p.ProxyID != "" {
+		t.Fatalf("provider proxy should be cleared, got %q", p.ProxyID)
+	}
+
+	// Reject a provider pointing at an unknown proxy.
+	rec = ts.do(t, http.MethodPut, "/api/providers/stub_ok", map[string]any{"proxy_id": "missing"}, true)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("unknown proxy should be rejected, got %d: %s", rec.Code, rec.Body.String())
+	}
+}

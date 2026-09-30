@@ -252,12 +252,12 @@ func TestLogsAndSessions(t *testing.T) {
 func TestProviders(t *testing.T) {
 	ctx := context.Background()
 	st := *openTest(t)
-	p := &store.Provider{ID: "p1", Code: "searxng", Name: "SearXNG", Enabled: true, BaseURL: "http://x", Credentials: map[string]string{"api_key": "k"}, Params: map[string]string{"language": "ru"}}
+	p := &store.Provider{ID: "p1", Code: "searxng", Name: "SearXNG", Enabled: true, ProxyID: "px1", BaseURL: "http://x", Credentials: map[string]string{"api_key": "k"}, Params: map[string]string{"language": "ru"}}
 	if err := st.UpsertProvider(ctx, p); err != nil {
 		t.Fatalf("UpsertProvider: %v", err)
 	}
 	got, err := st.GetProvider(ctx, "p1")
-	if err != nil || got.BaseURL != "http://x" || got.Credentials["api_key"] != "k" {
+	if err != nil || got.BaseURL != "http://x" || got.Credentials["api_key"] != "k" || got.ProxyID != "px1" {
 		t.Fatalf("GetProvider: %+v %v", got, err)
 	}
 	if err := st.UpdateProviderBaseURL(ctx, "p1", "http://y"); err != nil {
@@ -273,6 +273,47 @@ func TestProviders(t *testing.T) {
 	}
 	if err := st.DeleteProvider(ctx, "p1"); err != nil {
 		t.Fatalf("DeleteProvider: %v", err)
+	}
+}
+
+func TestProxies(t *testing.T) {
+	ctx := context.Background()
+	st := *openTest(t)
+	p := &store.Proxy{ID: "px1", Name: "Work", Enabled: true, Type: "socks5", Host: "proxy.local", Port: "1080", Username: "u", Password: "secret", CreatedAt: store.Now()}
+	if err := st.UpsertProxy(ctx, p); err != nil {
+		t.Fatalf("UpsertProxy: %v", err)
+	}
+	got, err := st.GetProxy(ctx, "px1")
+	if err != nil || !got.Enabled || got.Type != "socks5" || got.Host != "proxy.local" || got.Password != "secret" {
+		t.Fatalf("GetProxy: %+v %v", got, err)
+	}
+	if err := st.SetProxyEnabled(ctx, "px1", false); err != nil {
+		t.Fatalf("SetProxyEnabled: %v", err)
+	}
+	got, _ = st.GetProxy(ctx, "px1")
+	if got.Enabled {
+		t.Fatalf("proxy should be disabled: %+v", got)
+	}
+	if list, _ := st.ListProxies(ctx); len(list) != 1 {
+		t.Fatalf("ListProxies: %d", len(list))
+	}
+
+	// Deleting clears the reference on providers and removes the row.
+	if err := st.UpsertProvider(ctx, &store.Provider{ID: "p1", Code: "searxng", Name: "S", Enabled: true, ProxyID: "px1", Credentials: map[string]string{}, Params: map[string]string{}}); err != nil {
+		t.Fatalf("UpsertProvider: %v", err)
+	}
+	if n, err := st.ClearProxyRefs(ctx, "px1"); err != nil || n != 1 {
+		t.Fatalf("ClearProxyRefs: n=%d err=%v", n, err)
+	}
+	prov, _ := st.GetProvider(ctx, "p1")
+	if prov.ProxyID != "" {
+		t.Fatalf("provider proxy not cleared: %+v", prov)
+	}
+	if err := st.DeleteProxy(ctx, "px1"); err != nil {
+		t.Fatalf("DeleteProxy: %v", err)
+	}
+	if _, err := st.GetProxy(ctx, "px1"); err != store.ErrNotFound {
+		t.Fatalf("expected ErrNotFound after delete, got %v", err)
 	}
 }
 
