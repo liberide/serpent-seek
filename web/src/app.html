@@ -7,18 +7,93 @@
 		<meta name="color-scheme" content="dark light" />
 		<script>
 			// Apply the saved UI theme before first paint to avoid a colour flash.
+			// Mirrors the holiday-season logic from src/lib/theme.ts — keep in sync.
 			(function () {
 				try {
 					var allowed = [
 						'emerald', 'daylight', 'matrix', 'ocean', 'sunset',
 						'parchment', 'gruvbox', 'cyberpunk', 'mono', 'rose',
-						'oled', 'nord', 'lavender', 'ember', 'forest'
+						'oled', 'nord', 'lavender', 'ember', 'forest',
+						'dracula', 'tokyonight', 'mocha', 'royal', 'amber',
+						'solarized', 'sakura', 'mint', 'arctic', 'honey',
+						'halloween', 'newyear', 'lunarnewyear'
 					];
+					var light = [
+						'daylight', 'parchment', 'rose', 'lavender',
+						'solarized', 'sakura', 'mint', 'arctic', 'honey'
+					];
+					// Gregorian dates of Chinese New Year, 2024–2035 ([month, day]).
+					var CNY = {
+						2024: [2, 10], 2025: [1, 29], 2026: [2, 17], 2027: [2, 6],
+						2028: [1, 26], 2029: [2, 13], 2030: [2, 3], 2031: [1, 23],
+						2032: [2, 11], 2033: [1, 31], 2034: [2, 19], 2035: [2, 8]
+					};
+					// Festive window covering today → [theme, unique occurrence key].
+					function currentSeason() {
+						var now = new Date();
+						var y = now.getFullYear();
+						var mmdd = (now.getMonth() + 1) * 100 + now.getDate();
+						if (mmdd >= 1024 && mmdd <= 1101) return ['halloween', 'halloween-' + y];
+						if (mmdd >= 1224) return ['newyear', 'newyear-' + y];
+						if (mmdd <= 107) return ['newyear', 'newyear-' + (y - 1)];
+						var c = CNY[y];
+						if (c) {
+							var start = new Date(y, c[0] - 1, c[1] - 3);
+							var end = new Date(y, c[0] - 1, c[1] + 7, 23, 59, 59);
+							if (now >= start && now <= end) return ['lunarnewyear', 'lunarnewyear-' + y];
+						}
+						return null;
+					}
+					var seasonKey = 'serpentseek-theme-season';
 					var stored = localStorage.getItem('serpentseek-theme');
-					var theme = allowed.indexOf(stored) !== -1 ? stored : 'emerald';
+					var chosen = allowed.indexOf(stored) !== -1 ? stored : 'emerald';
+					var season = currentSeason();
+					var record = null;
+					try {
+						record = JSON.parse(localStorage.getItem(seasonKey) || 'null');
+					} catch (ignored) {}
+					// Two record shapes: {theme, prev, key} = season auto-enabled the theme;
+					// {dismissed: key} = the user overrode that season occurrence by hand.
+					var dismissed = null;
+					var marker = null;
+					if (record && typeof record.dismissed === 'string') {
+						dismissed = record.dismissed;
+					} else if (
+						record &&
+						allowed.indexOf(record.theme) !== -1 &&
+						allowed.indexOf(record.prev) !== -1
+					) {
+						marker = record;
+					}
+					var active = chosen;
+					// Records whose window has ended are dropped; an auto record also
+					// rolls back to the theme it had replaced.
+					if (marker && (!season || season[1] !== marker.key)) {
+						active = marker.prev;
+						localStorage.removeItem(seasonKey);
+					}
+					if (dismissed && (!season || season[1] !== dismissed)) {
+						localStorage.removeItem(seasonKey);
+					}
+					if (season) {
+						if (active === season[0]) {
+							// The user picked the festive theme themselves — never auto-revert it.
+							localStorage.removeItem(seasonKey);
+						} else if (dismissed === season[1]) {
+							// Already overrode this season occurrence — keep the user's choice.
+						} else if (marker && season[1] === marker.key) {
+							active = marker.theme;
+						} else {
+							localStorage.setItem(
+								seasonKey,
+								JSON.stringify({ theme: season[0], prev: active, key: season[1] })
+							);
+							active = season[0];
+						}
+					}
 					var root = document.documentElement;
-					root.setAttribute('data-theme', theme);
-					root.style.colorScheme = theme === 'daylight' ? 'light' : 'dark';
+					root.setAttribute('data-theme', active);
+					root.style.colorScheme = light.indexOf(active) !== -1 ? 'light' : 'dark';
 				} catch (e) {
 					/* storage unavailable — keep the default theme */
 				}
