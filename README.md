@@ -38,8 +38,10 @@ liable for such charges or any other material damage (GPLv3 §§15–16, details
   Google, Yandex, SerpApi…), AI/neural (Exa, Tavily, Perplexity, Kagi…),
   academic (OpenAlex, PubMed, Crossref, Semantic Scholar…) and enterprise
   (Azure AI Search, Vertex AI Search, Vectara…)
-* 🧩 **Visual chain editor** — fallback/retry provider chains as a
-  node-and-edge graph; multiple named instances per driver
+* 🧩 **Visual chain editor** — a real node-and-edge graph: a logical **Start**
+  block fans out to several providers, a logical **Join** block merges the
+  branches and removes duplicate URLs, and fallback/retry policies steer the
+  rest; multiple named instances per driver
 * 🔌 **Open WebUI ready** — drop-in `/search` endpoint: always HTTP 200,
   `[{"link","title","snippet"}]`
 * 🤖 **MCP server** — `search` tool over streamable HTTP for Claude, Cursor, VS
@@ -61,6 +63,7 @@ liable for such charges or any other material damage (GPLv3 §§15–16, details
   * [MCP integration (Model Context Protocol)](#mcp-integration-model-context-protocol)
 * [Providers](#providers)
   * [SearXNG: external instance only](#searxng-external-instance-only)
+* [Chain blocks](#chain-blocks)
 * [PostgreSQL (profile `extdb`)](#postgresql-profile-extdb)
 * [Settings](#settings)
 * [Interface and localization](#interface-and-localization)
@@ -251,6 +254,50 @@ Requirements for your instance: `search.formats: [html, json]` and
 > **⚠️ SearXNG is licensed under AGPLv3.** It is an external service;
 > SerpentSeek only talks to it over HTTP and links nothing. Responsibility for
 > complying with the SearXNG license lies with the person deploying it.
+
+## Chain blocks
+
+The visual editor builds a graph of three block kinds:
+
+* **Start** (`kind: start`) — logical entry point. It carries no provider and
+  fans out to several providers at once. Exactly one Start block per chain.
+* **Provider** (`kind: provider`, default) — runs a configured provider instance;
+  the timeout, retries, backoff and outcome policies live here.
+* **Join** (`kind: join`) — logical merge point: waits for every branch feeding
+  it, then merges the results and removes duplicate URLs (tracking parameters
+  such as `utm_*` are stripped before comparison).
+
+The **mode** selector decides how the graph runs:
+
+* **First success** — linear fallback. The first usable result ends the request;
+  `on_empty`/`on_fail` pick the next block. `on_success: next|edge` merges the
+  block's rows and keeps walking.
+* **Full chain** — the block after the Start fans out: sibling branches run in
+  parallel (bounded by `MAX_CONCURRENCY`), a Join synchronises them, and every
+  provider's rows are merged into one deduplicated result.
+
+The **Join** block can also ignore the result count (`ignore_count`): with it
+on, providers are queried without a limit and every unique result found is
+returned instead of capping at the request `count`. In the run trace the Join
+block also shows the total request time.
+
+### Backward compatibility
+
+Existing chains are not migrated in the database. Migration `00008` only adds
+`kind` with the default `provider`, and the legacy `is_start` flag keeps working,
+so an upgraded instance runs every saved chain exactly as before:
+
+* a chain without an explicit Start block keeps the old linear walk (in
+  full-chain mode it follows a single neutral `next` edge per block, as it always
+did);
+* `on_success` stays a no-op for those chains (a successful block always ended
+  the request), so the newly implemented continuation is opt-in;
+* opening such a chain in the editor shows a visible Start block, wires it to
+  the old entry point and pins `on_success: stop` — the graph looks more
+  explicit, but the result is unchanged.
+
+The new parallel fan-out, Join merging and `on_success` continuation only apply
+to chains that actually contain a Start block.
 
 ## PostgreSQL (profile `extdb`)
 

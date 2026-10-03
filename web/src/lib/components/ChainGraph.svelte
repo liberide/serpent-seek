@@ -6,10 +6,12 @@
 
 	type ChainNode = {
 		key: string;
+		kind?: string;
 		provider_id: string;
 		provider?: string;
 		label?: string;
 		mode?: string;
+		params?: Record<string, string>;
 		timeout_ms?: number;
 		retries?: number;
 		retry_delay_ms?: number;
@@ -25,16 +27,22 @@
 		chain = { nodes: [], edges: [] },
 		states = {},
 		stats = {},
-		finish = null
+		finish = null,
+		totalMs = null
 	}: {
 		chain?: Chain;
 		states?: Record<string, string>;
 		stats?: Record<string, NodeStats>;
 		finish?: string | null;
+		totalMs?: number | null;
 	} = $props();
 
 	const nodeTypes = { graph: GraphNode };
 	const fullChain = $derived(chain.mode === 'full_chain');
+
+	function isTruthy(v: string | undefined): boolean {
+		return ['1', 'true', 'yes', 'on'].includes((v ?? '').toLowerCase().trim());
+	}
 
 	// The last failed step decides the tooltip error; ok steps give the timing
 	// badge and (full-chain) the "+n links" contribution.
@@ -48,17 +56,23 @@
 			},
 			data: {
 				key: node.key,
-				label: node.label ?? node.provider_id,
+				kind: node.kind ?? 'provider',
+				label:
+					node.label ??
+					(node.kind === 'start' ? t('flow.start') : node.kind === 'join' ? t('flow.join') : node.provider_id),
 				provider: node.provider ?? '',
 				is_answer: node.mode === 'answer',
 				timeout_ms: node.timeout_ms,
 				retries: node.retries,
 				retry_delay_ms: node.retry_delay_ms,
 				is_start: node.is_start ?? false,
+				branches: (chain.edges ?? []).filter((e) => e.to_key === node.key).length,
+				ignore_count: node.kind === 'join' && isTruthy(node.params?.ignore_count),
+				// The Join block reports how long the whole request took.
+				took_ms: node.kind === 'join' ? (totalMs ?? stats[node.key]?.took_ms) : stats[node.key]?.took_ms,
 				finish: finish === node.key,
 				mode: chain.mode ?? 'first_success',
 				status: states[node.key] ?? 'gray',
-				took_ms: stats[node.key]?.took_ms,
 				added_links: stats[node.key]?.added ?? 0,
 				added_final: stats[node.key]?.added_final ?? false,
 				error: stats[node.key]?.error

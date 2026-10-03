@@ -11,6 +11,7 @@
 	type ChainNode = {
 		id?: string;
 		key: string;
+		kind?: string;
 		provider_id: string;
 		label?: string;
 		mode?: string;
@@ -73,8 +74,22 @@
 	const selectedParams = $derived(
 		selectedNode ? Object.entries(selectedNode.data.node.params ?? {}) : []
 	);
-	const startOwner = $derived(flowNodes.find((n) => n.data.node.is_start));
+	// A logical Start block (kind=start) or, for legacy chains, a node flagged
+	// is_start owns the chain entry.
+	const startNode = $derived(
+		flowNodes.find((n) => n.data.node.kind === 'start' || n.data.node.is_start)
+	);
 	const fullChain = $derived(mode === 'full_chain');
+	const joinCount = $derived(flowNodes.filter((n) => n.data.node.kind === 'join').length);
+
+	function nodeKind(node: any): string {
+		return node?.kind ?? node?.data?.node?.kind ?? 'provider';
+	}
+
+	function isLogical(node: any): boolean {
+		const kind = nodeKind(node);
+		return kind === 'start' || kind === 'join';
+	}
 
 	function instance(id: string): ProviderInstance | undefined {
 		return providers.find((p) => p.id === id);
@@ -128,40 +143,75 @@
 		};
 	}
 
+	function makeFlowNode(node: ChainNode, index: number, forceLayout = false) {
+		const kind = node.kind ?? 'provider';
+		const inst = instance(node.provider_id);
+		const label =
+			node.label ??
+			(kind === 'start' ? t('flow.start') : kind === 'join' ? t('flow.join') : (inst?.name ?? node.provider_id));
+		return {
+			id: node.key,
+			type: 'graph',
+			// Note: a stored pos_x/pos_y of 0 is indistinguishable from "unset",
+			// so chains saved by the API shortcut (all nodes at 0,0) are laid out
+			// by index instead of stacking every block on the same spot.
+			position: forceLayout
+				? { x: index * 250, y: 80 }
+				: { x: node.pos_x ?? index * 250, y: node.pos_y ?? 80 },
+			data: {
+				node: {
+					kind,
+					key: node.key,
+					// Logical blocks never carry a provider reference.
+					provider_id: kind === 'provider' ? node.provider_id : '',
+					label,
+					mode: kind === 'provider' ? (node.mode ?? 'search') : 'search',
+					params: { ...(node.params ?? {}) },
+					timeout_ms: node.timeout_ms ?? 20000,
+					retries: node.retries ?? 0,
+					retry_delay_ms: node.retry_delay_ms ?? 700,
+					delay_policy: node.delay_policy ?? 'linear',
+					on_success: node.on_success ?? 'stop',
+					on_empty: node.on_empty ?? 'next',
+					on_fail: node.on_fail ?? 'next',
+					// The explicit Start block supersedes the legacy is_start flag.
+					is_start: false
+				},
+				key: node.key,
+				label,
+				kind,
+				provider: inst?.code ?? '',
+				interactive: true,
+				onCycleTimeout: cycleTimeout
+			}
+		};
+	}
+
+	function uniqueKey(prefix: string): string {
+		let key = prefix;
+		while (flowNodes.some((n) => n.id === key)) key = prefix + '-' + Math.random().toString(36).slice(2, 5);
+		return key;
+	}
+
+	// rootKey picks a sensible provider to hang a migrated Start block above:
+	// the node with no incoming edges, ties broken by the leftmost position.
+	function rootKey(nodes: any[], edges: any[]): string | null {
+		const incoming = new Set(edges.map((e) => e.target));
+		const roots = nodes
+			.filter((n) => n.data.node.kind === 'provider' && !incoming.has(n.id))
+			.sort((a, b) => a.position.x - b.position.x);
+		return roots[0]?.id ?? null;
+	}
+
 	function load(source: Chain) {
 		mode = source.mode ?? 'first_success';
-		flowNodes = (source.nodes ?? []).map((node, index) => {
-			const inst = instance(node.provider_id);
-			const label = node.label ?? inst?.name ?? node.provider_id;
-			return {
-				id: node.key,
-				type: 'graph',
-				position: { x: node.pos_x ?? index * 250, y: node.pos_y ?? 80 },
-				data: {
-					node: {
-						key: node.key,
-						provider_id: node.provider_id,
-						label,
-						mode: node.mode ?? 'search',
-						params: { ...(node.params ?? {}) },
-						timeout_ms: node.timeout_ms ?? 20000,
-						retries: node.retries ?? 0,
-						retry_delay_ms: node.retry_delay_ms ?? 700,
-						delay_policy: node.delay_policy ?? 'linear',
-						on_success: node.on_success ?? 'stop',
-						on_empty: node.on_empty ?? 'next',
-						on_fail: node.on_fail ?? 'next',
-						is_start: node.is_start ?? false
-					},
-					key: node.key,
-					label,
-					provider: inst?.code ?? '',
-					interactive: true,
-					onToggleStart: toggleStart,
-					onCycleTimeout: cycleTimeout
-				}
-			};
-		});
+		const raw = source.nodes ?? [];
+		const legacyStart = raw.find((n) => n.is_start && (n.kind ?? 'provider') === 'provider');
+		// Chains created through the API shortcut omitted pos_x/pos_y, so the
+		// server persisted every node at (0,0). Detect that and rebuild the
+		// layout from the node order; otherwise all blocks stack on each other.
+		const unlaid = raw.length > 1 && raw.every((n) => !n.pos_x && !n.pos_y);
+		flowNodes = raw.map((node, index) => makeFlowNode(node, index, unlaid));
 		flowEdges = (source.edges ?? []).map((edge, index) => {
 			const e = {
 				id: 'e-' + index + '-' + edge.from_key,
@@ -171,6 +221,46 @@
 			} as any;
 			return restyleEdge(e);
 		});
+		// LEGACY: migrate chains saved before logical blocks (is_start flag or no
+		// explicit start block) to a visible Start block so the graph always has
+		// one entry point.
+		if (raw.length > 0 && !flowNodes.some((n) => n.data.node.kind === 'start')) {
+			const anchorKey = legacyStart?.key ?? rootKey(flowNodes, flowEdges);
+			const anchor = flowNodes.find((n) => n.id === anchorKey);
+			const pos = anchor ? { x: anchor.position.x - 260, y: anchor.position.y } : { x: 60, y: 80 };
+			const startKey = uniqueKey('blk-start');
+			flowNodes = [
+				makeFlowNode(
+					{
+						key: startKey,
+						kind: 'start',
+						provider_id: '',
+						label: t('flow.start'),
+						timeout_ms: 20000,
+						retries: 0,
+						retry_delay_ms: 700,
+						delay_policy: 'linear',
+						on_success: 'stop',
+						on_empty: 'next',
+						on_fail: 'next',
+						pos_x: pos.x,
+						pos_y: pos.y
+					} as ChainNode,
+					0
+				),
+				...flowNodes
+			];
+			if (anchor) {
+				flowEdges = [
+					restyleEdge({ id: 'e-start-' + anchor.id, source: startKey, target: anchor.id, label: 'next' }),
+					...flowEdges
+				];
+			}
+			// LEGACY: on_success was a no-op before logical blocks (a successful
+			// block always ended the chain). Pin it to "stop" so migrating a legacy
+			// chain never changes how it runs.
+			for (const n of flowNodes) n.data.node.on_success = 'stop';
+		}
 		selectedKey = null;
 		selectedEdgeId = null;
 		refreshFlags();
@@ -207,21 +297,29 @@
 		sync();
 	}
 
-	// refreshFlags mirrors node.card display fields (start state, validation
-	// marker, mode chip, settings line) from the source of truth in data.node.
 	function refreshFlags() {
-		const owner = flowNodes.find((n) => n.data.node.is_start);
+		const owner = flowNodes.find((n) => n.data.node.kind === 'start' || n.data.node.is_start);
 		const ownerName = owner ? (owner.data.node.label ?? owner.id) : '';
+		const incoming = new Map<string, number>();
+		for (const e of flowEdges) incoming.set(e.target, (incoming.get(e.target) ?? 0) + 1);
 		for (const n of flowNodes) {
-			n.data.is_start = !!n.data.node.is_start;
+			const kind = n.data.node.kind ?? 'provider';
+			n.data.kind = kind;
+			n.data.is_start = kind === 'start' || !!n.data.node.is_start;
 			n.data.start_taken = !!owner;
 			n.data.start_owner = ownerName;
 			n.data.is_answer = n.data.node.mode === 'answer';
 			n.data.mode = mode;
+			n.data.branches = incoming.get(n.id) ?? 0;
+			n.data.ignore_count = kind === 'join' && isTruthyParam(n.data.node.params?.ignore_count);
 			n.data.timeout_ms = n.data.node.timeout_ms;
 			n.data.retries = n.data.node.retries;
 			n.data.retry_delay_ms = n.data.node.retry_delay_ms;
 		}
+	}
+
+	function isTruthyParam(value: string | undefined): boolean {
+		return ['1', 'true', 'yes', 'on'].includes((value ?? '').toLowerCase().trim());
 	}
 
 	function sync() {
@@ -247,8 +345,41 @@
 		return seen;
 	}
 
+	// findCycle mirrors the server's cycle check so the canvas flags it before a
+	// save is attempted. Returns the node ids of one cycle, or null.
+	function findCycle(): string[] | null {
+		const adj = new Map<string, string[]>();
+		for (const e of flowEdges) adj.set(e.source, [...(adj.get(e.source) ?? []), e.target]);
+		const WHITE = 0;
+		const GRAY = 1;
+		const BLACK = 2;
+		const color = new Map<string, number>();
+		const stack: string[] = [];
+		let cycle: string[] | null = null;
+		const dfs = (u: string): boolean => {
+			color.set(u, GRAY);
+			stack.push(u);
+			for (const v of adj.get(u) ?? []) {
+				const c = color.get(v) ?? WHITE;
+				if (c === GRAY) {
+					cycle = [...stack.slice(stack.indexOf(v)), v];
+					return true;
+				}
+				if (c === WHITE && dfs(v)) return true;
+			}
+			stack.pop();
+			color.set(u, BLACK);
+			return false;
+		};
+		for (const n of flowNodes) {
+			if ((color.get(n.id) ?? WHITE) === WHITE && dfs(n.id)) break;
+		}
+		return cycle;
+	}
+
 	// computeIssues runs the same rules as the server validator live on the
-	// canvas: exactly one start block, attempt budget, full-chain reachability.
+	// canvas: exactly one start block, provider/join requirements, acyclicity,
+	// attempt budget and full-chain reachability.
 	function computeIssues() {
 		const errs: string[] = [];
 		const warns: string[] = [];
@@ -258,7 +389,7 @@
 			localWarnings = [];
 			return;
 		}
-		const starts = flowNodes.filter((n) => n.data.node.is_start);
+		const starts = flowNodes.filter((n) => n.data.node.kind === 'start' || n.data.node.is_start);
 		if (starts.length === 0) {
 			errs.push(t('flow.startMissing'));
 			for (const n of flowNodes) n.data.invalid = true;
@@ -267,16 +398,60 @@
 			errs.push(t('flow.startMultiple', { keys: starts.map((s) => s.data.node.label ?? s.id).join(', ') }));
 			for (const s of starts) s.data.invalid = true;
 		}
-		for (const s of starts) {
-			if (s.data.node.mode === 'answer') {
-				errs.push(t('flow.answerNotStart'));
-				s.data.invalid = true;
+		for (const n of flowNodes) {
+			const kind = n.data.node.kind ?? 'provider';
+			if (kind === 'provider') {
+				if (!n.data.node.provider_id) {
+					errs.push(t('flow.providerMissing', { name: n.data.node.label ?? n.id }));
+					n.data.invalid = true;
+				}
+			} else {
+				if ((n.data.node.mode ?? 'search') === 'answer') {
+					errs.push(t('flow.answerNotStart'));
+					n.data.invalid = true;
+				}
+				if (kind === 'join') {
+					const incoming = flowEdges.filter((e) => e.target === n.id);
+					const neutralIn = incoming.filter((e) => ['next', 'any', ''].includes(edgeCondition(e)));
+					if (incoming.length === 0) {
+						errs.push(t('flow.joinNoIncoming', { name: n.data.node.label ?? n.id }));
+						n.data.invalid = true;
+					} else if (fullChain && neutralIn.length === 0) {
+						errs.push(t('flow.joinNoNeutral', { name: n.data.node.label ?? n.id }));
+						n.data.invalid = true;
+					}
+				} else if (
+					kind === 'start' &&
+					flowEdges.filter(
+						(e) => e.source === n.id && ['next', 'any', ''].includes(edgeCondition(e))
+					).length === 0
+				) {
+					errs.push(t('flow.startNoNeutral'));
+					n.data.invalid = true;
+				}
+			}
+		}
+		if (!flowNodes.some((n) => (n.data.node.kind ?? 'provider') === 'provider')) {
+			errs.push(t('flow.noProviderBlock'));
+		}
+		const cycle = findCycle();
+		if (cycle) {
+			errs.push(t('flow.cycleError', { path: cycle.join(' → ') }));
+			for (const id of cycle) {
+				const n = flowNodes.find((x) => x.id === id);
+				if (n) n.data.invalid = true;
 			}
 		}
 		if (starts.length === 1) {
 			const reach = reachable(starts[0].id, null);
+			for (const n of flowNodes) {
+				if (n.id !== starts[0].id && !reach.has(n.id)) {
+					errs.push(t('flow.unreachableNode', { name: n.data.node.label ?? n.id }));
+					n.data.invalid = true;
+				}
+			}
 			const potential = flowNodes
-				.filter((n) => reach.has(n.id))
+				.filter((n) => reach.has(n.id) && (n.data.node.kind ?? 'provider') === 'provider')
 				.reduce((acc, n) => acc + (Number(n.data.node.retries) || 0) + 1, 0);
 			if (maxAttempts > 0 && potential > maxAttempts) {
 				warns.push(t('flow.budgetWarn', { x: potential, y: maxAttempts }));
@@ -288,24 +463,19 @@
 						warns.push(t('flow.unreachableNext', { name: n.data.node.label ?? n.id }));
 					}
 				}
+			} else {
+				// Fallback mode is linear: fan-out and join blocks are inert.
+				const fanOut = flowEdges.filter(
+					(e) => e.source === starts[0].id && ['next', 'any', ''].includes(edgeCondition(e))
+				).length;
+				if (fanOut > 1) warns.push(t('flow.fanoutNeedsFull'));
+				for (const n of flowNodes) {
+					if (n.data.node.kind === 'join') warns.push(t('flow.joinNeedsFull'));
+				}
 			}
 		}
 		localErrors = errs;
 		localWarnings = warns;
-	}
-
-	function toggleStart(key: string, value: boolean) {
-		const candidate = flowNodes.find((n) => n.id === key);
-		if (value && candidate?.data.node.mode === 'answer') {
-			notify(t('flow.answerNotStart'), 'error');
-			return;
-		}
-		snapshot();
-		for (const n of flowNodes) {
-			if (value) n.data.node.is_start = n.id === key;
-			else if (n.id === key) n.data.node.is_start = false;
-		}
-		sync();
 	}
 
 	function cycleTimeout(key: string) {
@@ -318,21 +488,39 @@
 		sync();
 	}
 
-	// reassignStart picks a new start block after the previous one vanished:
-	// the node with the fewest incoming edges, ties broken by the leftmost pos_x.
-	function reassignStart() {
-		if (flowNodes.length === 0 || flowNodes.some((n) => n.data.node.is_start)) return;
-		const incoming = new Map<string, number>();
-		for (const e of flowEdges) incoming.set(e.target, (incoming.get(e.target) ?? 0) + 1);
-		const sorted = [...flowNodes]
-			.filter((n) => n.data.node.mode !== 'answer')
-			.sort(
-				(a, b) => (incoming.get(a.id) ?? 0) - (incoming.get(b.id) ?? 0) || a.position.x - b.position.x
-			);
-		const next = sorted[0];
-		if (!next) return;
-		next.data.node.is_start = true;
-		notify(t('flow.startReassigned', { name: next.data.node.label ?? next.id }), 'info');
+	// autoStartIfMissing creates a Start block wired to a root provider after the
+	// previous entry point vanished, so the chain is never left without one.
+	function autoStartIfMissing() {
+		if (flowNodes.length === 0) return;
+		if (flowNodes.some((n) => n.data.node.kind === 'start' || n.data.node.is_start)) return;
+		const anchorKey = rootKey(flowNodes, flowEdges);
+		const anchor = flowNodes.find((n) => n.id === anchorKey) ?? flowNodes[0];
+		const startKey = uniqueKey('blk-start');
+		const startPos = placeFree(anchor.position.x - 260, anchor.position.y);
+		const start: any = makeFlowNode(
+			{
+				key: startKey,
+				kind: 'start',
+				provider_id: '',
+				label: t('flow.start'),
+				timeout_ms: 20000,
+				retries: 0,
+				retry_delay_ms: 700,
+				delay_policy: 'linear',
+				on_success: 'stop',
+				on_empty: 'next',
+				on_fail: 'next',
+				pos_x: startPos.x,
+				pos_y: startPos.y
+			} as ChainNode,
+			0
+		);
+		flowNodes = [start, ...flowNodes];
+		flowEdges = [
+			restyleEdge({ id: 'e-start-' + anchor.id, source: startKey, target: anchor.id, label: 'next' }),
+			...flowEdges
+		];
+		notify(t('flow.startReassigned', { name: start.data.node.label ?? startKey }), 'info');
 	}
 
 	function requestMode(next: string) {
@@ -352,14 +540,36 @@
 		sync();
 	}
 
+	// Node footprint used to keep newly added blocks from stacking on top of
+	// each other. The card is 220px wide; 240/150 leave a visible gap.
+	const NODE_W = 240;
+	const NODE_H = 150;
+
+	function nodeCollides(x: number, y: number): boolean {
+		return flowNodes.some(
+			(n) => Math.abs(n.position.x - x) < NODE_W && Math.abs(n.position.y - y) < NODE_H
+		);
+	}
+
+	// placeFree returns the nearest clear spot: it nudges left, then down, until
+	// the candidate no longer overlaps an existing block. Without this, adding a
+	// Join before a Start made the auto-inserted Start land on top of the Join.
+	function placeFree(x: number, y: number): { x: number; y: number } {
+		let px = x;
+		let py = y;
+		for (let i = 0; i < 100 && nodeCollides(px, py); i++) {
+			if (i % 2 === 0) px -= 260;
+			else py += 170;
+		}
+		return { x: px, y: py };
+	}
+
 	function addNode(provider: ProviderInstance) {
 		snapshot();
 		const key = 'blk-' + Math.random().toString(36).slice(2, 7);
-		const count = flowNodes.length;
 		const prev = flowNodes[flowNodes.length - 1];
-		// Append right after the previous block, same row — the camera then
-		// refits so the growing line stays fully visible.
-		const position = prev ? { x: prev.position.x + 250, y: prev.position.y } : { x: 120, y: 80 };
+		const desired = prev ? { x: prev.position.x + 250, y: prev.position.y } : { x: 380, y: 80 };
+		const position = placeFree(desired.x, desired.y);
 		flowNodes = [
 			...flowNodes,
 			{
@@ -368,6 +578,7 @@
 				position,
 				data: {
 					node: {
+						kind: 'provider',
 						key,
 						provider_id: provider.id,
 						label: provider.name,
@@ -380,17 +591,97 @@
 						on_success: 'stop',
 						on_empty: 'next',
 						on_fail: 'next',
-						// The first block added to an empty chain becomes the start.
-						is_start: count === 0
+						is_start: false
 					},
 					key,
 					label: provider.name,
+					kind: 'provider',
 					provider: provider.code,
 					interactive: true,
-					onToggleStart: toggleStart,
 					onCycleTimeout: cycleTimeout
 				}
 			}
+		];
+		// The very first provider in an empty chain gets an automatic Start block
+		// so the fresh graph is immediately valid; if a Start already exists but
+		// has no neutral outgoing edge yet, wire the new provider to it.
+		if (!flowNodes.some((n) => n.data.node.kind === 'start')) {
+			const startKey = uniqueKey('blk-start');
+			const startPos = placeFree(position.x - 260, position.y);
+			const start: any = makeFlowNode(
+				{
+					key: startKey,
+					kind: 'start',
+					provider_id: '',
+					label: t('flow.start'),
+					timeout_ms: 20000,
+					retries: 0,
+					retry_delay_ms: 700,
+					delay_policy: 'linear',
+					on_success: 'stop',
+					on_empty: 'next',
+					on_fail: 'next',
+					pos_x: startPos.x,
+					pos_y: startPos.y
+				} as ChainNode,
+				0
+			);
+			flowNodes = [start, ...flowNodes];
+			flowEdges = [
+				restyleEdge({ id: 'e-start-' + key, source: startKey, target: key, label: 'next' }),
+				...flowEdges
+			];
+		} else {
+			const start = flowNodes.find((n) => n.data.node.kind === 'start');
+			const startHasBranch =
+				start &&
+				flowEdges.some(
+					(e) => e.source === start.id && ['next', 'any', ''].includes(edgeCondition(e))
+				);
+			if (start && !startHasBranch) {
+				flowEdges = [
+					restyleEdge({ id: 'e-start-' + key, source: start.id, target: key, label: 'next' }),
+					...flowEdges
+				];
+			}
+		}
+		selectedKey = key;
+		selectedEdgeId = null;
+		sync();
+		void refit();
+	}
+
+	// addLogical appends a logical Start/Join block (no provider instance).
+	function addLogical(kind: 'start' | 'join') {
+		if (kind === 'start' && flowNodes.some((n) => n.data.node.kind === 'start' || n.data.node.is_start)) {
+			notify(t('flow.startMultiple', { keys: startNode?.data.node.label ?? '' }), 'error');
+			return;
+		}
+		snapshot();
+		const key = kind === 'start' ? uniqueKey('blk-start') : 'blk-join-' + Math.random().toString(36).slice(2, 7);
+		const prev = flowNodes[flowNodes.length - 1];
+		const desired = prev ? { x: prev.position.x, y: prev.position.y + 170 } : { x: 120, y: 80 };
+		const position = placeFree(desired.x, desired.y);
+		flowNodes = [
+			...flowNodes,
+			makeFlowNode(
+				{
+					key,
+					kind,
+					provider_id: '',
+					label: kind === 'start' ? t('flow.start') : t('flow.join'),
+					timeout_ms: 20000,
+					retries: 0,
+					retry_delay_ms: 700,
+					delay_policy: 'linear',
+					on_success: 'stop',
+					on_empty: 'next',
+					on_fail: 'next',
+					pos_x: position.x,
+					pos_y: position.y
+				} as ChainNode,
+				flowNodes.length
+			)
 		];
 		selectedKey = key;
 		selectedEdgeId = null;
@@ -407,6 +698,10 @@
 	function duplicateNode(key: string) {
 		const src = flowNodes.find((n) => n.id === key);
 		if (!src) return;
+		if (nodeKind(src) === 'start') {
+			notify(t('flow.startMultiple', { keys: src.data.node.label ?? key }), 'error');
+			return;
+		}
 		snapshot();
 		const newKey = 'blk-' + Math.random().toString(36).slice(2, 7);
 		const nodeCopy = JSON.parse(JSON.stringify(src.data.node));
@@ -423,9 +718,9 @@
 					node: nodeCopy,
 					key: newKey,
 					label: nodeCopy.label,
+					kind: nodeCopy.kind ?? 'provider',
 					provider: src.data.provider,
 					interactive: true,
-					onToggleStart: toggleStart,
 					onCycleTimeout: cycleTimeout
 				}
 			}
@@ -436,11 +731,11 @@
 
 	function deleteNode(key: string) {
 		snapshot();
-		const wasStart = !!flowNodes.find((n) => n.id === key)?.data.node.is_start;
+		const wasStart = flowNodes.find((n) => n.id === key)?.data.node.kind === 'start';
 		flowNodes = flowNodes.filter((n) => n.id !== key);
 		flowEdges = flowEdges.filter((e) => e.source !== key && e.target !== key);
 		if (selectedKey === key) selectedKey = null;
-		if (wasStart) reassignStart();
+		if (wasStart) autoStartIfMissing();
 		sync();
 	}
 
@@ -468,9 +763,11 @@
 	}
 
 	function refresh(node: any) {
-		const inst = instance(node.data.node.provider_id);
-		node.data.provider = inst?.code ?? '';
 		node.data.label = node.data.node.label;
+		if ((node.data.node.kind ?? 'provider') === 'provider') {
+			const inst = instance(node.data.node.provider_id);
+			node.data.provider = inst?.code ?? '';
+		}
 		refreshFlags();
 	}
 
@@ -483,12 +780,18 @@
 
 	function setNodeMode(next: string) {
 		if (!selectedNode) return;
-		if (next === 'answer' && selectedNode.data.node.is_start) {
-			notify(t('flow.answerNotStart'), 'error');
-			return;
-		}
+		if (isLogical(selectedNode) && next === 'answer') return;
 		snapshot();
 		selectedNode.data.node.mode = next;
+		sync();
+	}
+
+	// setIgnoreCount toggles the Join block's "ignore result count" property.
+	function setIgnoreCount(node: any, value: boolean) {
+		snapshot();
+		if (!node.data.node.params) node.data.node.params = {};
+		if (value) node.data.node.params.ignore_count = '1';
+		else delete node.data.node.params.ignore_count;
 		sync();
 	}
 
@@ -524,14 +827,25 @@
 	// next to every real edge.
 	function beforeConnect(connection: FlowConnection): any {
 		if (!connection.source || !connection.target) return false;
+		// A block may not connect to itself: that is always a cycle.
+		if (connection.source === connection.target) return false;
 		snapshot();
-		const condition =
-			HANDLE_TO_CONDITION[connection.sourceHandle ?? ''] ?? (fullChain ? 'next' : 'fail');
+		// In full_chain only neutral next-edges steer the walk, so every new edge
+		// is neutral there (a colored port must not silently disconnect a
+		// branch from its Join). Logical blocks are always neutral; in fallback
+		// mode the provider handle keeps its outcome colour.
+		const sourceKind = nodeKind(flowNodes.find((n) => n.id === connection.source));
+		const forcedNext = fullChain || sourceKind !== 'provider';
+		const condition = forcedNext
+			? 'next'
+			: (HANDLE_TO_CONDITION[connection.sourceHandle ?? ''] ?? 'fail');
 		return restyleEdge({
 			id: 'e-' + Math.random().toString(36).slice(2, 7),
 			source: connection.source,
 			target: connection.target,
-			sourceHandle: connection.sourceHandle ?? conditionToHandle(condition),
+			// Anchor at the neutral port when we force a next-edge, so the edge
+			// colour matches the port it leaves from.
+			sourceHandle: forcedNext ? 'next' : (connection.sourceHandle ?? conditionToHandle(condition)),
 			targetHandle: connection.targetHandle ?? undefined,
 			label: condition
 		});
@@ -566,7 +880,28 @@
 <div class="grid grid-cols-1 gap-4 lg:grid-cols-[180px_1fr_300px]">
 	<!-- palette -->
 	<aside class="card h-fit">
-		<h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{t('flow.providers')}</h3>
+		<h3 class="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400">{t('flow.logical')}</h3>
+		<div class="flex flex-col gap-2">
+			<button
+				class="w-full cursor-pointer rounded-lg border border-amber-600/60 bg-amber-500/10 px-2.5 py-2 text-left transition hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-40"
+				disabled={!!startNode}
+				title={startNode ? t('flow.startTaken', { name: startNode.data.node.label ?? startNode.id }) : t('flow.startHint')}
+				onclick={() => addLogical('start')}
+			>
+				<span class="text-sm font-medium text-amber-200">▶ {t('flow.start')}</span>
+				<span class="mt-0.5 block text-[10px] text-slate-400">{t('flow.startHint')}</span>
+			</button>
+			<button
+				class="w-full cursor-pointer rounded-lg border border-violet-600/60 bg-violet-500/10 px-2.5 py-2 text-left transition hover:bg-violet-500/20"
+				title={t('flow.joinHint')}
+				onclick={() => addLogical('join')}
+			>
+				<span class="text-sm font-medium text-violet-200">⧉ {t('flow.join')}</span>
+				<span class="mt-0.5 block text-[10px] text-slate-400">{t('flow.joinHint')}</span>
+			</button>
+		</div>
+
+		<h3 class="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-slate-400">{t('flow.providers')}</h3>
 		<div class="flex flex-col gap-2">
 			{#each enabledProviders as provider (provider.id)}
 				<button
@@ -632,10 +967,16 @@
 					🧩 {t('flow.modeFull')}
 				</button>
 			</div>
-			{#if startOwner}
+			{#if startNode}
 				<span class="badge bg-amber-400/15 text-amber-300">
-					▶ {startOwner.data.node.label ?? startOwner.id}
+					▶ {startNode.data.node.label ?? startNode.id}
 				</span>
+			{/if}
+			{#if joinCount > 0}
+				<span class="badge bg-violet-500/15 text-violet-200"> ⧉ {joinCount} </span>
+			{/if}
+			{#if joinCount > 0 && !fullChain}
+				<span class="text-[10px] text-amber-300/90">⚠ {t('flow.joinNeedsFull')}</span>
 			{/if}
 		</div>
 
@@ -720,35 +1061,68 @@
 				<p class="mt-2 text-xs text-amber-300/80">🧩 {t('flow.edgeDimNote')}</p>
 			{/if}
 		{:else if selectedNode}
-			<h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">{t('flow.node')}</h3>
-			<div class="space-y-2">
-				<label class="flex items-center justify-between rounded-lg border border-slate-700 px-2 py-1.5">
-					<span class="text-xs font-semibold text-amber-300">▶ {t('flow.start')}</span>
-					<input
-						type="checkbox"
-						class="accent-amber-400"
-						checked={!!selectedNode.data.node.is_start}
-						disabled={(!!startOwner && startOwner.id !== selectedNode.id) || selectedNode.data.node.mode === 'answer'}
-						title={selectedNode.data.node.mode === 'answer'
-							? t('flow.answerNotStart')
-							: startOwner && startOwner.id !== selectedNode.id
-								? t('flow.startTaken', { name: startOwner.data.node.label ?? startOwner.id })
-								: ''}
-						onchange={(event) => toggleStart(selectedNode.id, (event.currentTarget as HTMLInputElement).checked)}
-					/>
-				</label>
-				<div>
-					<span class="label">{t('common.provider')}</span>
-					<select
-						class="input"
-						bind:value={selectedNode.data.node.provider_id}
-						onchange={() => onProviderChange(selectedNode)}
-					>
-						{#each enabledProviders as provider (provider.id)}
-							<option value={provider.id}>{provider.name} · {provider.code}</option>
-						{/each}
-					</select>
+			{#if isLogical(selectedNode)}
+				<h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">
+					{nodeKind(selectedNode) === 'start' ? '▶ ' + t('flow.start') : '⧉ ' + t('flow.join')}
+				</h3>
+				<div class="space-y-2">
+					<p class="rounded-lg border border-slate-700 bg-slate-800/50 p-2 text-xs text-slate-400">
+						{nodeKind(selectedNode) === 'start' ? t('flow.startHint') : t('flow.joinHint')}
+					</p>
+					<div>
+						<span class="label">{t('common.name')}</span>
+						<input
+							class="input"
+							bind:value={selectedNode.data.node.label}
+							oninput={() => {
+								refresh(selectedNode);
+								sync();
+							}}
+						/>
+					</div>
+					<div>
+						<span class="label">{t('flow.branches')}</span>
+						<p class="font-mono text-xs text-slate-400">
+							{nodeKind(selectedNode) === 'start'
+								? '→ ' + flowEdges.filter((e) => e.source === selectedNode.id).length
+								: '⇥ ' + flowEdges.filter((e) => e.target === selectedNode.id).length}
+						</p>
+					</div>
+					{#if nodeKind(selectedNode) === 'join'}
+						<label
+							class="flex items-center justify-between rounded-lg border px-2 py-1.5 {isTruthyParam(
+								selectedNode.data.node.params?.ignore_count
+							)
+								? 'border-violet-500 bg-violet-500/10'
+								: 'border-slate-700'}"
+						>
+							<span class="text-xs font-semibold text-violet-200">Σ {t('flow.ignoreCount')}</span>
+							<input
+								type="checkbox"
+								class="accent-violet-400"
+								checked={isTruthyParam(selectedNode.data.node.params?.ignore_count)}
+								onchange={(event) =>
+									setIgnoreCount(selectedNode, (event.currentTarget as HTMLInputElement).checked)}
+							/>
+						</label>
+						<p class="text-[10px] text-slate-400">{t('flow.ignoreCountHint')}</p>
+					{/if}
 				</div>
+			{:else}
+				<h3 class="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">{t('flow.node')}</h3>
+				<div class="space-y-2">
+					<div>
+						<span class="label">{t('common.provider')}</span>
+						<select
+							class="input"
+							bind:value={selectedNode.data.node.provider_id}
+							onchange={() => onProviderChange(selectedNode)}
+						>
+							{#each enabledProviders as provider (provider.id)}
+								<option value={provider.id}>{provider.name} · {provider.code}</option>
+							{/each}
+						</select>
+					</div>
 				<div>
 					<span class="label">{t('flow.nodeMode')}</span>
 					<select
@@ -819,6 +1193,9 @@
 						</select>
 					</div>
 				</div>
+				{#if fullChain}
+					<p class="text-[10px] text-amber-300/80">🧩 {t('flow.policiesFullNote')}</p>
+				{/if}
 				<div class="grid grid-cols-3 gap-2">
 					<div>
 						<span class="label">{t('flow.onSuccess')}</span>
@@ -872,6 +1249,7 @@
 					{/each}
 				</div>
 			</div>
+			{/if}
 		{:else}
 			<p class="text-sm text-slate-500">{t('flow.selectHint')}</p>
 		{/if}

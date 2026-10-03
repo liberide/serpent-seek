@@ -1252,10 +1252,19 @@ components:
     # ---------- chains ----------
     ChainNode:
       type: object
-      required: [key, provider_id, is_start]
+      required: [key]
       properties:
         key: { type: string, description: Node id unique within the chain }
-        provider_id: { type: string, description: Provider instance id (providers.id) }
+        kind:
+          type: string
+          enum: [provider, start, join]
+          default: provider
+          description: >
+            provider — runs a provider instance; start — logical entry point (no
+            provider, may fan out to several branches); join — logical merge
+            block that waits for its branches and removes duplicate URLs. Exactly
+            one start block is required. Logical blocks ignore provider_id/mode.
+        provider_id: { type: string, description: Provider instance id (providers.id); required for kind=provider }
         label: { type: string, nullable: true }
         mode:
           type: string
@@ -1263,7 +1272,7 @@ components:
           default: search
           description: >
             search — Row source; answer — generative node whose text goes to the request
-            answer field. Answer nodes never join the Row merge and cannot be the start block.
+            answer field. Answer nodes never join the Row merge and cannot be logical/start blocks.
         params:
           type: object
           additionalProperties: { type: string }
@@ -1275,19 +1284,22 @@ components:
         on_success:
           type: string
           default: stop
-          description: "`stop` or a node key"
+          description: >
+            `stop`, `next` or `edge` — stop ends the chain on success, the others merge the
+            rows and keep walking (first_success mode only). Chains saved before the logical
+            Start block existed keep the old behaviour and always stop on success.
         on_empty:
           type: string
           default: next
-          description: "`next`, `stop` or a node key — 2xx with zero rows is NOT a success"
+          description: "`next`, `stop` or `edge` — 2xx with zero rows is NOT a success"
         on_fail:
           type: string
           default: next
-          description: "`next`, `stop` or a node key"
+          description: "`next`, `stop` or `edge`"
         is_start:
           type: boolean
           default: false
-          description: Start block flag — exactly one node per chain must have it (yellow outline in the editor)
+          description: Legacy start flag superseded by kind=start; the editor migrates it to an explicit Start block
         pos_x: { type: number, default: 0, description: Editor layout }
         pos_y: { type: number, default: 0 }
 

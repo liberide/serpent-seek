@@ -108,12 +108,12 @@ func (e *Engine) TestProvider(ctx context.Context, id string) TestResult {
 
 // runContext carries per-request execution state.
 type runContext struct {
-	req        *store.Request
-	plan       *Plan
-	providers  map[string]*store.Provider
-	proxies    map[string]*store.Proxy
-	startedAt  time.Time
-	stepsTaken int
+	req       *store.Request
+	plan      *Plan
+	providers map[string]*store.Provider
+	proxies   map[string]*store.Proxy
+	startedAt time.Time
+	answerMu  sync.Mutex // guards req.Answer when branches run in parallel
 }
 
 // Execute runs a search synchronously and returns the persisted request.
@@ -176,6 +176,12 @@ func (e *Engine) prepare(ctx context.Context, in Input) (*runContext, error) {
 	if err != nil {
 		return nil, err
 	}
+	// A Join block can opt out of the requested result count: when it is set,
+	// providers are queried without a limit and every unique result is returned,
+	// exactly like the global IGNORE_REQUEST_COUNT toggle.
+	if planIgnoresCount(plan) {
+		count = 0
+	}
 
 	req := &store.Request{
 		ID:            uuid.NewString(),
@@ -221,6 +227,32 @@ func (e *Engine) prepare(ctx context.Context, in Input) (*runContext, error) {
 	rc := &runContext{req: req, plan: plan, providers: byID, proxies: proxiesByID, startedAt: time.Now()}
 	e.emitDeadProviders(ctx, rc)
 	return rc, nil
+}
+
+// paramBool reads a boolean-ish node parameter ("1"/"true"/"yes"/"on").
+func paramBool(params map[string]string, key string) bool {
+	v, ok := params[key]
+	if !ok {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+// planIgnoresCount reports whether any Join block asked to ignore the request
+// count (param ignore_count), so the whole request runs unlimited.
+func planIgnoresCount(p *Plan) bool {
+	for _, key := range p.order {
+		n := p.nodes[key]
+		if Kind(n) == store.NodeKindJoin && paramBool(n.Params, "ignore_count") {
+			return true
+		}
+	}
+	return false
 }
 
 // emitDeadProviders reports provider instances that cannot be used for this request.
@@ -331,17 +363,84 @@ func (e *Engine) run(ctx context.Context, rc *runContext) (*Output, error) {
 	e.limiter.setLimit(e.settings.GetInt(ctx, config.KeyMaxConcurrency))
 
 	if rc.plan.Mode() == store.ChainModeFullChain {
-		return e.runFullChain(ctx, rc, maxAttempts)
+		// LEGACY: chains without an explicit Start block keep the original linear
+		// single-successor full-chain walk. Only chains built with the new
+		// logical blocks get the parallel fan-out/join executor, so upgrading
+		// never changes the behaviour of an existing saved chain.
+		if rc.plan.HasStartBlock() {
+			return e.runFullChain(ctx, rc, maxAttempts)
+		}
+		return e.runFullChainLegacy(ctx, rc, maxAttempts)
 	}
-	return e.runFirstSuccess(ctx, rc, maxAttempts)
+	return e.runFirstSuccess(ctx, rc, maxAttempts, rc.plan.HasStartBlock())
 }
 
 // walkState carries mutable per-request walk counters shared by both modes.
+// Full-chain mode executes sibling branches in parallel, so every accessor is
+// mutex-guarded and the shared attempt budget is reserved with takeStep.
 type walkState struct {
-	idx    int
-	stepNo int
-	dead   map[string]bool
-	last   providers.Result
+	mu          sync.Mutex
+	maxAttempts int
+	stepNo      int
+	dead        map[string]bool
+}
+
+func newWalkState(maxAttempts int) *walkState {
+	return &walkState{maxAttempts: maxAttempts, dead: map[string]bool{}}
+}
+
+// takeStep reserves one attempt from the shared budget, reporting false when
+// the budget is exhausted.
+func (ws *walkState) takeStep() bool {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	if ws.stepNo >= ws.maxAttempts {
+		return false
+	}
+	ws.stepNo++
+	return true
+}
+
+// addSteps consumes extra attempts (multi-call provider stages).
+func (ws *walkState) addSteps(n int) {
+	if n <= 0 {
+		return
+	}
+	ws.mu.Lock()
+	ws.stepNo += n
+	ws.mu.Unlock()
+}
+
+func (ws *walkState) hasBudget() bool {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	return ws.stepNo < ws.maxAttempts
+}
+
+func (ws *walkState) steps() int {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	return ws.stepNo
+}
+
+func (ws *walkState) markDead(id string) {
+	ws.mu.Lock()
+	ws.dead[id] = true
+	ws.mu.Unlock()
+}
+
+func (ws *walkState) isDead(id string) bool {
+	ws.mu.Lock()
+	defer ws.mu.Unlock()
+	return ws.dead[id]
+}
+
+// nodeRun is the outcome of executing one block.
+type nodeRun struct {
+	rows      providers.Rows
+	won       bool
+	result    providers.Result
+	attempted bool // false when the shared attempt budget was already exhausted
 }
 
 // nodeTarget is the resolved execution context of one graph node.
@@ -391,7 +490,7 @@ func (e *Engine) resolveNode(ctx context.Context, rc *runContext, ws *walkState,
 	target.known = known
 	target.answer = strings.EqualFold(strings.TrimSpace(node.Mode), store.NodeModeAnswer)
 	target.reason = e.instanceDeadReason(ctx, driver, inst)
-	if target.reason == "" && ws.dead[node.ProviderID] {
+	if target.reason == "" && ws.isDead(node.ProviderID) {
 		target.reason = deadMarked
 	}
 	if !known {
@@ -401,18 +500,17 @@ func (e *Engine) resolveNode(ctx context.Context, rc *runContext, ws *walkState,
 }
 
 // skipNode records a skip step for a node and returns the node to walk to.
-func (e *Engine) skipNode(ctx context.Context, rc *runContext, ws *walkState, node *store.ChainNode, target nodeTarget, next func(*store.ChainNode) *store.ChainNode) *store.ChainNode {
-	e.recordSkip(ctx, rc, ws.idx, node, target.display, target.reason)
+func (e *Engine) skipNode(ctx context.Context, rc *runContext, idx int, node *store.ChainNode, target nodeTarget, next func(*store.ChainNode) *store.ChainNode) *store.ChainNode {
+	e.recordSkip(ctx, rc, idx, node, target.display, target.reason)
 	e.log.Warn(rc.req.RID, target.display, "skip node "+node.Key+": "+deadReasonText(target.reason, target.driver))
-	ws.idx++
 	return next(node)
 }
 
 // execNode runs the attempt loop of one alive node: retries with a linear
-// backoff inside the node, one persisted step + SSE event per attempt. It
-// returns the (count-capped) rows of the winning attempt and whether the node
-// produced a usable result in first-success semantics.
-func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, node *store.ChainNode, target nodeTarget, maxAttempts int) (providers.Rows, bool) {
+// backoff inside the node, one persisted step + SSE event per attempt. idx is
+// the block's stable trace index. It returns the rows of the winning attempt
+// and whether the node produced a usable result in first-success semantics.
+func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, idx int, node *store.ChainNode, target nodeTarget) nodeRun {
 	req := rc.req
 	params := e.buildParams(ctx, target.driver, target.inst, node)
 	creds := e.buildCredentials(target.inst)
@@ -424,13 +522,17 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, no
 	}
 
 	var result providers.Result
+	attempted := false
 	attempts := node.Retries + 1
-	for attempt := 0; attempt < attempts && ws.stepNo < maxAttempts; attempt++ {
-		ws.stepNo++
+	for attempt := 0; attempt < attempts; attempt++ {
+		if !ws.takeStep() {
+			break
+		}
+		attempted = true
 		startedAt := store.Now()
 		t0 := time.Now()
 		e.sink.Publish(req.ID, EventStepStarted, StepStarted{
-			Idx: ws.idx, Node: node.Key, Provider: target.display, Engine: result.Engine, Attempt: attempt, T0: startedAt,
+			Idx: idx, Node: node.Key, Provider: target.display, Engine: result.Engine, Attempt: attempt, T0: startedAt,
 		})
 
 		query := providers.Query{
@@ -456,7 +558,9 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, no
 		result.Provider = target.display
 		result.Error = e.log.Redact(result.Error)
 		if target.answer && strings.TrimSpace(result.Answer) != "" {
+			rc.answerMu.Lock()
 			req.Answer = result.Answer
+			rc.answerMu.Unlock()
 		}
 		// Answer-node sources only reach the Row result when sparse sources are
 		// explicitly allowed; the step counters mirror what is actually merged.
@@ -469,11 +573,10 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, no
 				strconv.Itoa(result.QuotaRemaining)+"/"+strconv.Itoa(result.QuotaMax))
 		}
 		tookMS := int(time.Since(t0) / time.Millisecond)
-		ws.last = result
 
 		// A failed non-permanent attempt sleeps before the next one; the delay is
 		// the node backoff, raised to the upstream's explicit demand if larger.
-		willSleep := !result.OK && !result.Permanent && attempt+1 < attempts && ws.stepNo < maxAttempts
+		willSleep := !result.OK && !result.Permanent && attempt+1 < attempts && ws.hasBudget()
 		delay := time.Duration(0)
 		if willSleep {
 			delay = backoffDelay(node, attempt, true)
@@ -494,7 +597,7 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, no
 		step := &store.RequestStep{
 			ID:           uuid.NewString(),
 			RequestID:    req.ID,
-			Idx:          ws.idx,
+			Idx:          idx,
 			NodeKey:      node.Key,
 			Provider:     target.display,
 			Engine:       result.Engine,
@@ -514,7 +617,7 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, no
 			e.log.Error(req.RID, target.display, "failed to persist step: "+err.Error())
 		}
 		e.sink.Publish(req.ID, EventStepFinished, StepFinished{
-			Idx: ws.idx, Node: node.Key, Provider: target.display, Engine: result.Engine, Attempt: attempt,
+			Idx: idx, Node: node.Key, Provider: target.display, Engine: result.Engine, Attempt: attempt,
 			HTTP: result.HTTPStatus, Kind: result.Kind, Results: len(stepRows),
 			TookMS: tookMS, Permanent: result.Permanent, Error: result.Error,
 		})
@@ -525,7 +628,7 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, no
 		// per HTTP call, so a two-stage node spends 2 steps of MAX_ATTEMPTS.
 		for _, sc := range stages.calls {
 			sub := &store.RequestStep{
-				ID: uuid.NewString(), RequestID: req.ID, Idx: ws.idx, NodeKey: node.Key,
+				ID: uuid.NewString(), RequestID: req.ID, Idx: idx, NodeKey: node.Key,
 				Provider: target.display, Engine: result.Engine, AttemptNo: attempt + 1, Stage: sc.Stage,
 				Status: "ok", Kind: providers.KindOK, HTTPStatus: sc.HTTPStatus, TookMS: sc.TookMS,
 				StartedAt: startedAt, FinishedAt: store.Now(),
@@ -542,25 +645,25 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, no
 				e.log.Error(req.RID, target.display, "failed to persist stage step: "+err.Error())
 			}
 			e.sink.Publish(req.ID, EventStepFinished, StepFinished{
-				Idx: ws.idx, Node: node.Key, Provider: target.display, Engine: result.Engine, Stage: sc.Stage,
+				Idx: idx, Node: node.Key, Provider: target.display, Engine: result.Engine, Stage: sc.Stage,
 				Attempt: attempt, HTTP: sc.HTTPStatus, Kind: sub.Kind, TookMS: sc.TookMS, Error: sub.Error,
 			})
 		}
 		if extra := len(stages.calls) - 1; extra > 0 {
-			ws.stepNo += extra
+			ws.addSteps(extra)
 		}
 
 		if result.OK {
 			if target.answer {
 				if strings.TrimSpace(result.Answer) != "" || len(stepRows) > 0 {
-					return stepRows, true
+					return nodeRun{rows: stepRows, won: true, result: result, attempted: attempted}
 				}
 			} else if len(result.Rows) > 0 || !treatEmpty {
-				return result.Rows, true
+				return nodeRun{rows: result.Rows, won: true, result: result, attempted: attempted}
 			}
 		}
 		if result.Permanent {
-			ws.dead[node.ProviderID] = true
+			ws.markDead(node.ProviderID)
 			e.sink.Publish(req.ID, EventProviderDead, ProviderDead{Provider: target.display, Reason: result.Error})
 			break
 		}
@@ -572,89 +675,158 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, no
 			}
 		}
 	}
-	return nil, false
+	return nodeRun{result: result, attempted: attempted}
 }
 
 // runFirstSuccess walks the graph in first_success mode: the first usable
-// result stops the chain; ok/empty/fail edges steer the transitions.
-func (e *Engine) runFirstSuccess(ctx context.Context, rc *runContext, maxAttempts int) (*Output, error) {
-	ws := &walkState{dead: map[string]bool{}}
+// result stops the chain; ok/empty/fail edges steer the transitions. Logical
+// start/join blocks are transparent in this mode (fallback order follows the
+// first neutral edge).
+//
+// logicalNew is true when the chain uses an explicit Start block. Only then is
+// the on_success=next/edge continuation honoured; legacy chains always stop on
+// the first success exactly as before.
+func (e *Engine) runFirstSuccess(ctx context.Context, rc *runContext, maxAttempts int, logicalNew bool) (*Output, error) {
+	ws := newWalkState(maxAttempts)
 	node := rc.plan.Start()
+	var last providers.Result
+	merged := newMerger()
+	// idx is the execution step number (like the old ws.idx): it orders the
+	// stored steps chronologically. The node slice is sorted by key, so the plan
+	// index must not be used for the timeline.
+	idx := 0
 
-	for node != nil && ws.stepNo < maxAttempts {
+	for node != nil && ws.hasBudget() {
+		if Kind(node) != store.NodeKindProvider {
+			node = firstNeutral(rc.plan, node)
+			continue
+		}
 		target := e.resolveNode(ctx, rc, ws, node)
 		if target.reason != "" {
-			node = e.skipNode(ctx, rc, ws, node, target, func(n *store.ChainNode) *store.ChainNode {
+			node = e.skipNode(ctx, rc, idx, node, target, func(n *store.ChainNode) *store.ChainNode {
 				return rc.plan.Next(n, "fail")
 			})
+			idx++
 			continue
 		}
 
-		rows, won := e.execNode(ctx, rc, ws, node, target, maxAttempts)
-		if won {
-			return e.finalize(ctx, rc, "ok", providerRows(rows, rc.req.Count), target.display, ws.stepNo)
+		run := e.execNode(ctx, rc, ws, idx, node, target)
+		last = run.result
+		if run.won {
+			// A successful block ends the chain unless on_success asks to keep
+			// walking (edge/next). In that case its rows are merged and the walk
+			// continues, so success/ok edges finally steer the chain. Legacy
+			// chains ignore on_success and always stop (old behaviour).
+			continueOnSuccess := logicalNew && defaultPolicy(node.OnSuccess, "stop") != "stop"
+			if !continueOnSuccess {
+				rows := run.rows
+				used := target.display
+				if merged.uniqueCount() > 0 {
+					merged.add(target.display, run.rows)
+					rows = merged.rowsUpTo(rc.req.Count)
+					used = strings.Join(merged.providers(), ", ")
+				}
+				return e.finalize(ctx, rc, "ok", providerRows(rows, rc.req.Count), used, ws.steps())
+			}
+			if len(run.rows) > 0 {
+				merged.add(target.display, run.rows)
+			}
+			idx++
+			node = rc.plan.Next(node, "success")
+			continue
 		}
-		honorRetryAfter(ctx, ws.last)
-		ws.idx++
-		outcome := outcomeOf(ws.last, e.treatEmptyAsFail(ctx, node))
+		honorRetryAfter(ctx, run.result)
+		idx++
+		outcome := outcomeOf(run.result, e.treatEmptyAsFail(ctx, node))
 		if target.answer {
-			outcome = outcomeOfAnswer(ws.last, e.allowSparseSources(ctx, node))
+			outcome = outcomeOfAnswer(run.result, e.allowSparseSources(ctx, node))
 		}
 		node = rc.plan.Next(node, outcome)
 	}
 
+	// Collected rows from continued successes win over a trailing failure.
+	if merged.uniqueCount() > 0 {
+		return e.finalize(ctx, rc, "ok", merged.rowsUpTo(rc.req.Count), strings.Join(merged.providers(), ", "), ws.steps())
+	}
+
 	// Loop exhausted without a usable result.
 	status := "fail"
-	if ws.last.Kind != "" {
-		if ws.last.Kind == providers.KindOK {
+	if last.Kind != "" {
+		if last.Kind == providers.KindOK {
 			status = "empty"
-		} else if ws.last.Error != "" {
-			rc.req.Error = ws.last.Error
+		} else if last.Error != "" {
+			rc.req.Error = last.Error
 		}
 	}
-	return e.finalize(ctx, rc, status, nil, "", ws.stepNo)
+	return e.finalize(ctx, rc, status, nil, "", ws.steps())
 }
 
-// runFullChain walks every block reachable from the start along "next" edges,
-// regardless of successes/failures, and merges all collected links (deduped).
-func (e *Engine) runFullChain(ctx context.Context, rc *runContext, maxAttempts int) (*Output, error) {
-	ws := &walkState{dead: map[string]bool{}}
+// firstNeutral returns the first neutral successor of a logical node.
+func firstNeutral(p *Plan, node *store.ChainNode) *store.ChainNode {
+	if next := p.NeutralSuccessors(node); len(next) > 0 {
+		return next[0]
+	}
+	return nil
+}
+
+// runFullChainLegacy preserves the original full-chain behaviour for chains
+// saved before logical blocks existed: a strictly linear walk that follows a
+// single neutral "next" edge per block and merges everything it visits. It is
+// what keeps an upgraded chain byte-for-byte behaviour compatible.
+//
+// LEGACY: do not extend this walker. New features belong in runFullChain.
+func (e *Engine) runFullChainLegacy(ctx context.Context, rc *runContext, maxAttempts int) (*Output, error) {
+	ws := newWalkState(maxAttempts)
 	visited := map[string]bool{}
 	merged := newMerger()
 	lastStatus := ""
+	lastErr := ""
 	node := rc.plan.Start()
+	idx := 0
 
-	for node != nil && ws.stepNo < maxAttempts {
+	for node != nil && ws.hasBudget() {
 		if visited[node.Key] {
 			break // cycles are rejected by the validator; guard anyway
 		}
 		visited[node.Key] = true
+		// Logical blocks are transparent in the legacy linear walk; a stale
+		// kind=join on an old chain must not be mistaken for an unknown driver.
+		if Kind(node) != store.NodeKindProvider {
+			node = rc.plan.NextInFullChain(node)
+			continue
+		}
 		target := e.resolveNode(ctx, rc, ws, node)
 		if target.reason != "" {
 			lastStatus = "skip"
-			node = e.skipNode(ctx, rc, ws, node, target, rc.plan.NextInFullChain)
+			e.recordSkip(ctx, rc, idx, node, target.display, target.reason)
+			e.log.Warn(rc.req.RID, target.display, "skip node "+node.Key+": "+deadReasonText(target.reason, target.driver))
+			idx++
+			node = rc.plan.NextInFullChain(node)
 			continue
 		}
 
-		rows, _ := e.execNode(ctx, rc, ws, node, target, maxAttempts)
-		honorRetryAfter(ctx, ws.last)
+		run := e.execNode(ctx, rc, ws, idx, node, target)
+		honorRetryAfter(ctx, run.result)
 		switch {
-		case ws.last.OK && len(rows) > 0:
+		case run.result.OK && len(run.rows) > 0:
 			lastStatus = "ok"
-			if merged.add(target.display, rows) {
+			if merged.add(target.display, run.rows) {
 				e.sink.Publish(rc.req.ID, EventMergeProgress, MergeProgress{
 					Collected: merged.collectedTotal(),
 					Unique:    merged.uniqueCount(),
 				})
 			}
-		case ws.last.OK && target.answer && strings.TrimSpace(ws.last.Answer) != "":
+		case run.result.OK && target.answer && strings.TrimSpace(run.result.Answer) != "":
 			lastStatus = "ok"
-		case ws.last.OK:
+		case run.result.OK:
 			lastStatus = "empty"
 		default:
 			lastStatus = "fail"
+			if run.result.Error != "" {
+				lastErr = run.result.Error
+			}
 		}
-		ws.idx++
+		idx++
 		node = rc.plan.NextInFullChain(node)
 	}
 
@@ -681,13 +853,245 @@ func (e *Engine) runFullChain(ctx context.Context, rc *runContext, maxAttempts i
 	case lastStatus == "empty":
 		status = "empty"
 	default:
-		if ws.last.Error != "" {
-			rc.req.Error = ws.last.Error
+		if lastErr != "" {
+			rc.req.Error = lastErr
 		}
 	}
 	used := strings.Join(merged.providers(), ", ")
 	rc.req.Merge = stats
-	return e.finalize(ctx, rc, status, rows, used, ws.stepNo)
+	return e.finalize(ctx, rc, status, rows, used, ws.steps())
+}
+
+// runFullChain walks every block reachable from the start along neutral "next"
+// edges. Sibling branches fan out from a start/provider block and run in
+// parallel; a join block waits for every branch feeding it. All provider rows
+// are merged into one result set, deduplicated by normalized URL.
+func (e *Engine) runFullChain(ctx context.Context, rc *runContext, maxAttempts int) (*Output, error) {
+	plan := rc.plan
+	start := plan.Start()
+	if start == nil {
+		return e.finalize(ctx, rc, "fail", nil, "", 0)
+	}
+
+	ws := newWalkState(maxAttempts)
+	merged := newMerger()
+
+	// idxByKey is filled wave by wave with the execution step number, so stored
+	// steps are ordered chronologically (the node slice itself is key-ordered).
+	idxByKey := map[string]int{}
+	nextIdx := 0
+
+	// Neutral connectivity is the executable full-chain graph.
+	succ := map[string][]string{}
+	for _, key := range plan.order {
+		succ[key] = nil
+	}
+	for _, edge := range plan.chain.Edges {
+		switch edge.Condition {
+		case "next", "any", "":
+			succ[edge.FromKey] = append(succ[edge.FromKey], edge.ToKey)
+		}
+	}
+
+	// Only blocks reachable from the start along neutral edges run.
+	reachable := map[string]bool{}
+	queue := []string{start.Key}
+	for len(queue) > 0 {
+		key := queue[0]
+		queue = queue[1:]
+		if reachable[key] {
+			continue
+		}
+		reachable[key] = true
+		queue = append(queue, succ[key]...)
+	}
+
+	// In-degree within the reachable subgraph: unreachable predecessors must
+	// not stall a block forever.
+	indeg := map[string]int{}
+	for key := range reachable {
+		for _, to := range succ[key] {
+			if reachable[to] {
+				indeg[to]++
+			}
+		}
+	}
+	// The entry point always runs first even if a (validator-rejected) edge
+	// points back at it.
+	indeg[start.Key] = 0
+
+	type blockState struct {
+		status string
+		rows   providers.Rows
+		result providers.Result
+		answer string
+	}
+	// Preallocate one state per block so branch goroutines only write their own
+	// entry (concurrent map reads are safe; the map itself is never mutated).
+	states := map[string]*blockState{}
+	for key := range reachable {
+		states[key] = &blockState{}
+	}
+
+	// process executes one block. It is safe to call from a branch goroutine:
+	// shared counters live in ws (mutex-guarded) and the answer is guarded by
+	// rc.answerMu; everything else it touches is read-only.
+	process := func(key string) {
+		node := plan.Node(key)
+		st := states[key]
+		idx := idxByKey[key]
+		if Kind(node) != store.NodeKindProvider {
+			// Logical start/join blocks carry no provider call. A join is the
+			// rendezvous point for its branches: it runs only once every branch
+			// has finished, then the walk continues past it.
+			st.status = "ok"
+			return
+		}
+		target := e.resolveNode(ctx, rc, ws, node)
+		if target.reason != "" {
+			st.status = "skip"
+			e.recordSkip(ctx, rc, idx, node, target.display, target.reason)
+			e.log.Warn(rc.req.RID, target.display, "skip node "+node.Key+": "+deadReasonText(target.reason, target.driver))
+			return
+		}
+		run := e.execNode(ctx, rc, ws, idx, node, target)
+		if !run.attempted {
+			// The shared attempt budget ran out before this branch got a slot;
+			// that is a skip, not a provider failure.
+			st.status = "skip"
+			return
+		}
+		st.result = run.result
+		honorRetryAfter(ctx, run.result)
+		switch {
+		case run.result.OK && target.answer && strings.TrimSpace(run.result.Answer) != "":
+			st.status = "ok"
+			st.answer = run.result.Answer
+		case run.result.OK && len(run.rows) > 0:
+			st.status = "ok"
+			st.rows = run.rows
+		case run.result.OK:
+			st.status = "empty"
+		default:
+			st.status = "fail"
+		}
+	}
+
+	done := map[string]bool{}
+	for {
+		if !ws.hasBudget() {
+			break
+		}
+		ready := make([]string, 0, len(reachable))
+		for _, key := range plan.order {
+			if reachable[key] && !done[key] && indeg[key] == 0 {
+				ready = append(ready, key)
+			}
+		}
+		if len(ready) == 0 {
+			break
+		}
+		// Number the blocks of this wave before launching them: provider blocks
+		// consume a step number in plan order; logical blocks do not emit steps.
+		for _, key := range ready {
+			if Kind(plan.Node(key)) == store.NodeKindProvider {
+				idxByKey[key] = nextIdx
+				nextIdx++
+			}
+		}
+		if len(ready) == 1 {
+			process(ready[0])
+		} else {
+			// Fan out: sibling providers run concurrently (bounded by the engine
+			// concurrency limiter inside execNode).
+			var wg sync.WaitGroup
+			for _, key := range ready {
+				wg.Add(1)
+				go func(k string) {
+					defer wg.Done()
+					process(k)
+				}(key)
+			}
+			wg.Wait()
+		}
+		for _, key := range ready {
+			done[key] = true
+			for _, to := range succ[key] {
+				if reachable[to] {
+					indeg[to]--
+				}
+			}
+		}
+	}
+
+	// Merge provider rows in stable plan order so the first occurrence wins
+	// deterministically even when branches ran in parallel. The same pass picks
+	// the generated answer deterministically (last answer block in plan order)
+	// instead of letting parallel writes race.
+	lastStatus := ""
+	lastErr := ""
+	for _, key := range plan.order {
+		node := plan.Node(key)
+		if !reachable[key] || Kind(node) != store.NodeKindProvider {
+			continue
+		}
+		st := states[key]
+		if st == nil {
+			continue
+		}
+		switch st.status {
+		case "ok", "empty", "fail", "skip":
+			lastStatus = st.status
+		}
+		if st.status == "fail" && st.result.Error != "" {
+			lastErr = st.result.Error
+		}
+		if st.answer != "" {
+			rc.answerMu.Lock()
+			rc.req.Answer = st.answer
+			rc.answerMu.Unlock()
+		}
+		if st.status == "ok" && len(st.rows) > 0 {
+			display := e.providerDisplay(node.ProviderID, rc.providers[node.ProviderID])
+			if merged.add(display, st.rows) {
+				e.sink.Publish(rc.req.ID, EventMergeProgress, MergeProgress{
+					Collected: merged.collectedTotal(),
+					Unique:    merged.uniqueCount(),
+				})
+			}
+		}
+	}
+
+	rows := merged.rowsUpTo(rc.req.Count)
+	stats := &store.MergeStats{
+		CollectedTotal:    merged.collectedTotal(),
+		UniqueLinks:       len(rows),
+		DuplicatesRemoved: merged.duplicatesRemoved(),
+	}
+	e.sink.Publish(rc.req.ID, EventMergeDone, MergeDone{
+		CollectedTotal:    stats.CollectedTotal,
+		UniqueLinks:       stats.UniqueLinks,
+		DuplicatesRemoved: stats.DuplicatesRemoved,
+	})
+	e.log.Info(rc.req.RID, "", "full chain merged: collected="+strconv.Itoa(stats.CollectedTotal)+
+		" unique="+strconv.Itoa(stats.UniqueLinks)+" duplicates="+strconv.Itoa(stats.DuplicatesRemoved))
+
+	status := "fail"
+	switch {
+	case len(rows) > 0:
+		status = "ok"
+	case lastStatus == "ok":
+		status = "ok"
+	case lastStatus == "empty":
+		status = "empty"
+	default:
+		if lastErr != "" {
+			rc.req.Error = lastErr
+		}
+	}
+	used := strings.Join(merged.providers(), ", ")
+	rc.req.Merge = stats
+	return e.finalize(ctx, rc, status, rows, used, ws.steps())
 }
 
 func (e *Engine) recordSkip(ctx context.Context, rc *runContext, idx int, node *store.ChainNode, code, reason string) {

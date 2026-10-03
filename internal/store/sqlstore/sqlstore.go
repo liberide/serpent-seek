@@ -670,11 +670,25 @@ func nodeMode(mode string) string {
 	return store.NodeModeSearch
 }
 
+// nodeKind normalizes a chain-node kind for persistence (the column has a
+// CHECK constraint, so an empty value must become the provider default).
+func nodeKind(kind string) string {
+	switch strings.ToLower(strings.TrimSpace(kind)) {
+	case store.NodeKindStart:
+		return store.NodeKindStart
+	case store.NodeKindJoin:
+		return store.NodeKindJoin
+	default:
+		return store.NodeKindProvider
+	}
+}
+
 // loadChainNodesByID loads the chain graph nodes.
 func (s *Store) loadChainNodesByID(ctx context.Context, c *store.Chain) error {
 	nodeRows, err := s.query(ctx, `SELECT id, chain_id, key, provider_id, COALESCE(label, ''), COALESCE(params_json, '{}'),
 		timeout_ms, retries, retry_delay_ms, COALESCE(delay_policy, 'linear'), COALESCE(on_success, ''),
-		COALESCE(on_empty, ''), COALESCE(on_fail, ''), is_start, COALESCE(pos_x, 0), COALESCE(pos_y, 0), COALESCE(mode, 'search')
+		COALESCE(on_empty, ''), COALESCE(on_fail, ''), is_start, COALESCE(pos_x, 0), COALESCE(pos_y, 0), COALESCE(mode, 'search'),
+		COALESCE(kind, 'provider')
 		FROM chain_nodes WHERE chain_id = ? ORDER BY key`, c.ID)
 	if err != nil {
 		return err
@@ -686,7 +700,7 @@ func (s *Store) loadChainNodesByID(ctx context.Context, c *store.Chain) error {
 		var isStart store.Bool
 		if err := nodeRows.Scan(&n.ID, &n.ChainID, &n.Key, &n.ProviderID, &n.Label, &params,
 			&n.TimeoutMS, &n.Retries, &n.RetryDelayMS, &n.DelayPolicy, &n.OnSuccess,
-			&n.OnEmpty, &n.OnFail, &isStart, &n.PosX, &n.PosY, &n.Mode); err != nil {
+			&n.OnEmpty, &n.OnFail, &isStart, &n.PosX, &n.PosY, &n.Mode, &n.Kind); err != nil {
 			return err
 		}
 		n.Params = store.DecodeMap(params)
@@ -747,10 +761,10 @@ func (s *Store) SaveChain(ctx context.Context, c *store.Chain) error {
 		}
 		if _, err := tx.ExecContext(ctx, s.rebind(
 			`INSERT INTO chain_nodes (id, chain_id, key, provider_id, label, params_json, timeout_ms, retries,
-			 retry_delay_ms, delay_policy, on_success, on_empty, on_fail, is_start, pos_x, pos_y, mode)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
+			 retry_delay_ms, delay_policy, on_success, on_empty, on_fail, is_start, pos_x, pos_y, mode, kind)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`),
 			n.ID, c.ID, n.Key, n.ProviderID, n.Label, store.EncodeMap(n.Params), n.TimeoutMS, n.Retries,
-			n.RetryDelayMS, n.DelayPolicy, n.OnSuccess, n.OnEmpty, n.OnFail, store.Bool(n.IsStart), n.PosX, n.PosY, nodeMode(n.Mode)); err != nil {
+			n.RetryDelayMS, n.DelayPolicy, n.OnSuccess, n.OnEmpty, n.OnFail, store.Bool(n.IsStart), n.PosX, n.PosY, nodeMode(n.Mode), nodeKind(n.Kind)); err != nil {
 			return err
 		}
 	}

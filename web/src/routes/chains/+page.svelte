@@ -35,28 +35,45 @@
 		try {
 			const providerList = await get<any[]>('/api/providers');
 			const first = providerList.find((p) => p.enabled) ?? providerList[0];
+			const base = {
+				params: {},
+				timeout_ms: 20000,
+				retries: 0,
+				retry_delay_ms: 700,
+				delay_policy: 'linear',
+				on_success: 'stop',
+				on_empty: 'next',
+				on_fail: 'next'
+			};
 			const chain = await post<Chain>('/api/chains', {
 				name: t('chains.newName'),
 				mode: newChainMode,
-				nodes: first
+				// A fresh chain starts with a logical Start block wired to the
+				// first enabled provider — the entry point is a block, not a provider.
+					nodes: first
 					? [
 							{
 								key: 'start',
+								kind: 'start',
+								provider_id: '',
+								label: t('flow.start'),
+								pos_x: 0,
+								pos_y: 80,
+								...base
+							},
+							{
+								key: 'p1',
+								kind: 'provider',
 								provider_id: first.id,
 								label: first.name ?? first.code,
-								params: {},
-								timeout_ms: 20000,
-								retries: 0,
-								retry_delay_ms: 700,
-								delay_policy: 'linear',
-								on_success: 'stop',
-								on_empty: 'next',
-								on_fail: 'next',
-								is_start: true
+								mode: 'search',
+								pos_x: 260,
+								pos_y: 80,
+								...base
 							}
 						]
 					: [],
-				edges: []
+				edges: first ? [{ from_key: 'start', to_key: 'p1', condition: 'next' }] : []
 			});
 			await goto(`/chains/${chain.id}`);
 		} catch (error) {
