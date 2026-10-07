@@ -234,7 +234,13 @@
 				<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">
 					{t('request.chainSnapshot')}
 				</h2>
-				<ChainGraph chain={request.chain_snapshot} states={nodeStates} stats={nodeStats} finish={lastStepNode} />
+				<ChainGraph
+					chain={request.chain_snapshot}
+					states={nodeStates}
+					stats={nodeStats}
+					finish={lastStepNode}
+					totalMs={request.total_ms}
+				/>
 			</div>
 		{/if}
 

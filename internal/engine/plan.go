@@ -19,8 +19,8 @@ type Plan struct {
 	start *store.ChainNode
 }
 
-// BuildPlan indexes a chain and resolves its start node: exactly one node
-// must be flagged is_start (the validator guarantees this for saved chains).
+// BuildPlan indexes a chain and resolves its start node. An explicit logical
+// start block (kind=start) wins; otherwise the legacy is_start flag is used.
 func BuildPlan(c *store.Chain) (*Plan, error) {
 	if c == nil || len(c.Nodes) == 0 {
 		return nil, errors.New("engine: empty chain")
@@ -38,10 +38,19 @@ func BuildPlan(c *store.Chain) (*Plan, error) {
 	for _, e := range c.Edges {
 		p.out[e.FromKey] = append(p.out[e.FromKey], e)
 	}
+	// Prefer the logical start block; fall back to the legacy is_start flag.
 	for _, key := range p.order {
-		if p.nodes[key].IsStart {
+		if Kind(p.nodes[key]) == store.NodeKindStart {
 			p.start = p.nodes[key]
 			break
+		}
+	}
+	if p.start == nil {
+		for _, key := range p.order {
+			if p.nodes[key].IsStart {
+				p.start = p.nodes[key]
+				break
+			}
 		}
 	}
 	if p.start == nil {
@@ -50,8 +59,37 @@ func BuildPlan(c *store.Chain) (*Plan, error) {
 	return p, nil
 }
 
+// Kind returns the normalized block kind (provider|start|join).
+func Kind(n *store.ChainNode) string {
+	if n == nil {
+		return ""
+	}
+	switch strings.ToLower(strings.TrimSpace(n.Kind)) {
+	case store.NodeKindStart:
+		return store.NodeKindStart
+	case store.NodeKindJoin:
+		return store.NodeKindJoin
+	default:
+		return store.NodeKindProvider
+	}
+}
+
 // Start returns the start node.
 func (p *Plan) Start() *store.ChainNode { return p.start }
+
+// HasStartBlock reports whether the chain uses the explicit logical Start
+// block (kind=start) introduced with the fan-out/join graph.
+//
+// LEGACY: chains without it are treated as legacy and keep the pre-fan-out
+// execution semantics (see runFullChainLegacy).
+func (p *Plan) HasStartBlock() bool {
+	for _, key := range p.order {
+		if Kind(p.nodes[key]) == store.NodeKindStart {
+			return true
+		}
+	}
+	return false
+}
 
 // Node resolves a node by key.
 func (p *Plan) Node(key string) *store.ChainNode { return p.nodes[key] }
@@ -126,7 +164,11 @@ func (p *Plan) Next(node *store.ChainNode, outcome string) *store.ChainNode {
 
 // NextInFullChain resolves the following node in full-chain mode: only
 // neutral "next" connectivity matters here (ok/empty/fail edges carry
-// diagnostics colours but do not steer the walk).
+// diagnostics colours but do not steer the walk). It returns a single node
+// (the first neutral successor).
+//
+// LEGACY: used only by the legacy linear walker (runFullChainLegacy); the new
+// fan-out executor uses NeutralSuccessors instead.
 func (p *Plan) NextInFullChain(node *store.ChainNode) *store.ChainNode {
 	if node == nil {
 		return nil
@@ -138,6 +180,25 @@ func (p *Plan) NextInFullChain(node *store.ChainNode) *store.ChainNode {
 		}
 	}
 	return nil
+}
+
+// NeutralSuccessors returns every successor reachable along a neutral
+// (next/any/empty-condition) edge, in edge order. Full-chain mode uses it to
+// fan out a block to several branches.
+func (p *Plan) NeutralSuccessors(node *store.ChainNode) []*store.ChainNode {
+	if node == nil {
+		return nil
+	}
+	var out []*store.ChainNode
+	for _, e := range p.out[node.Key] {
+		switch e.Condition {
+		case "next", "any", "":
+			if to := p.nodes[e.ToKey]; to != nil {
+				out = append(out, to)
+			}
+		}
+	}
+	return out
 }
 
 func policyFor(node *store.ChainNode, outcome string) string {

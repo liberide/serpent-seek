@@ -113,11 +113,23 @@ const (
 	NodeModeAnswer = "answer"
 )
 
-// ChainNode is a single provider block in a chain.
+// Chain node kinds. Logical nodes carry graph structure only: the start node
+// is the single entry point (it can fan out to several providers), the join
+// node merges the branches feeding it and removes duplicate URLs. A provider
+// node runs one configured provider instance.
+const (
+	NodeKindProvider = "provider"
+	NodeKindStart    = "start"
+	NodeKindJoin     = "join"
+)
+
+// ChainNode is a single block in a chain: a provider instance or a logical
+// start/join node.
 type ChainNode struct {
 	ID           string            `json:"id"`
 	ChainID      string            `json:"chain_id"`
 	Key          string            `json:"key"`
+	Kind         string            `json:"kind"`        // provider|start|join
 	ProviderID   string            `json:"provider_id"` // references providers.id (a provider instance)
 	Label        string            `json:"label"`
 	Mode         string            `json:"mode"` // search|answer
@@ -129,9 +141,15 @@ type ChainNode struct {
 	OnSuccess    string            `json:"on_success"`   // stop|edge
 	OnEmpty      string            `json:"on_empty"`     // next|stop|edge
 	OnFail       string            `json:"on_fail"`      // next|stop|edge
-	IsStart      bool              `json:"is_start"`     // exactly one node per chain is the entry point
+	IsStart      bool              `json:"is_start"`     // LEGACY: entry-point flag superseded by Kind=start
 	PosX         float64           `json:"pos_x"`
 	PosY         float64           `json:"pos_y"`
+}
+
+// IsLogical reports whether the node is a logical start/join block without a
+// backing provider instance.
+func (n *ChainNode) IsLogical() bool {
+	return n.Kind == NodeKindStart || n.Kind == NodeKindJoin
 }
 
 // ChainEdge is a directed edge between two nodes with an outcome condition.

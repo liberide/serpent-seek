@@ -169,7 +169,13 @@
 		<ProgressCube {steps} done={!running} unique={fullChain ? (liveUnique ?? request.merge?.unique_links ?? null) : null} />
 		{#if request.chain_snapshot}
 			<div class="card">
-					<ChainGraph chain={request.chain_snapshot} states={nodeStates} stats={nodeStats} finish={lastStepNode} />
+					<ChainGraph
+					chain={request.chain_snapshot}
+					states={nodeStates}
+					stats={nodeStats}
+					finish={lastStepNode}
+					totalMs={request.total_ms}
+				/>
 			</div>
 		{/if}
 		<StepTimeline {steps} {running} />

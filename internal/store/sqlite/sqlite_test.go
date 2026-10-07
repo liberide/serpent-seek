@@ -147,6 +147,37 @@ func TestChains(t *testing.T) {
 	}
 }
 
+func TestChainNodeKindRoundTrip(t *testing.T) {
+	ctx := context.Background()
+	st := *openTest(t)
+	chain := &store.Chain{
+		ID: "ck", Name: "kinds", Mode: store.ChainModeFullChain,
+		Nodes: []store.ChainNode{
+			{Key: "start", Kind: store.NodeKindStart, TimeoutMS: 1000},
+			{Key: "join", Kind: store.NodeKindJoin, TimeoutMS: 1000},
+			{Key: "p", Kind: store.NodeKindProvider, ProviderID: "apiserpent", TimeoutMS: 1000},
+		},
+		Edges: []store.ChainEdge{
+			{FromKey: "start", ToKey: "p", Condition: "next"},
+			{FromKey: "p", ToKey: "join", Condition: "next"},
+		},
+	}
+	if err := st.SaveChain(ctx, chain); err != nil {
+		t.Fatalf("SaveChain: %v", err)
+	}
+	got, err := st.GetChain(ctx, "ck")
+	if err != nil {
+		t.Fatalf("GetChain: %v", err)
+	}
+	kinds := map[string]string{}
+	for _, n := range got.Nodes {
+		kinds[n.Key] = n.Kind
+	}
+	if kinds["start"] != store.NodeKindStart || kinds["join"] != store.NodeKindJoin || kinds["p"] != store.NodeKindProvider {
+		t.Fatalf("node kinds not persisted: %+v", kinds)
+	}
+}
+
 func TestRequestsAndSteps(t *testing.T) {
 	ctx := context.Background()
 	st := *openTest(t)

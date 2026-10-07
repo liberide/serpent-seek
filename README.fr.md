@@ -41,8 +41,11 @@ dommage matériel (GPLv3 §§15–16, détails dans `NOTICE`).
   Google, Yandex, SerpApi…), IA/neuronale (Exa, Tavily, Perplexity, Kagi…),
   académique (OpenAlex, PubMed, Crossref, Semantic Scholar…) et entreprise
   (Azure AI Search, Vertex AI Search, Vectara…)
-* 🧩 **Éditeur visuel de chaînes** — chaînes de fallback/réessai sous forme de
-  graphe nœuds/arêtes ; plusieurs instances nommées par pilote
+* 🧩 **Éditeur visuel de chaînes** — un vrai graphe de nœuds et d'arêtes : un
+  bloc **Départ** logique se ramifie vers plusieurs fournisseurs, un bloc
+  **Connecteur** logique fusionne les branches et supprime les URL en double,
+  le reste suit les règles de fallback/réessai ; plusieurs instances nommées
+  par pilote
 * 🔌 **Prêt pour Open WebUI** — point d'accès `/search` clé en main : toujours
   HTTP 200, `[{"link","title","snippet"}]`
 * 🤖 **Serveur MCP** — outil `search` en HTTP streamable pour Claude, Cursor,
@@ -63,6 +66,7 @@ dommage matériel (GPLv3 §§15–16, détails dans `NOTICE`).
   * [Intégration MCP (Model Context Protocol)](#intégration-mcp-model-context-protocol)
 * [Fournisseurs](#fournisseurs)
   * [SearXNG : instance externe uniquement](#searxng--instance-externe-uniquement)
+* [Blocs de chaîne](#blocs-de-chaîne)
 * [PostgreSQL (profil `extdb`)](#postgresql-profil-extdb)
 * [Réglages](#réglages)
 * [Interface et localisation](#interface-et-localisation)
@@ -272,6 +276,54 @@ l'exploite.
 > **⚠️ SearXNG est sous licence AGPLv3.** C'est un service externe ; SerpentSeek
 > ne communique avec lui que par HTTP et ne lie rien. La responsabilité du respect
 > de la licence SearXNG incombe à la personne qui le déploie.
+
+## Blocs de chaîne
+
+L'éditeur visuel construit un graphe de trois types de blocs :
+
+* **Départ** (`kind: start`) — point d'entrée logique. Il n'a pas de fournisseur
+  et divise une requête vers plusieurs fournisseurs à la fois. Un seul Départ
+  par chaîne.
+* **Fournisseur** (`kind: provider`, par défaut) — exécute une instance de
+  fournisseur configurée ; le délai, les réessais, le backoff et les règles de
+  résultat s'y trouvent.
+* **Connecteur** (`kind: join`) — point de fusion logique : attend toutes les
+  branches entrantes, fusionne les résultats et supprime les URL en double (les
+  paramètres de suivi comme `utm_*` sont retirés avant comparaison).
+
+Le sélecteur de **mode** détermine l'exécution :
+
+* **Premier succès** — fallback linéaire. Le premier résultat exploitable
+  termine la requête ; `on_empty`/`on_fail` choisissent le bloc suivant.
+  `on_success: next|edge` fusionne les lignes du bloc et continue.
+* **Chaîne complète** — le bloc après le Départ se ramifie : les branches
+  sœurs s'exécutent en parallèle (limité par `MAX_CONCURRENCY`), un Connecteur
+  les synchronise, et les lignes de tous les fournisseurs sont fusionnées en un
+  résultat dédupliqué.
+
+Le bloc **Connecteur** peut ignorer le nombre de résultats (`ignore_count`) :
+activé, les fournisseurs sont interrogés sans limite et tous les résultats
+uniques trouvés sont renvoyés, sans plafonner au `count` de la requête. Dans la
+trace, le Connecteur affiche aussi la durée totale de la requête.
+
+### Compatibilité ascendante
+
+Les chaînes existantes ne sont pas migrées en base. La migration `00008` ajoute
+seulement `kind` avec la valeur par défaut `provider`, et l'ancien drapeau
+`is_start` continue de fonctionner : une instance mise à jour exécute chaque
+chaîne enregistrée exactement comme avant :
+
+* une chaîne sans bloc Départ explicite conserve l'ancien parcours linéaire (en
+  mode « Chaîne complète », elle suit une seule arête `next` neutre par bloc,
+  comme toujours) ;
+* `on_success` reste sans effet pour ces chaînes (un bloc réussi terminait
+  toujours la requête), la nouvelle continuation est donc opt-in ;
+* à l'ouverture dans l'éditeur, un bloc Départ visible apparaît, est relié à
+  l'ancien point d'entrée et `on_success: stop` est figé — le graphe paraît plus
+  explicite, le résultat reste identique.
+
+La ramification parallèle, la fusion par Connecteur et la continuation
+`on_success` ne s'appliquent qu'aux chaînes contenant réellement un bloc Départ.
 
 ## PostgreSQL (profil `extdb`)
 

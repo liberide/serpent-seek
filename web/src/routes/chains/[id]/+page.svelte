@@ -9,6 +9,7 @@
 
 	type ChainNode = {
 		key: string;
+		kind?: string;
 		provider_id: string;
 		provider?: string;
 		label?: string;

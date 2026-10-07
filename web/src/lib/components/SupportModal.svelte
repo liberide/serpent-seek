@@ -1,7 +1,8 @@
 <script lang="ts">
+	import { tick } from 'svelte';
 	import { t } from '$lib/i18n.svelte';
 	import { notify, supportOpen } from '$lib/stores';
-	import { THEMES, applyTheme, theme, type ThemeId } from '$lib/theme';
+	import { THEMES, applyTheme, theme, seasonalAuto, type ThemeId } from '$lib/theme';
 	import { wallets, type Wallet } from '$lib/wallets';
 	import { renderSVG } from 'uqr';
 	import Modal from './Modal.svelte';
@@ -16,12 +17,27 @@
 	let pending = $state<ThemeId>($theme);
 	const currentTheme = $derived(THEMES.find((item) => item.id === $theme) ?? THEMES[0]);
 	const pendingTheme = $derived(THEMES.find((item) => item.id === pending) ?? THEMES[0]);
+	// Scrollable theme grid container — used to reveal the active theme on open.
+	let themeGrid = $state<HTMLDivElement | null>(null);
 
-	// Every time the dialog opens, restart from the currently active theme.
+	// Shown while the active theme was auto-enabled for an ongoing holiday:
+	// explains that it is temporary and how to keep it.
+	const autoSeason = $derived($seasonalAuto?.marker.theme === $theme ? $seasonalAuto : null);
+	const autoSeasonDef = $derived(
+		autoSeason ? THEMES.find((item) => item.id === autoSeason.window.theme) : undefined
+	);
+
+	// Every time the dialog opens, restart from the currently active theme
+	// and scroll its tile into view (the list is long enough to overflow).
 	// Closing the support dialog also dismisses any open QR code.
 	$effect(() => {
 		if ($supportOpen) {
 			pending = $theme;
+			tick().then(() => {
+				themeGrid
+					?.querySelector(`[data-theme-preview='${$theme}']`)
+					?.scrollIntoView({ block: 'center' });
+			});
 		} else {
 			qrWallet = null;
 		}
@@ -93,8 +109,11 @@
 >
 	<p class="mb-3 text-xs text-slate-400">{t('support.subtitle')}</p>
 	<div class="space-y-2">
-		{#each wallets as wallet (wallet.id)}
-			<div class="flex items-center gap-3 rounded-lg border border-slate-700 bg-slate-800 p-2">
+		{#each wallets as wallet, i (wallet.id)}
+			<div
+				class="rainbow-frame rainbow-frame-soft flex items-center gap-3 rounded-lg border bg-slate-800 p-2"
+				style:animation-delay="{i * -2.8}s"
+			>
 				<div class="min-w-0 flex-1">
 					<div class="flex items-center gap-2">
 						<span class="text-xs font-semibold text-slate-200">{wallet.name}</span>
@@ -143,33 +162,63 @@
 				{t('theme.current')}: {t(currentTheme.labelKey)}
 			</span>
 		</div>
-		<div class="grid grid-cols-5 gap-2">
-			{#each THEMES as item (item.id)}
-				<button
-					type="button"
-					data-theme-preview={item.id}
-					aria-pressed={pending === item.id}
-					title={t(item.hintKey)}
-					onclick={() => (pending = item.id)}
-					class="group rounded-lg border-2 p-1.5 transition {pending === item.id
-						? 'border-emerald-500 shadow-[var(--accent-glow)]'
-						: 'border-slate-700 hover:border-slate-500'}"
-				>
-					<span class="block overflow-hidden rounded border border-slate-700/80">
-						<span class="block h-1.5 bg-emerald-500"></span>
-						<span class="block bg-slate-950 p-1">
-							<span class="block h-1.5 w-4/5 rounded-sm bg-slate-700"></span>
-							<span class="mt-1 block h-1.5 w-3/5 rounded-sm bg-slate-600"></span>
-							<span class="mt-1 block h-1.5 w-2/3 rounded-sm bg-violet-500/70"></span>
+		<!-- Only the theme grid scrolls, so the dialog never grows taller. -->
+		<div bind:this={themeGrid} class="max-h-48 overflow-y-auto pr-1">
+			<div class="grid grid-cols-5 gap-2">
+				{#each THEMES as item (item.id)}
+					<button
+						type="button"
+						data-theme-preview={item.id}
+						aria-pressed={pending === item.id}
+						title={t(item.hintKey)}
+						onclick={() => (pending = item.id)}
+						class="group relative rounded-lg border-2 p-1.5 transition {pending === item.id
+							? 'border-emerald-500 shadow-[var(--accent-glow)]'
+							: 'border-slate-700 hover:border-slate-500'}"
+					>
+						{#if item.festive}
+							<span
+								class="absolute left-1 top-1 z-10 rounded-sm bg-slate-950/80 px-1 text-[10px] leading-4 text-slate-100 shadow-sm"
+								title={t('theme.festive')}
+								aria-label={t('theme.festive')}
+								role="img">{item.festive}</span
+							>
+						{/if}
+						{#if $theme === item.id}
+							<span
+								class="absolute right-1 top-1 z-10 h-2 w-2 bg-emerald-500 shadow-[var(--accent-glow)]"
+								title={t('theme.active')}
+								aria-hidden="true"
+							></span>
+						{/if}
+						<span class="block overflow-hidden rounded border border-slate-700/80">
+							<span class="block h-1.5 bg-emerald-500"></span>
+							<span class="block bg-slate-950 p-1">
+								<span class="block h-1.5 w-4/5 rounded-sm bg-slate-700"></span>
+								<span class="mt-1 block h-1.5 w-3/5 rounded-sm bg-slate-600"></span>
+								<span class="mt-1 block h-1.5 w-2/3 rounded-sm bg-violet-500/70"></span>
+							</span>
 						</span>
-					</span>
-					<span class="mt-1 block truncate text-center text-[10px] font-medium text-slate-300">
-						{t(item.labelKey)}
-					</span>
-				</button>
-			{/each}
+						<span class="mt-1 block truncate text-center text-[10px] font-medium text-slate-300">
+							{t(item.labelKey)}
+						</span>
+					</button>
+				{/each}
+			</div>
 		</div>
 		<p class="mt-2 text-[11px] leading-snug text-slate-500">{t(pendingTheme.hintKey)}</p>
+		{#if autoSeason && autoSeasonDef}
+			<p
+				class="mt-2 rounded-lg border border-dashed border-slate-600 bg-slate-800/60 p-2 text-[11px] leading-snug text-slate-400"
+				role="note"
+			>
+				{t('theme.seasonalAuto', {
+					icon: autoSeasonDef.festive ?? '🎉',
+					name: t(autoSeasonDef.labelKey),
+					date: autoSeason.window.ends.toLocaleDateString()
+				})}
+			</p>
+		{/if}
 		<button
 			type="button"
 			class="btn btn-primary mt-3 w-full justify-center"

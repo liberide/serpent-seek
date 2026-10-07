@@ -40,8 +40,10 @@ Details in `NOTICE`).
   Yandex, SerpApi…), KI/neural (Exa, Tavily, Perplexity, Kagi…),
   wissenschaftlich (OpenAlex, PubMed, Crossref, Semantic Scholar…) und
   Enterprise (Azure AI Search, Vertex AI Search, Vectara…)
-* 🧩 **Visueller Ketten-Editor** — Fallback-/Retry-Ketten als
-  Knoten-und-Kanten-Graph; mehrere benannte Instanzen pro Treiber
+* 🧩 **Visueller Ketten-Editor** — ein echter Knoten-und-Kanten-Graph: ein
+  logischer **Start**-Block fächert auf mehrere Anbieter auf, ein logischer
+  **Verbinder** führt die Zweige zusammen und entfernt doppelte URLs, der Rest
+  folgt Fallback-/Retry-Richtlinien; mehrere benannte Instanzen pro Treiber
 * 🔌 **Bereit für Open WebUI** — fertiger `/search`-Endpunkt: immer HTTP 200,
   `[{"link","title","snippet"}]`
 * 🤖 **MCP-Server** — `search`-Tool über streamable HTTP für Claude, Cursor, VS
@@ -62,6 +64,7 @@ Details in `NOTICE`).
   * [MCP-Integration (Model Context Protocol)](#mcp-integration-model-context-protocol)
 * [Suchanbieter](#suchanbieter)
   * [SearXNG: nur externe Instanz](#searxng-nur-externe-instanz)
+* [Kettenblöcke](#kettenblöcke)
 * [PostgreSQL (Profil `extdb`)](#postgresql-profil-extdb)
 * [Einstellungen](#einstellungen)
 * [Oberfläche und Lokalisierung](#oberfläche-und-lokalisierung)
@@ -268,6 +271,54 @@ Anforderungen an deine Instanz: `search.formats: [html, json]` und
 > Dienst; SerpentSeek kommuniziert nur über HTTP und linkt nichts. Die
 > Verantwortung für die Einhaltung der SearXNG-Lizenz liegt bei der Person,
 > die ihn bereitstellt.
+
+## Kettenblöcke
+
+Der visuelle Editor baut einen Graphen aus drei Blockarten:
+
+* **Start** (`kind: start`) — logischer Einstiegspunkt. Hat keinen Anbieter und
+  fächert eine Anfrage gleichzeitig auf mehrere Anbieter auf. Genau ein Start
+  pro Kette.
+* **Anbieter** (`kind: provider`, Standard) — führt eine konfigurierte
+  Anbieter-Instanz aus; Timeout, Retries, Backoff und Ergebnisrichtlinien
+  liegen hier.
+* **Verbinder** (`kind: join`) — logischer Zusammenführungspunkt: wartet auf
+  alle eingehenden Zweige, führt die Ergebnisse zusammen und entfernt doppelte
+  URLs (Tracking-Parameter wie `utm_*` werden vor dem Vergleich entfernt).
+
+Der **Modus**-Schalter bestimmt die Ausführung:
+
+* **Erster Erfolg** — linearer Fallback. Das erste brauchbare Ergebnis beendet
+  die Anfrage; `on_empty`/`on_fail` wählen den nächsten Block.
+  `on_success: next|edge` mischt die Zeilen des Blocks hinzu und läuft weiter.
+* **Vollständige Kette** — der Block nach dem Start fächert auf: Geschwister-
+  zweige laufen parallel (begrenzt durch `MAX_CONCURRENCY`), ein Verbinder
+  synchronisiert sie, und die Zeilen aller Anbieter werden zu einem
+  deduplizierten Ergebnis zusammengeführt.
+
+Der **Verbinder**-Block kann die Ergebnisanzahl ignorieren (`ignore_count`):
+Ist die Option aktiv, werden Anbieter ohne Limit abgefragt und alle gefundenen
+eindeutigen Ergebnisse zurückgegeben, statt auf die `count` der Anfrage zu
+begrenzen. Im Trace zeigt der Verbinder außerdem die Gesamtzeit der Anfrage.
+
+### Rückwärtskompatibilität
+
+Bestehende Ketten werden in der Datenbank nicht migriert. Migration `00008`
+fügt nur `kind` mit Standard `provider` hinzu, und das alte `is_start`-Flag
+funktioniert weiter, sodass eine aktualisierte Instanz jede gespeicherte Kette
+genau wie zuvor ausführt:
+
+* eine Kette ohne expliziten Start-Block behält den alten linearen Lauf (im
+  Modus „Vollständige Kette“ folgt sie pro Block einer einzelnen neutralen
+  `next`-Kante, wie immer);
+* `on_success` bleibt für solche Ketten wirkungslos (ein erfolgreicher Block
+  beendete die Anfrage schon immer), die neue Fortsetzung ist also opt-in;
+* beim Öffnen im Editor erscheint ein sichtbarer Start-Block, wird mit dem alten
+  Einstiegspunkt verbunden und `on_success: stop` gesetzt — der Graph wirkt
+  expliziter, das Ergebnis bleibt gleich.
+
+Paralleles Auffächern, Join-Zusammenführung und `on_success`-Fortsetzung gelten
+nur für Ketten, die tatsächlich einen Start-Block enthalten.
 
 ## PostgreSQL (Profil `extdb`)
 

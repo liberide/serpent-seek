@@ -134,6 +134,53 @@ body {
 	}
 }
 
+/* =====================================================================
+   Rainbow frames — a slowly shimmering rainbow outline used by the
+   support dialog window and its wallet cards. The element keeps its own
+   fill: the padding-box layer paints `--rainbow-fill`, while a conic
+   rainbow gradient travels around the border clockwise, driven by the
+   animated custom property --rainbow-angle (needs @property to rotate).
+   ===================================================================== */
+@property --rainbow-angle {
+	syntax: '<angle>';
+	inherits: false;
+	initial-value: 0deg;
+}
+
+@keyframes rainbow-spin {
+	to {
+		--rainbow-angle: 360deg;
+	}
+}
+
+.rainbow-frame {
+	border-color: transparent;
+	background:
+		linear-gradient(var(--rainbow-fill, var(--color-slate-900)), var(--rainbow-fill, var(--color-slate-900)))
+			padding-box,
+		conic-gradient(
+			from var(--rainbow-angle),
+			#ff5f6d,
+			#ffc371,
+			#47e891,
+			#4facfe,
+			#b06ab3,
+			#ff5f6d
+		) border-box;
+	animation: rainbow-spin 6s linear infinite;
+}
+/* Wallet cards sit one surface level above the dialog panel. */
+.rainbow-frame-soft {
+	--rainbow-fill: var(--color-slate-800);
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.rainbow-frame {
+		animation: none;
+		--rainbow-angle: 135deg;
+	}
+}
+
 /* --- SvelteFlow canvas driven by the active theme tokens --- */
 .svelte-flow.dark {
 	--xy-background-color-default: var(--graph-bg);
@@ -1056,4 +1103,931 @@ body {
 	--node-empty-bg: rgba(251, 191, 36, 0.1);
 	--scrollbar-thumb: #17482a;
 	--scrollbar-track: #04120a;
+}
+
+/* --- 16. Dracula (classic purple night with pink accents) --- */
+[data-theme='dracula'],
+[data-theme-preview='dracula'] {
+	--color-slate-100: #f8f8f2;
+	--color-slate-200: #dde0ea;
+	--color-slate-300: #b6bcd4;
+	--color-slate-400: #8a92b8;
+	--color-slate-500: #6272a4;
+	--color-slate-600: #4d5678;
+	--color-slate-700: #44475a;
+	--color-slate-800: #343746;
+	--color-slate-900: #282a36;
+	--color-slate-950: #1a1b24;
+	--color-emerald-100: #efe2ff;
+	--color-emerald-200: #e0c9ff;
+	--color-emerald-300: #cfa8ff;
+	--color-emerald-400: #c9a6fb;
+	--color-emerald-500: #bd93f9;
+	--color-emerald-600: #9b64e3;
+	--color-emerald-700: #8147c9;
+	--color-emerald-900: #4b2675;
+	--color-violet-200: #ffcde9;
+	--color-violet-300: #ffb3dc;
+	--color-violet-500: #ff79c6;
+	--color-violet-600: #f756b5;
+	--status-ok: #50fa7b;
+	--status-empty: #f1fa8c;
+	--status-fail: #ff5555;
+	--status-next: #6272a4;
+	--status-running: #f1fa8c;
+	--node-bg: rgba(40, 42, 54, 0.86);
+	--node-ok-bg: rgba(80, 250, 123, 0.1);
+	--node-fail-bg: rgba(255, 85, 85, 0.12);
+	--node-empty-bg: rgba(241, 250, 140, 0.1);
+	--app-bg-image: radial-gradient(
+		900px 420px at 50% -10%,
+		rgba(189, 147, 249, 0.12),
+		transparent 70%
+	);
+	--accent-glow: 0 0 18px rgba(189, 147, 249, 0.32);
+	--graph-bg: #1a1b24;
+	--graph-dots: #343746;
+	--scrollbar-thumb: #44475a;
+	--scrollbar-track: #1a1b24;
+}
+
+/* --- 17. Tokyo Night (indigo night blues, sky-blue accent) --- */
+[data-theme='tokyonight'],
+[data-theme-preview='tokyonight'] {
+	--color-slate-100: #c0caf5;
+	--color-slate-200: #a9b8e8;
+	--color-slate-300: #8b9bd6;
+	--color-slate-400: #737aa2;
+	--color-slate-500: #565f89;
+	--color-slate-600: #414868;
+	--color-slate-700: #292e42;
+	--color-slate-800: #1f2335;
+	--color-slate-900: #1a1b26;
+	--color-slate-950: #14151e;
+	--color-emerald-100: #dbe6ff;
+	--color-emerald-200: #c2d4ff;
+	--color-emerald-300: #a3bcfc;
+	--color-emerald-400: #8baffa;
+	--color-emerald-500: #7aa2f7;
+	--color-emerald-600: #5f8af0;
+	--color-emerald-700: #4b72d8;
+	--color-emerald-900: #2c4c9e;
+	--color-violet-200: #d9c8fc;
+	--color-violet-300: #c8b2fa;
+	--color-violet-500: #bb9af7;
+	--color-violet-600: #a57ef0;
+	--status-ok: #9ece6a;
+	--status-empty: #e0af68;
+	--status-fail: #f7768e;
+	--status-next: #565f89;
+	--status-running: #e0af68;
+	--node-bg: rgba(26, 27, 38, 0.86);
+	--node-ok-bg: rgba(158, 206, 106, 0.1);
+	--node-fail-bg: rgba(247, 118, 142, 0.12);
+	--node-empty-bg: rgba(224, 175, 104, 0.1);
+	--app-bg-image: radial-gradient(
+		900px 420px at 50% -10%,
+		rgba(122, 162, 247, 0.12),
+		transparent 70%
+	);
+	--accent-glow: 0 0 18px rgba(122, 162, 247, 0.3);
+	--graph-bg: #14151e;
+	--graph-dots: #1f2335;
+	--scrollbar-thumb: #292e42;
+	--scrollbar-track: #14151e;
+}
+
+/* --- 18. Mocha (warm dark coffee with a caramel accent) --- */
+[data-theme='mocha'],
+[data-theme-preview='mocha'] {
+	--color-slate-100: #f4e9de;
+	--color-slate-200: #e3d1c0;
+	--color-slate-300: #c9b09a;
+	--color-slate-400: #a98a70;
+	--color-slate-500: #8a6a52;
+	--color-slate-600: #5f4634;
+	--color-slate-700: #463322;
+	--color-slate-800: #31241a;
+	--color-slate-900: #201813;
+	--color-slate-950: #150f0b;
+	--color-emerald-100: #fbebd2;
+	--color-emerald-200: #f7dab0;
+	--color-emerald-300: #f2c585;
+	--color-emerald-400: #ebb26e;
+	--color-emerald-500: #e0a458;
+	--color-emerald-600: #c88945;
+	--color-emerald-700: #a56c33;
+	--color-emerald-900: #6b4520;
+	--color-violet-200: #f3d9dc;
+	--color-violet-300: #e8b8be;
+	--color-violet-500: #d98a96;
+	--color-violet-600: #c06d7b;
+	--status-ok: #8fbf6b;
+	--status-empty: #e6b566;
+	--status-fail: #d1605e;
+	--status-next: #8a6a52;
+	--status-running: #e6b566;
+	--node-bg: rgba(32, 24, 19, 0.86);
+	--node-ok-bg: rgba(143, 191, 107, 0.1);
+	--node-fail-bg: rgba(209, 96, 94, 0.12);
+	--node-empty-bg: rgba(230, 181, 102, 0.1);
+	--app-bg-image: radial-gradient(
+		900px 420px at 50% -10%,
+		rgba(224, 164, 88, 0.1),
+		transparent 70%
+	);
+	--accent-glow: 0 0 16px rgba(224, 164, 88, 0.28);
+	--graph-bg: #150f0b;
+	--graph-dots: #31241a;
+	--scrollbar-thumb: #463322;
+	--scrollbar-track: #150f0b;
+}
+
+/* --- 19. Royal (deep navy with an elegant gold accent) --- */
+[data-theme='royal'],
+[data-theme-preview='royal'] {
+	--color-slate-100: #e8eefb;
+	--color-slate-200: #cbd8f1;
+	--color-slate-300: #a3b6de;
+	--color-slate-400: #7b90c0;
+	--color-slate-500: #556b9b;
+	--color-slate-600: #3a4f78;
+	--color-slate-700: #2a3a5c;
+	--color-slate-800: #1d2946;
+	--color-slate-900: #101c38;
+	--color-slate-950: #080f22;
+	--color-emerald-100: #faf0d7;
+	--color-emerald-200: #f4e0b0;
+	--color-emerald-300: #efd188;
+	--color-emerald-400: #e3c55f;
+	--color-emerald-500: #d4af37;
+	--color-emerald-600: #b59424;
+	--color-emerald-700: #96781c;
+	--color-emerald-900: #5c4a0f;
+	--color-violet-200: #dce6f5;
+	--color-violet-300: #c3d2ec;
+	--color-violet-500: #8fa9d4;
+	--color-violet-600: #7089bb;
+	--status-ok: #57c785;
+	--status-empty: #e6c463;
+	--status-fail: #ef5d75;
+	--status-next: #556b9b;
+	--status-running: #e6c463;
+	--node-bg: rgba(16, 28, 56, 0.86);
+	--node-ok-bg: rgba(87, 199, 133, 0.1);
+	--node-fail-bg: rgba(239, 93, 117, 0.12);
+	--node-empty-bg: rgba(230, 196, 99, 0.1);
+	--app-bg-image: radial-gradient(
+		900px 420px at 50% -10%,
+		rgba(212, 175, 55, 0.1),
+		transparent 70%
+	);
+	--accent-glow: 0 0 18px rgba(212, 175, 55, 0.3);
+	--graph-bg: #080f22;
+	--graph-dots: #1d2946;
+	--scrollbar-thumb: #2a3a5c;
+	--scrollbar-track: #080f22;
+}
+
+/* --- 20. Amber CRT (retro terminal: warm amber on black, scanlines) --- */
+[data-theme='amber'],
+[data-theme-preview='amber'] {
+	--color-slate-100: #fff6e0;
+	--color-slate-200: #ffe8b8;
+	--color-slate-300: #fdd488;
+	--color-slate-400: #e8b45e;
+	--color-slate-500: #c2903c;
+	--color-slate-600: #8f6a2a;
+	--color-slate-700: #5c461c;
+	--color-slate-800: #3a2d13;
+	--color-slate-900: #201a0c;
+	--color-slate-950: #0f0a04;
+	--color-emerald-100: #ffedbe;
+	--color-emerald-200: #ffdf8f;
+	--color-emerald-300: #ffd05c;
+	--color-emerald-400: #ffc22e;
+	--color-emerald-500: #ffb000;
+	--color-emerald-600: #d99600;
+	--color-emerald-700: #b37a00;
+	--color-emerald-900: #6e4c00;
+	--color-violet-200: #fff0cf;
+	--color-violet-300: #ffe3a6;
+	--color-violet-500: #e8b34c;
+	--color-violet-600: #c8932e;
+	--font-sans:
+		ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+		monospace;
+	--radius-md: 0.125rem;
+	--radius-lg: 0.125rem;
+	--radius-xl: 0.125rem;
+	--status-ok: #ffc22e;
+	--status-empty: #e8961c;
+	--status-fail: #ff5c1f;
+	--status-next: #8f6a2a;
+	--status-running: #ffe08a;
+	--node-start: #ffb000;
+	--node-start-bg: rgba(255, 176, 0, 0.15);
+	--node-bg: rgba(32, 26, 12, 0.86);
+	--node-ok-bg: rgba(255, 194, 46, 0.08);
+	--node-fail-bg: rgba(255, 92, 31, 0.12);
+	--node-empty-bg: rgba(232, 150, 28, 0.08);
+	--app-bg-image: repeating-linear-gradient(
+		0deg,
+		rgba(255, 176, 0, 0.03) 0 2px,
+		transparent 2px 4px
+	);
+	--accent-glow: 0 0 16px rgba(255, 176, 0, 0.35);
+	--graph-bg: #0f0a04;
+	--graph-dots: #3a2d13;
+	--scrollbar-thumb: #5c461c;
+	--scrollbar-track: #0f0a04;
+}
+
+/* --- 21. Solarized (classic light: ivory surfaces, calm blue accent) --- */
+[data-theme='solarized'],
+[data-theme-preview='solarized'] {
+	color-scheme: light;
+	--color-slate-100: #073642;
+	--color-slate-200: #12444f;
+	--color-slate-300: #2a5864;
+	--color-slate-400: #586e75;
+	--color-slate-500: #657b83;
+	--color-slate-600: #93a1a1;
+	--color-slate-700: #d7d0bb;
+	--color-slate-800: #eee8d5;
+	--color-slate-900: #fdf6e3;
+	--color-slate-950: #f4eedd;
+	--color-emerald-100: #dceefb;
+	--color-emerald-200: #1c5f8c;
+	--color-emerald-300: #1e6fa4;
+	--color-emerald-400: #207fbd;
+	--color-emerald-500: #268bd2;
+	--color-emerald-600: #2076b3;
+	--color-emerald-700: #1c6498;
+	--color-emerald-900: #12405f;
+	--color-violet-200: #5253a6;
+	--color-violet-300: #5c5eb5;
+	--color-violet-500: #6c71c4;
+	--color-violet-600: #595db6;
+	--color-rose-100: #7c1d1d;
+	--color-rose-200: #991f1f;
+	--color-rose-300: #b32624;
+	--color-rose-400: #c92d2b;
+	--color-rose-500: #dc322f;
+	--color-rose-600: #c92d2b;
+	--color-rose-700: #a62624;
+	--color-rose-800: #8b201e;
+	--color-rose-900: #f6d6d5;
+	--color-rose-950: #fae9e8;
+	--color-amber-200: #715705;
+	--color-amber-300: #8a6a02;
+	--color-amber-400: #a37d02;
+	--color-amber-500: #b58900;
+	--color-amber-600: #a67d00;
+	--color-amber-700: #8a6a02;
+	--color-amber-950: #f5ebcd;
+	--status-ok: #859900;
+	--status-empty: #b58900;
+	--status-fail: #dc322f;
+	--status-next: #93a1a1;
+	--status-running: #b58900;
+	--node-bg: rgba(253, 246, 227, 0.95);
+	--node-ok-bg: rgba(133, 153, 0, 0.08);
+	--node-fail-bg: rgba(220, 50, 47, 0.08);
+	--node-empty-bg: rgba(181, 137, 0, 0.08);
+	--radius-md: 0.375rem;
+	--radius-lg: 0.5rem;
+	--radius-xl: 0.625rem;
+	--app-bg-image: radial-gradient(
+		900px 420px at 50% -10%,
+		rgba(38, 139, 210, 0.08),
+		transparent 70%
+	);
+	--accent-glow: 0 0 16px rgba(38, 139, 210, 0.2);
+	--graph-bg: #f4eedd;
+	--graph-dots: #d7d0bb;
+	--scrollbar-thumb: #d7d0bb;
+	--scrollbar-track: #efe8d8;
+}
+
+/* --- 22. Sakura (cherry-blossom light with a pink accent) --- */
+[data-theme='sakura'],
+[data-theme-preview='sakura'] {
+	color-scheme: light;
+	--color-slate-100: #3b2129;
+	--color-slate-200: #4c2b35;
+	--color-slate-300: #654052;
+	--color-slate-400: #8a5a70;
+	--color-slate-500: #a87a8a;
+	--color-slate-600: #c9a3b1;
+	--color-slate-700: #efd4dc;
+	--color-slate-800: #f7e6ec;
+	--color-slate-900: #ffffff;
+	--color-slate-950: #fdf2f6;
+	--color-emerald-100: #ffe0ec;
+	--color-emerald-200: #962457;
+	--color-emerald-300: #b92c62;
+	--color-emerald-400: #db3b74;
+	--color-emerald-500: #ef6d9d;
+	--color-emerald-600: #db3b74;
+	--color-emerald-700: #b92c62;
+	--color-emerald-900: #6e1b3d;
+	--color-violet-200: #7a2b8f;
+	--color-violet-300: #9338ab;
+	--color-violet-500: #b05cc9;
+	--color-violet-600: #9a44b5;
+	--color-rose-100: #7f1d1d;
+	--color-rose-200: #991b1b;
+	--color-rose-300: #b91c1c;
+	--color-rose-400: #dc2626;
+	--color-rose-500: #ef4444;
+	--color-rose-600: #dc2626;
+	--color-rose-700: #b91c1c;
+	--color-rose-800: #991b1b;
+	--color-rose-900: #fee2e2;
+	--color-rose-950: #fef2f2;
+	--color-amber-200: #78350f;
+	--color-amber-300: #92400e;
+	--color-amber-400: #b45309;
+	--color-amber-500: #d97706;
+	--color-amber-600: #d97706;
+	--color-amber-700: #b45309;
+	--color-amber-950: #fef3c7;
+	--status-ok: #059669;
+	--status-empty: #d97706;
+	--status-fail: #e11d48;
+	--status-next: #c9a3b1;
+	--status-running: #d97706;
+	--node-bg: rgba(255, 255, 255, 0.95);
+	--node-ok-bg: rgba(5, 150, 105, 0.08);
+	--node-fail-bg: rgba(225, 29, 72, 0.08);
+	--node-empty-bg: rgba(217, 119, 6, 0.08);
+	--radius-md: 0.5rem;
+	--radius-lg: 0.75rem;
+	--radius-xl: 1rem;
+	--app-bg-image: radial-gradient(
+		900px 420px at 50% -10%,
+		rgba(239, 109, 157, 0.12),
+		transparent 70%
+	);
+	--accent-glow: 0 0 16px rgba(219, 59, 116, 0.22);
+	--graph-bg: #fdf2f6;
+	--graph-dots: #efd4dc;
+	--scrollbar-thumb: #ecc2cf;
+	--scrollbar-track: #fdeef3;
+}
+
+/* --- 23. Mint (fresh light with a cool mint-teal accent) --- */
+[data-theme='mint'],
+[data-theme-preview='mint'] {
+	color-scheme: light;
+	--color-slate-100: #122b25;
+	--color-slate-200: #1d3d35;
+	--color-slate-300: #2d564b;
+	--color-slate-400: #457367;
+	--color-slate-500: #639188;
+	--color-slate-600: #9bc0b7;
+	--color-slate-700: #cfe4de;
+	--color-slate-800: #e6f2ee;
+	--color-slate-900: #ffffff;
+	--color-slate-950: #effaf6;
+	--color-emerald-100: #ccfbf1;
+	--color-emerald-200: #0f766e;
+	--color-emerald-300: #0d9488;
+	--color-emerald-400: #14b8a6;
+	--color-emerald-500: #2dd4bf;
+	--color-emerald-600: #14b8a6;
+	--color-emerald-700: #0d9488;
+	--color-emerald-900: #134e4a;
+	--color-violet-200: #4d7c0f;
+	--color-violet-300: #65a30d;
+	--color-violet-500: #84cc16;
+	--color-violet-600: #65a30d;
+	--color-rose-100: #881337;
+	--color-rose-200: #9f1239;
+	--color-rose-300: #be123c;
+	--color-rose-400: #e11d48;
+	--color-rose-500: #f43f5e;
+	--color-rose-600: #e11d48;
+	--color-rose-700: #be123c;
+	--color-rose-800: #9f1239;
+	--color-rose-900: #fecdd3;
+	--color-rose-950: #ffe4e6;
+	--color-amber-200: #78350f;
+	--color-amber-300: #92400e;
+	--color-amber-400: #b45309;
+	--color-amber-500: #d97706;
+	--color-amber-600: #d97706;
+	--color-amber-700: #b45309;
+	--color-amber-950: #fef3c7;
+	--status-ok: #059669;
+	--status-empty: #d97706;
+	--status-fail: #e11d48;
+	--status-next: #9bc0b7;
+	--status-running: #d97706;
+	--node-bg: rgba(255, 255, 255, 0.95);
+	--node-ok-bg: rgba(5, 150, 105, 0.08);
+	--node-fail-bg: rgba(225, 29, 72, 0.08);
+	--node-empty-bg: rgba(217, 119, 6, 0.08);
+	--radius-md: 0.5rem;
+	--radius-lg: 0.75rem;
+	--radius-xl: 1rem;
+	--app-bg-image: radial-gradient(
+		900px 420px at 50% -10%,
+		rgba(20, 184, 166, 0.1),
+		transparent 70%
+	);
+	--accent-glow: 0 0 16px rgba(13, 148, 136, 0.2);
+	--graph-bg: #effaf6;
+	--graph-dots: #cfe4de;
+	--scrollbar-thumb: #cfe4de;
+	--scrollbar-track: #e6f5f0;
+}
+
+/* --- 24. Arctic (icy light with a crisp ice-blue accent) --- */
+[data-theme='arctic'],
+[data-theme-preview='arctic'] {
+	color-scheme: light;
+	--color-slate-100: #10273e;
+	--color-slate-200: #16324e;
+	--color-slate-300: #22466a;
+	--color-slate-400: #3a6389;
+	--color-slate-500: #5f87ab;
+	--color-slate-600: #8fb0c9;
+	--color-slate-700: #c3d6e4;
+	--color-slate-800: #e1edf5;
+	--color-slate-900: #ffffff;
+	--color-slate-950: #f0f7fc;
+	--color-emerald-100: #e0f2fe;
+	--color-emerald-200: #075985;
+	--color-emerald-300: #0369a1;
+	--color-emerald-400: #0284c7;
+	--color-emerald-500: #0ea5e9;
+	--color-emerald-600: #0284c7;
+	--color-emerald-700: #0369a1;
+	--color-emerald-900: #0c4a6e;
+	--color-violet-200: #4338ca;
+	--color-violet-300: #4f46e5;
+	--color-violet-500: #6366f1;
+	--color-violet-600: #4f46e5;
+	--color-rose-100: #881337;
+	--color-rose-200: #9f1239;
+	--color-rose-300: #be123c;
+	--color-rose-400: #e11d48;
+	--color-rose-500: #f43f5e;
+	--color-rose-600: #e11d48;
+	--color-rose-700: #be123c;
+	--color-rose-800: #9f1239;
+	--color-rose-900: #fecdd3;
+	--color-rose-950: #ffe4e6;
+	--color-amber-200: #78350f;
+	--color-amber-300: #92400e;
+	--color-amber-400: #b45309;
+	--color-amber-500: #d97706;
+	--color-amber-600: #d97706;
+	--color-amber-700: #b45309;
+	--color-amber-950: #fef3c7;
+	--status-ok: #059669;
+	--status-empty: #d97706;
+	--status-fail: #e11d48;
+	--status-next: #8fb0c9;
+	--status-running: #d97706;
+	--node-bg: rgba(255, 255, 255, 0.95);
+	--node-ok-bg: rgba(5, 150, 105, 0.08);
+	--node-fail-bg: rgba(225, 29, 72, 0.08);
+	--node-empty-bg: rgba(217, 119, 6, 0.08);
+	--radius-md: 0.5rem;
+	--radius-lg: 0.75rem;
+	--radius-xl: 1rem;
+	--app-bg-image: radial-gradient(
+		900px 420px at 50% -10%,
+		rgba(14, 165, 233, 0.1),
+		transparent 70%
+	);
+	--accent-glow: 0 0 16px rgba(2, 132, 199, 0.2);
+	--graph-bg: #f0f7fc;
+	--graph-dots: #c3d6e4;
+	--scrollbar-thumb: #c3d6e4;
+	--scrollbar-track: #e8f2f9;
+}
+
+/* --- 25. Honey (warm cream light with a honey-gold accent) --- */
+[data-theme='honey'],
+[data-theme-preview='honey'] {
+	color-scheme: light;
+	--color-slate-100: #33260a;
+	--color-slate-200: #453311;
+	--color-slate-300: #5c4618;
+	--color-slate-400: #7a5f22;
+	--color-slate-500: #9c7c33;
+	--color-slate-600: #c2a45e;
+	--color-slate-700: #dcc99b;
+	--color-slate-800: #f1e7cd;
+	--color-slate-900: #fffdf5;
+	--color-slate-950: #faf2dc;
+	--color-emerald-100: #fdf0d2;
+	--color-emerald-200: #8a6107;
+	--color-emerald-300: #a87808;
+	--color-emerald-400: #c58a0b;
+	--color-emerald-500: #dfa116;
+	--color-emerald-600: #c58a0b;
+	--color-emerald-700: #a87808;
+	--color-emerald-900: #6b4c05;
+	--color-violet-200: #7c4215;
+	--color-violet-300: #96511b;
+	--color-violet-500: #b96a28;
+	--color-violet-600: #9c571f;
+	--color-rose-100: #7f1d1d;
+	--color-rose-200: #991b1b;
+	--color-rose-300: #b91c1c;
+	--color-rose-400: #dc2626;
+	--color-rose-500: #ef4444;
+	--color-rose-600: #dc2626;
+	--color-rose-700: #b91c1c;
+	--color-rose-800: #991b1b;
+	--color-rose-900: #fee2e2;
+	--color-rose-950: #fef2f2;
+	--color-amber-200: #58350a;
+	--color-amber-300: #7a4b0c;
+	--color-amber-400: #9c620c;
+	--color-amber-500: #c07c0e;
+	--color-amber-600: #a86c0d;
+	--color-amber-700: #8a5a0c;
+	--color-amber-950: #fdf0cd;
+	--status-ok: #4d7c0f;
+	--status-empty: #b45309;
+	--status-fail: #b91c1c;
+	--status-next: #c2a45e;
+	--status-running: #b45309;
+	--node-bg: rgba(255, 253, 245, 0.95);
+	--node-ok-bg: rgba(77, 124, 15, 0.08);
+	--node-fail-bg: rgba(185, 28, 28, 0.08);
+	--node-empty-bg: rgba(180, 83, 9, 0.08);
+	--radius-md: 0.5rem;
+	--radius-lg: 0.75rem;
+	--radius-xl: 1rem;
+	--app-bg-image: radial-gradient(
+		900px 420px at 50% -10%,
+		rgba(223, 161, 22, 0.12),
+		transparent 70%
+	);
+	--accent-glow: 0 0 16px rgba(197, 138, 11, 0.22);
+	--graph-bg: #faf2dc;
+	--graph-dots: #dcc99b;
+	--scrollbar-thumb: #dcc99b;
+	--scrollbar-track: #f5ecd6;
+}
+
+/* --- 26. Halloween (seasonal: pumpkin orange on witch-night purple) --- */
+[data-theme='halloween'],
+[data-theme-preview='halloween'] {
+	--color-slate-100: #f6ecff;
+	--color-slate-200: #e4d4f5;
+	--color-slate-300: #c3aee0;
+	--color-slate-400: #9c82c4;
+	--color-slate-500: #73589c;
+	--color-slate-600: #4e3772;
+	--color-slate-700: #382554;
+	--color-slate-800: #26173c;
+	--color-slate-900: #180e28;
+	--color-slate-950: #0d0616;
+	--color-emerald-100: #ffe9d1;
+	--color-emerald-200: #ffd6a8;
+	--color-emerald-300: #ffbe78;
+	--color-emerald-400: #ff9e45;
+	--color-emerald-500: #ff7a1a;
+	--color-emerald-600: #e8620c;
+	--color-emerald-700: #c04c08;
+	--color-emerald-900: #5f2704;
+	--color-violet-200: #e9d5ff;
+	--color-violet-300: #d8b4fe;
+	--color-violet-500: #a855f7;
+	--color-violet-600: #9333ea;
+	--color-rose-100: #ffd9d9;
+	--color-rose-200: #ffb3b3;
+	--color-rose-300: #ff6b6b;
+	--color-rose-400: #ff3b3b;
+	--color-rose-500: #e62e2e;
+	--color-rose-600: #c42121;
+	--color-rose-700: #9e1a1a;
+	--color-rose-800: #7a1414;
+	--color-rose-900: #3d0a0a;
+	--color-rose-950: #260606;
+	--color-amber-200: #ffe9b3;
+	--color-amber-300: #ffd166;
+	--color-amber-400: #f5b83d;
+	--color-amber-500: #e89e1e;
+	--color-amber-600: #c68412;
+	--color-amber-700: #9e660d;
+	--color-amber-950: #3d2a05;
+	--status-ok: #a3e635;
+	--status-empty: #ffd166;
+	--status-fail: #ff3b3b;
+	--status-next: #73589c;
+	--status-running: #ffd166;
+	--node-start: #ff7a1a;
+	--node-start-bg: rgba(255, 122, 26, 0.15);
+	--node-bg: rgba(24, 14, 40, 0.86);
+	--node-ok-bg: rgba(163, 230, 53, 0.1);
+	--node-fail-bg: rgba(255, 59, 59, 0.12);
+	--node-empty-bg: rgba(255, 209, 102, 0.1);
+	--radius-md: 0.375rem;
+	--radius-lg: 0.5rem;
+	--radius-xl: 0.625rem;
+	--app-bg-image:
+		radial-gradient(800px 400px at 8% -8%, rgba(168, 85, 247, 0.16), transparent 65%),
+		radial-gradient(800px 400px at 92% -8%, rgba(255, 122, 26, 0.14), transparent 65%);
+	--accent-glow: 0 0 20px rgba(255, 122, 26, 0.38);
+	--graph-bg: #0d0616;
+	--graph-dots: #26173c;
+	--scrollbar-thumb: #382554;
+	--scrollbar-track: #0d0616;
+}
+
+/* --- 27. New Year (seasonal: snowy winter night, garland-gold accent) --- */
+[data-theme='newyear'],
+[data-theme-preview='newyear'] {
+	--color-slate-100: #e8f2ff;
+	--color-slate-200: #cfe4fb;
+	--color-slate-300: #a5c8ef;
+	--color-slate-400: #74a4d8;
+	--color-slate-500: #4a73a6;
+	--color-slate-600: #2f4c78;
+	--color-slate-700: #1f3354;
+	--color-slate-800: #14223c;
+	--color-slate-900: #0c1730;
+	--color-slate-950: #060c1c;
+	--color-emerald-100: #fcf0d3;
+	--color-emerald-200: #f8e0a8;
+	--color-emerald-300: #f4cd7a;
+	--color-emerald-400: #f2c14e;
+	--color-emerald-500: #eeb236;
+	--color-emerald-600: #d29a1f;
+	--color-emerald-700: #a87915;
+	--color-emerald-900: #5c430a;
+	--color-violet-200: #d6f3ff;
+	--color-violet-300: #bae6fd;
+	--color-violet-500: #38bdf8;
+	--color-violet-600: #0ea5e9;
+	--color-rose-100: #ffe4e6;
+	--color-rose-200: #fecdd3;
+	--color-rose-300: #fda4af;
+	--color-rose-400: #fb7185;
+	--color-rose-500: #f43f5e;
+	--color-rose-600: #e11d48;
+	--color-rose-700: #be123c;
+	--color-rose-800: #9f1239;
+	--color-rose-900: #4c0519;
+	--color-rose-950: #2a0208;
+	--color-amber-200: #fde68a;
+	--color-amber-300: #fcd34d;
+	--color-amber-400: #fbbf24;
+	--color-amber-500: #f59e0b;
+	--color-amber-600: #d97706;
+	--color-amber-700: #b45309;
+	--color-amber-950: #3a2606;
+	--status-ok: #34d399;
+	--status-empty: #fbbf24;
+	--status-fail: #fb7185;
+	--status-next: #4a73a6;
+	--status-running: #fbbf24;
+	--node-start: #eeb236;
+	--node-start-bg: rgba(238, 178, 54, 0.15);
+	--node-bg: rgba(12, 23, 48, 0.86);
+	--node-ok-bg: rgba(52, 211, 153, 0.1);
+	--node-fail-bg: rgba(251, 113, 133, 0.12);
+	--node-empty-bg: rgba(251, 191, 36, 0.1);
+	--radius-md: 0.5rem;
+	--radius-lg: 0.75rem;
+	--radius-xl: 1rem;
+	--app-bg-image:
+		radial-gradient(800px 380px at 10% -8%, rgba(56, 189, 248, 0.12), transparent 65%),
+		radial-gradient(800px 380px at 90% -8%, rgba(238, 178, 54, 0.12), transparent 65%);
+	--accent-glow: 0 0 18px rgba(238, 178, 54, 0.32);
+	--graph-bg: #060c1c;
+	--graph-dots: #14223c;
+	--scrollbar-thumb: #1f3354;
+	--scrollbar-track: #060c1c;
+}
+
+/* --- 28. Lunar New Year (seasonal: festive red and gold, lanterns) --- */
+[data-theme='lunarnewyear'],
+[data-theme-preview='lunarnewyear'] {
+	--color-slate-100: #fbe9e2;
+	--color-slate-200: #f3cfc2;
+	--color-slate-300: #e2a894;
+	--color-slate-400: #c4796a;
+	--color-slate-500: #96504a;
+	--color-slate-600: #6e3634;
+	--color-slate-700: #4f2527;
+	--color-slate-800: #341719;
+	--color-slate-900: #200e11;
+	--color-slate-950: #130709;
+	--color-emerald-100: #faedca;
+	--color-emerald-200: #f5d996;
+	--color-emerald-300: #f0c264;
+	--color-emerald-400: #f4b942;
+	--color-emerald-500: #f2ac36;
+	--color-emerald-600: #db9218;
+	--color-emerald-700: #b37408;
+	--color-emerald-900: #5f4104;
+	--color-violet-200: #ffe0d4;
+	--color-violet-300: #ffc7ab;
+	--color-violet-500: #ff9a62;
+	--color-violet-600: #f57e45;
+	--color-rose-100: #ffdcd8;
+	--color-rose-200: #ffb8b0;
+	--color-rose-300: #ff8a80;
+	--color-rose-400: #ff5c52;
+	--color-rose-500: #f43f36;
+	--color-rose-600: #d92d20;
+	--color-rose-700: #b3241c;
+	--color-rose-800: #8c1a14;
+	--color-rose-900: #470d0a;
+	--color-rose-950: #2b0604;
+	--color-amber-200: #fde8b3;
+	--color-amber-300: #fbd46d;
+	--color-amber-400: #f6bb3c;
+	--color-amber-500: #eca41f;
+	--color-amber-600: #cf8810;
+	--color-amber-700: #a5680a;
+	--color-amber-950: #3f2c04;
+	--status-ok: #4ade80;
+	--status-empty: #f6bb3c;
+	--status-fail: #ff5c52;
+	--status-next: #96504a;
+	--status-running: #f6bb3c;
+	--node-start: #f2ac36;
+	--node-start-bg: rgba(242, 172, 54, 0.15);
+	--node-bg: rgba(32, 14, 17, 0.86);
+	--node-ok-bg: rgba(74, 222, 128, 0.1);
+	--node-fail-bg: rgba(255, 92, 82, 0.12);
+	--node-empty-bg: rgba(246, 187, 60, 0.1);
+	--radius-md: 0.375rem;
+	--radius-lg: 0.5rem;
+	--radius-xl: 0.625rem;
+	--app-bg-image:
+		radial-gradient(820px 420px at 12% 110%, rgba(242, 172, 54, 0.13), transparent 65%),
+		radial-gradient(820px 420px at 88% 110%, rgba(244, 63, 54, 0.16), transparent 65%);
+	--accent-glow: 0 0 18px rgba(242, 172, 54, 0.34);
+	--graph-bg: #130709;
+	--graph-dots: #341719;
+	--scrollbar-thumb: #4f2527;
+	--scrollbar-track: #130709;
+}
+
+/* =====================================================================
+   Seasonal visual effects (fog, snow, lanterns) — decorative overlays.
+   They sit on fixed body pseudo-elements behind the app (z-index: -1),
+   are fully pointer-transparent and never cover content.
+   ===================================================================== */
+
+@keyframes halloween-fall {
+	from {
+		background-position: 0 -180px;
+	}
+	to {
+		background-position: 70px 0;
+	}
+}
+@keyframes halloween-fog {
+	0%,
+	100% {
+		transform: translate3d(0, 0, 0);
+	}
+	50% {
+		transform: translate3d(-3%, 0, 0);
+	}
+}
+@keyframes halloween-flicker {
+	0%,
+	100% {
+		opacity: 0.95;
+	}
+	44% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.5;
+	}
+	56% {
+		opacity: 1;
+	}
+}
+
+/* Floating pumpkins / ghosts / bats drifting down like falling leaves. */
+[data-theme='halloween'] body::before {
+	content: '';
+	position: fixed;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Ctext x='14' y='34' font-size='26' opacity='0.14'%3E🎃%3C/text%3E%3Ctext x='104' y='110' font-size='22' opacity='0.11'%3E👻%3C/text%3E%3Ctext x='48' y='160' font-size='18' opacity='0.1'%3E🦇%3C/text%3E%3C/svg%3E");
+	animation: halloween-fall 26s linear infinite;
+}
+/* Ground fog creeping above the bottom edge, with a jack-o-lantern flicker. */
+[data-theme='halloween'] body::after {
+	content: '';
+	position: fixed;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	background:
+		radial-gradient(620px 300px at 18% 106%, rgba(255, 122, 26, 0.13), transparent 62%),
+		radial-gradient(720px 340px at 82% 106%, rgba(168, 85, 247, 0.15), transparent 62%);
+	animation:
+		halloween-fog 9s ease-in-out infinite,
+		halloween-flicker 7s linear infinite;
+}
+
+@keyframes snow-a {
+	from {
+		background-position: 0 -200px;
+	}
+	to {
+		background-position: 40px 0;
+	}
+}
+@keyframes snow-b {
+	from {
+		background-position: 0 -140px;
+	}
+	to {
+		background-position: -26px 0;
+	}
+}
+
+/* Two parallax snow layers: far flakes slow and small, near flakes larger. */
+[data-theme='newyear'] body::before {
+	content: '';
+	position: fixed;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Ccircle cx='24' cy='28' r='2.4' fill='%23ffffff' fill-opacity='0.5'/%3E%3Ccircle cx='96' cy='84' r='1.8' fill='%23ffffff' fill-opacity='0.4'/%3E%3Ccircle cx='160' cy='140' r='2.6' fill='%23ffffff' fill-opacity='0.45'/%3E%3Ccircle cx='60' cy='176' r='1.5' fill='%23ffffff' fill-opacity='0.35'/%3E%3C/svg%3E");
+	animation: snow-a 22s linear infinite;
+}
+[data-theme='newyear'] body::after {
+	content: '';
+	position: fixed;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	background-image:
+		url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Ccircle cx='20' cy='30' r='1.4' fill='%23ffffff' fill-opacity='0.35'/%3E%3Ccircle cx='84' cy='72' r='1.1' fill='%23ffffff' fill-opacity='0.3'/%3E%3Ccircle cx='118' cy='120' r='1.6' fill='%23ffffff' fill-opacity='0.32'/%3E%3C/svg%3E"),
+		radial-gradient(720px 320px at 50% -10%, rgba(238, 178, 54, 0.09), transparent 65%);
+	animation: snow-b 14s linear infinite;
+}
+
+@keyframes lantern-rise {
+	from {
+		background-position: 0 0;
+	}
+	to {
+		background-position: 36px -240px;
+	}
+}
+@keyframes lantern-glow {
+	0%,
+	100% {
+		opacity: 0.6;
+	}
+	50% {
+		opacity: 1;
+	}
+}
+
+/* Paper lanterns and red envelopes drifting slowly upwards. */
+[data-theme='lunarnewyear'] body::before {
+	content: '';
+	position: fixed;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Ctext x='20' y='42' font-size='30' opacity='0.15'%3E🏮%3C/text%3E%3Ctext x='150' y='150' font-size='24' opacity='0.12'%3E🏮%3C/text%3E%3Ctext x='88' y='226' font-size='20' opacity='0.12'%3E🧧%3C/text%3E%3C/svg%3E");
+	animation: lantern-rise 40s linear infinite;
+}
+/* Warm festive glow pulsing from the bottom, like lantern light. */
+[data-theme='lunarnewyear'] body::after {
+	content: '';
+	position: fixed;
+	inset: 0;
+	z-index: -1;
+	pointer-events: none;
+	background:
+		radial-gradient(680px 320px at 20% 108%, rgba(242, 172, 54, 0.13), transparent 62%),
+		radial-gradient(720px 340px at 80% 108%, rgba(244, 63, 54, 0.15), transparent 62%);
+	animation: lantern-glow 10s ease-in-out infinite;
+}
+
+/* Respect users who prefer reduced motion: keep the art, stop the movement. */
+@media (prefers-reduced-motion: reduce) {
+	[data-theme='halloween'] body::before,
+	[data-theme='halloween'] body::after,
+	[data-theme='newyear'] body::before,
+	[data-theme='newyear'] body::after,
+	[data-theme='lunarnewyear'] body::before,
+	[data-theme='lunarnewyear'] body::after {
+		animation: none;
+	}
 }

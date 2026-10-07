@@ -3,15 +3,19 @@
 	import { providerReason } from '$lib/reason';
 	import { t } from '$lib/i18n.svelte';
 
-	// NodeCard — chain block card (220×120, glass). In the editor it hosts the
-	// start toggle and clickable timeout presets; in history/playground it only
-	// paints the run state recorded in data.status.
+	// NodeCard — chain block card. Three kinds share the same shell:
+	//   start  ▶ logical entry point, fans out to several providers
+	//   join   ⧉ merges incoming branches and removes duplicate URLs
+	//   provider (default) runs one configured provider instance
+	// In the editor it hosts clickable timeout presets; in history/playground it
+	// only paints the run state recorded in data.status.
 	let {
 		data = {},
 		selected = false
 	}: {
 		data?: {
 			key?: string;
+			kind?: string;
 			label?: string;
 			provider?: string;
 			timeout_ms?: number;
@@ -29,25 +33,23 @@
 			invalid?: boolean;
 			finish?: boolean;
 			mode?: string;
-			node?: { timeout_ms?: number; retries?: number; retry_delay_ms?: number };
+			branches?: number;
+			ignore_count?: boolean;
+			node?: { kind?: string; timeout_ms?: number; retries?: number; retry_delay_ms?: number };
 			interactive?: boolean;
-			onToggleStart?: (key: string, value: boolean) => void;
 			onCycleTimeout?: (key: string) => void;
 		};
 		selected?: boolean;
 	} = $props();
 
-	const startDisabled = $derived((!data.is_start && !!data.start_taken) || !!data.is_answer);
-	const startTitle = $derived(
-		data.is_start
-			? t('flow.startOn')
-			: startDisabled
-				? t('flow.startTaken', { name: data.start_owner ?? '' })
-				: t('flow.start')
-	);
+	const kind = $derived(data.kind ?? data.node?.kind ?? 'provider');
+	const isStart = $derived(kind === 'start');
+	const isJoin = $derived(kind === 'join');
+	const isProvider = $derived(!isStart && !isJoin);
 
 	// Run-state styling: base border/background per status; the start block
-	// always keeps its yellow contour underneath.
+	// always keeps its yellow contour underneath. Logical blocks use their own
+	// accent (amber start, violet join) when idle.
 	const stateClass = $derived.by(() => {
 		switch (data.status) {
 			case 'ok':
@@ -69,12 +71,6 @@
 	const timeoutSec = $derived(Math.round(timeoutMs / 1000));
 	const retriesNum = $derived(data.node?.retries ?? data.retries ?? 0);
 	const retryDelayMs = $derived(data.node?.retry_delay_ms ?? data.retry_delay_ms ?? 700);
-
-	function toggleStart(event: MouseEvent) {
-		event.stopPropagation();
-		if (startDisabled) return;
-		data.onToggleStart?.(data.key ?? '', !data.is_start);
-	}
 
 	function cycleTimeout(event: MouseEvent) {
 		event.stopPropagation();
@@ -101,8 +97,16 @@
 			: data.status === 'empty'
 				? 'var(--node-empty-bg)'
 				: 'var(--node-bg)'}
-	style:border-color={data.is_start ? 'var(--node-start)' : undefined}
-	style:box-shadow={data.is_start
+	style:border-color={data.status && data.status !== 'gray'
+		? undefined
+		: isStart
+			? 'var(--node-start)'
+			: isJoin
+				? '#a78bfa'
+				: data.is_start
+					? 'var(--node-start)'
+					: undefined}
+	style:box-shadow={isStart || data.is_start
 		? '0 0 0 4px var(--node-start-bg)'
 		: selected
 			? '0 0 0 2px var(--color-emerald-400)'
@@ -110,15 +114,21 @@
 	style:transform={selected ? 'translateY(-2px)' : undefined}
 	title={data.status === 'fail' && data.error ? providerReason(data.error) : undefined}
 >
-	<Handle type="target" position={Position.Left} />
+	{#if !isStart}
+		<Handle type="target" position={Position.Left} />
+	{/if}
 
-	<!-- header: icon+name, engine chip, start toggle -->
+	<!-- header: icon+name, kind/provider chip -->
 	<div class="flex items-center gap-1.5">
-		<span class="text-slate-400">▣</span>
+		<span class="text-slate-400">{isStart ? '▶' : isJoin ? '⧉' : '▣'}</span>
 		<span class="min-w-0 flex-1 truncate font-semibold text-slate-100">
-			{data.label ?? data.provider ?? t('flow.node')}
+			{data.label ?? (isStart ? t('flow.start') : isJoin ? t('flow.join') : (data.provider ?? t('flow.node')))}
 		</span>
-		{#if data.provider}
+		{#if isStart}
+			<span class="rounded bg-amber-400/20 px-1 py-px text-[9px] font-bold text-amber-300">START</span>
+		{:else if isJoin}
+			<span class="rounded bg-violet-500/25 px-1 py-px text-[9px] font-bold text-violet-200">MERGE</span>
+		{:else if data.provider}
 			<span class="rounded bg-slate-700/60 px-1 py-px font-mono text-[9px] text-slate-300">
 				⚙{data.provider}
 			</span>
@@ -128,44 +138,49 @@
 				💬
 			</span>
 		{/if}
-		{#if data.interactive}
-			<button
-				type="button"
-				class="start-toggle"
-				class:start-toggle-on={data.is_start}
-				disabled={startDisabled}
-				title={startTitle}
-				aria-pressed={data.is_start}
-				onclick={toggleStart}
-			>
-				<span class="start-knob"></span>
-				<span class="ml-1 text-[9px] font-bold {data.is_start ? 'text-amber-300' : 'text-slate-500'}">
-					▶ {t('flow.start')}
-				</span>
-			</button>
-		{:else if data.is_start}
+		{#if data.is_start && !isStart}
 			<span class="badge bg-amber-400/20 text-amber-300">▶ {t('flow.start')}</span>
 		{/if}
 	</div>
 
-	<!-- settings line: timeout + retries/delay -->
-	<div class="mt-1.5 flex items-center gap-2 font-mono text-[10px] text-slate-400">
-		{#if data.interactive}
-			<button
-				type="button"
-				class="rounded px-1 py-px text-slate-300 transition hover:bg-slate-800 hover:text-amber-200"
-				title={t('flow.timeoutCycleHint')}
-				onclick={cycleTimeout}
-			>
-				⏱ {timeoutSec}s
-			</button>
-		{:else}
-			<span>⏱ {timeoutSec}s</span>
+	{#if isStart}
+		<p class="mt-2 text-[10px] leading-snug text-slate-400">{t('flow.startHint')}</p>
+	{:else if isJoin}
+		<p class="mt-2 text-[10px] leading-snug text-slate-400">{t('flow.joinHint')}</p>
+		<p class="mt-1 font-mono text-[10px] text-violet-300">
+			⇥ {data.branches ?? 0} {t('flow.branchesShort')} · ⧉ {t('flow.dedupeShort')}
+		</p>
+		{#if data.ignore_count}
+			<p class="mt-1">
+				<span
+					class="rounded bg-violet-500/30 px-1.5 py-px text-[9px] font-bold text-violet-100"
+					title={t('flow.ignoreCountHint')}>Σ {t('flow.allResultsShort')}</span
+				>
+			</p>
 		{/if}
-		<span>
-			⟳ ×{retriesNum}<span class="text-slate-600"> · {retryDelayMs}ms</span>
-		</span>
-	</div>
+		{#if data.took_ms}
+			<p class="mt-1 font-mono text-[10px] text-violet-200">⏱ {data.took_ms}ms</p>
+		{/if}
+	{:else}
+		<!-- settings line: timeout + retries/delay -->
+		<div class="mt-1.5 flex items-center gap-2 font-mono text-[10px] text-slate-400">
+			{#if data.interactive}
+				<button
+					type="button"
+					class="rounded px-1 py-px text-slate-300 transition hover:bg-slate-800 hover:text-amber-200"
+					title={t('flow.timeoutCycleHint')}
+					onclick={cycleTimeout}
+				>
+					⏱ {timeoutSec}s
+				</button>
+			{:else}
+				<span>⏱ {timeoutSec}s</span>
+			{/if}
+			<span>
+				⟳ ×{retriesNum}<span class="text-slate-600"> · {retryDelayMs}ms</span>
+			</span>
+		</div>
+	{/if}
 
 	<!-- status footer: response-time badge / +n links / finish / validation marker -->
 	<div class="mt-1.5 flex h-4 items-center gap-1.5">
@@ -179,7 +194,7 @@
 				⚠ {t('flow.invalidBadge')}
 			</span>
 		{/if}
-		{#if data.mode === 'full_chain' && data.is_start}
+		{#if data.mode === 'full_chain' && (isStart || isJoin)}
 			<span class="rounded bg-violet-500/20 px-1 text-[9px] font-bold text-violet-300">🧩</span>
 		{/if}
 		{#if data.status === 'ok' && data.took_ms}
@@ -202,16 +217,26 @@
 		{/if}
 	</div>
 
-	<!-- outcome handles on the right: ok / empty / fail / next -->
-	{#each ['ok', 'empty', 'fail', 'next'] as kind, i (kind)}
+	<!-- outcome handles on the right -->
+	{#if isStart || isJoin}
 		<Handle
 			type="source"
-			id={kind}
+			id="next"
 			position={Position.Right}
-			style="top: {34 + i * 18}px; background: {handleColors[kind]}; width: 8px; height: 8px;"
-			title={kind}
+			style="top: 50%; background: {isJoin ? '#a78bfa' : 'var(--node-start)'}; width: 10px; height: 10px;"
+			title="next"
 		/>
-	{/each}
+	{:else}
+		{#each ['ok', 'empty', 'fail', 'next'] as kind, i (kind)}
+			<Handle
+				type="source"
+				id={kind}
+				position={Position.Right}
+				style="top: {34 + i * 18}px; background: {handleColors[kind]}; width: 8px; height: 8px;"
+				title={kind}
+			/>
+		{/each}
+	{/if}
 </div>
 
 <style>
@@ -226,38 +251,5 @@
 		50% {
 			box-shadow: 0 0 0 6px color-mix(in oklab, var(--status-running) 12%, transparent);
 		}
-	}
-	.start-toggle {
-		display: inline-flex;
-		align-items: center;
-		border-radius: 9999px;
-		border: 1px solid var(--color-slate-600);
-		background: var(--color-slate-900);
-		padding: 1px 3px;
-		cursor: pointer;
-		min-width: 26px;
-		min-height: 14px;
-		transition: all 0.15s;
-	}
-	.start-toggle:hover:not(:disabled) {
-		border-color: var(--node-start);
-	}
-	.start-toggle:disabled {
-		opacity: 0.35;
-		cursor: not-allowed;
-	}
-	.start-knob {
-		width: 8px;
-		height: 8px;
-		border-radius: 9999px;
-		background: var(--color-slate-500);
-		transition: all 0.15s;
-	}
-	.start-toggle-on {
-		border-color: var(--node-start);
-		background: var(--node-start-bg);
-	}
-	.start-toggle-on .start-knob {
-		background: var(--node-start);
 	}
 </style>
