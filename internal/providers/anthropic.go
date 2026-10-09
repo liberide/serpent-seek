@@ -32,6 +32,9 @@ func (p anthropicProvider) Schema() ProviderSchema {
 			textParam("model", "Model", "claude-sonnet-4-5", "Anthropic model id"),
 			numberParam("max_tokens", "Max tokens", "1024", "Answer length budget"),
 			numberParam("max_uses", "Max web searches", "5", "web_search tool max_uses"),
+			textParam("allowed_domains", "Allowed domains", "", "Comma-separated, max 15; mutually exclusive with blocked_domains"),
+			textParam("blocked_domains", "Blocked domains", "", "Comma-separated, max 15; mutually exclusive with allowed_domains"),
+			numberParam("max_fetches", "Max web fetches", "0", "Adds the web_fetch tool when > 0"),
 			numberParam("max_rps", "Max requests/sec", "", "Per-driver rate limit override"),
 			textParam("fatal_http", "Fatal HTTP codes", "400,401,403", ""),
 			textParam("retry_http_codes", "Retry HTTP codes", "429,500,502,503,504", ""),
@@ -64,13 +67,31 @@ func (p anthropicProvider) Search(ctx context.Context, q Query, c Credentials, p
 	if maxUses <= 0 {
 		maxUses = 5
 	}
+	webSearch := map[string]any{
+		"type": "web_search_20250305", "name": "web_search", "max_uses": maxUses,
+	}
+	// allowed_domains and blocked_domains are mutually exclusive upstream
+	// (sending both yields HTTP 400); allowed_domains wins. The exact domain
+	// count limit is unverified, so it is intentionally not enforced here.
+	allowed := parseCSV(params["allowed_domains"])
+	blocked := parseCSV(params["blocked_domains"])
+	if len(allowed) > 0 {
+		webSearch["allowed_domains"] = allowed
+	} else if len(blocked) > 0 {
+		webSearch["blocked_domains"] = blocked
+	}
+	tools := []any{webSearch}
+	maxFetches := parseInt(defaultStr(params["max_fetches"], "0"), 0)
+	if maxFetches > 0 {
+		tools = append(tools, map[string]any{
+			"type": "web_fetch_20250910", "name": "web_fetch", "max_uses": maxFetches,
+		})
+	}
 	payload, _ := json.Marshal(map[string]any{
 		"model":      model,
 		"max_tokens": maxTokens,
 		"messages":   []any{map[string]any{"role": "user", "content": q.Text}},
-		"tools": []any{map[string]any{
-			"type": "web_search_20250305", "name": "web_search", "max_uses": maxUses,
-		}},
+		"tools":      tools,
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v1/messages", bytes.NewReader(payload))
 	if err != nil {
@@ -79,6 +100,9 @@ func (p anthropicProvider) Search(ctx context.Context, q Query, c Credentials, p
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("anthropic-version", "2023-06-01")
+	if maxFetches > 0 {
+		req.Header.Set("anthropic-beta", "web-fetch-2025-09-10")
+	}
 	if v := strings.TrimSpace(c["api_key"]); v != "" {
 		req.Header.Set("x-api-key", v)
 	}
@@ -172,7 +196,7 @@ func anthropicSources(data map[string]any) Rows {
 				if asString(rm["type"]) != "web_search_result" {
 					continue
 				}
-				add(firstString(rm, "url"), firstString(rm, "title"), "")
+				add(firstString(rm, "url"), firstString(rm, "title"), firstString(rm, "snippet"))
 			}
 		}
 	}

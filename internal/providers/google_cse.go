@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 // googleCSEProvider implements the legacy Google Custom Search JSON API. The
@@ -27,6 +28,7 @@ func (p googleCSEProvider) Schema() ProviderSchema {
 		DefaultBaseURL: "https://www.googleapis.com/customsearch/v1",
 		Credentials:    []CredentialField{{Key: "api_key"}, {Key: "cx"}},
 		Params: []ParamField{
+			{Key: "start", Label: "Start index", Type: ParamTypeNumber, Hint: "1-91; pagination start index"},
 			{Key: "fatal_http", Label: "Fatal HTTP codes", Type: ParamTypeText, Default: "400,401,403"},
 			{Key: "retry_http_codes", Label: "Retry HTTP codes", Type: ParamTypeText, Default: "429,500,502,503,504"},
 		},
@@ -57,6 +59,9 @@ func (p googleCSEProvider) Search(ctx context.Context, q Query, c Credentials, p
 	values.Set("q", q.Text)
 	if num > 0 {
 		values.Set("num", strconv.Itoa(num))
+	}
+	if v := strings.TrimSpace(params["start"]); v != "" {
+		values.Set("start", v)
 	}
 	// num=0: the parameter is omitted, CSE answers with its default page
 	if q.Lang != "" {

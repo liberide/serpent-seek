@@ -73,16 +73,29 @@ func TestGoogleDispatcher(t *testing.T) {
 }
 
 func TestGoogleEnterprise(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var searchAuth string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"access_token":"tok-1","expires_in":3600}`))
+	})
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		searchAuth = r.Header.Get("Authorization")
 		_, _ = w.Write([]byte(`{"results":[{"document":{"derivedStructData":{"link":"https://a","title":"A","snippets":[{"snippet":"S"}]}}}]}`))
-	}))
+	})
+	server := httptest.NewServer(mux)
 	defer server.Close()
 	p := googleProvider{http: testClient()}
 	res := p.Search(context.Background(), Query{Text: "x", Count: 3},
-		Credentials{"api_key": "k", "project_id": "p", "engine_id": "e"},
+		Credentials{"service_account_json": testServiceAccount(t, server.URL+"/token"), "project_id": "p", "engine_id": "e"},
 		Params{"base_url": server.URL, "driver_mode": "enterprise"})
 	if !res.OK || len(res.Rows) != 1 || res.Rows[0].Snippet != "S" {
 		t.Fatalf("unexpected enterprise result: %+v", res)
+	}
+	if res.Provider != "google_vertex" {
+		t.Fatalf("delegated enterprise must keep provider google_vertex, got %q", res.Provider)
+	}
+	if searchAuth != "Bearer tok-1" {
+		t.Fatalf("enterprise search must use OAuth2, got %q", searchAuth)
 	}
 }
 
@@ -91,6 +104,9 @@ func TestGoogleEnterpriseRequiresConfig(t *testing.T) {
 	res := p.Search(context.Background(), Query{Text: "x", Count: 3}, Credentials{"api_key": "k"}, Params{"driver_mode": "enterprise"})
 	if res.Kind != KindAPI || !res.Permanent {
 		t.Fatalf("missing project/engine should be permanent api error: %+v", res)
+	}
+	if res.Provider != "google_vertex" {
+		t.Fatalf("delegated error must keep provider google_vertex, got %q", res.Provider)
 	}
 }
 
