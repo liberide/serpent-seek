@@ -30,6 +30,7 @@ func (p apiserpentProvider) Schema() ProviderSchema {
 		DefaultBaseURL: "https://apiserpent.com",
 		Credentials:    []CredentialField{{Key: "api_key"}},
 		Params: []ParamField{
+			{Key: "mode", Label: "Search mode", Type: ParamTypeSelect, Default: "quick", Options: []ParamOption{{"Quick", "quick"}, {"Deep", "deep"}}},
 			{Key: "engine", Label: "Engine", Type: ParamTypeSelect, Default: "google", Options: []ParamOption{{"Google", "google"}, {"Bing", "bing"}, {"Yahoo", "yahoo"}, {"DuckDuckGo", "ddg"}, {"Brave", "brave"}}},
 			{Key: "country", Label: "Country", Type: ParamTypeText, Default: "us"},
 			{Key: "ap_retry_codes", Label: "Retry error codes", Type: ParamTypeText, Hint: "Temporary API error codes; empty = retry any"},
@@ -50,7 +51,11 @@ func (p apiserpentProvider) Search(ctx context.Context, q Query, c Credentials, 
 	retryHTTP := parseIntCSV(params["retry_http_codes"], []int{429, 500, 502, 503, 504})
 	apRetry := parseUpperCSV(params["ap_retry_codes"])
 
-	endpoint, err := url.Parse(base + "/api/search/quick")
+	path := "/api/search/quick"
+	if defaultStr(params["mode"], "quick") == "deep" {
+		path = "/api/search" // up to 100 results with SERP features
+	}
+	endpoint, err := url.Parse(base + path)
 	if err != nil {
 		return fail(KindAPI, true, p.Code(), "apiserpent: invalid base url: "+err.Error())
 	}

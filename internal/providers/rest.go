@@ -122,7 +122,15 @@ func (p restProvider) buildRequest(ctx context.Context, q Query, c Credentials, 
 
 func (p restProvider) defaultBuild(ctx context.Context, q Query, c Credentials, params Params) (*http.Request, error) {
 	base := strings.TrimRight(defaultStr(params["base_url"], p.spec.baseURL), "/")
-	endpoint, err := url.Parse(base + p.spec.path)
+	path := p.spec.path
+	if p.spec.pathParam != "" {
+		if v := params[p.spec.pathParam]; v != "" {
+			if alt, ok := p.spec.pathMap[v]; ok {
+				path = alt
+			}
+		}
+	}
+	endpoint, err := url.Parse(base + path)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +167,7 @@ func (p restProvider) defaultBuild(ctx context.Context, q Query, c Credentials, 
 	}
 
 	for k, v := range params {
-		if isInternalParam(k) || v == "" {
+		if isInternalParam(k) || v == "" || (p.spec.pathParam != "" && k == p.spec.pathParam) {
 			continue
 		}
 		add(k, v)
@@ -280,6 +288,10 @@ type restSpec struct {
 	// throttleKey is a JSON field in the response carrying a mandatory wait in
 	// seconds (Stack Exchange `backoff`); empty disables throttle parsing.
 	throttleKey string
+	// pathParam selects an alternative request path from a param value via
+	// pathMap (e.g. Hacker News relevance vs. date search). Empty disables it.
+	pathParam string
+	pathMap   map[string]string
 }
 
 type restAuth struct {
@@ -407,7 +419,11 @@ func restSpecs() []restSpec {
 					textParam("search_lang", "Search language", "en", "ISO language code"),
 					selectParam("safesearch", "Safe search", "off", ParamOption{"Off", "off"}, ParamOption{"Strict", "strict"}),
 					selectParam("freshness", "Freshness", "", ParamOption{"Any", ""}, ParamOption{"Past day", "pd"}, ParamOption{"Past week", "pw"}, ParamOption{"Past month", "pm"}, ParamOption{"Past year", "py"}),
-					textParam("offset", "Offset", "", "Pagination offset"),
+					textParam("offset", "Offset", "", "Pagination offset (0-9)"),
+					textParam("result_filter", "Result filter", "", "discussions,faq,infobox,news,query,videos,web"),
+					textParam("goggles", "Goggles", "", "Goggle URL or inline definition"),
+					textParam("ui_lang", "UI language", "", "e.g. en-US"),
+					selectParam("units", "Units", "", ParamOption{"Default", ""}, ParamOption{"Metric", "metric"}, ParamOption{"Imperial", "imperial"}),
 				},
 			},
 		},
@@ -524,6 +540,9 @@ func restSpecs() []restSpec {
 				if v := p["device"]; v != "" {
 					task["device"] = v
 				}
+				if v := p["os"]; v != "" {
+					task["os"] = v
+				}
 				body, _ := json.Marshal([]any{task})
 				req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v3/serp/google/organic/live/advanced", bytes.NewReader(body))
 				if err != nil {
@@ -565,8 +584,9 @@ func restSpecs() []restSpec {
 				Params: []ParamField{
 					textParam("location_code", "Location code", "", "DataForSEO location code"),
 					selectParam("device", "Device", "", ParamOption{"Default", ""}, ParamOption{"Desktop", "desktop"}, ParamOption{"Mobile", "mobile"}),
+					selectParam("os", "OS", "", ParamOption{"Default", ""}, ParamOption{"Windows", "windows"}, ParamOption{"macOS", "macos"}, ParamOption{"Android", "android"}, ParamOption{"iOS", "ios"}),
 				},
-				Hints: []string{"Uses HTTP Basic auth.", "Live endpoint can be slow; set a generous node timeout."},
+				Hints: []string{"Uses HTTP Basic auth.", "Live endpoint can be slow; set a generous node timeout.", "Live SERP depth is capped at 200 by DataForSEO (higher values are rejected)."},
 			},
 		},
 		{
@@ -678,30 +698,38 @@ func restSpecs() []restSpec {
 			},
 		},
 		{
-			code: "mojeek", name: "Mojeek", baseURL: "https://api.mojeek.com",
+			code: "mojeek", name: "Mojeek", baseURL: "https://www.mojeek.com",
 			method: http.MethodGet, path: "/search",
 			auth:     restAuth{kind: "query", queryKey: "api_key", credKey: "api_key"},
 			queryKey: "q", countField: "t",
 			resultPath: []string{"response", "results"},
-			linkKeys:   []string{"url"}, titleKey: "title", snippetKeys: []string{"description"},
+			linkKeys:   []string{"url"}, titleKey: "title", snippetKeys: []string{"desc"},
 			fatalHTTP: commonFatal(), retryHTTP: commonRetry(),
 			extract: func(data map[string]any) Rows {
-				if s := asString(data["status"]); strings.HasPrefix(s, "ERROR") {
-					return nil
+				if resp, ok := data["response"].(map[string]any); ok {
+					if s := asString(resp["status"]); strings.HasPrefix(s, "ERROR") {
+						return nil
+					}
 				}
-				return collectRows(getArrayAtPath(data, []string{"response", "results"}), []string{"url"}, "title", []string{"description"})
+				return collectRows(getArrayAtPath(data, []string{"response", "results"}), []string{"url"}, "title", []string{"desc"})
 			},
 			schema: ProviderSchema{
 				Code: "mojeek", Name: "Mojeek",
 				Credentials: credentialFields("api_key"),
 				Params: []ParamField{
-					textParam("fmt", "Format", "json", "Use json"),
+					textParam("fmt", "Format", "json", "json | xml"),
+					textParam("s", "Start", "", "Result offset"),
+					textParam("since", "Since", "", "Only results newer than this date"),
+					textParam("before", "Before", "", "Only results older than this date"),
 					textParam("lb", "Language boost", "", ""),
 					textParam("lbb", "Language boost weight", "", ""),
 					textParam("rb", "Region boost", "", ""),
 					textParam("rbb", "Region boost weight", "", ""),
-					textParam("safe", "Safe search", "", ""),
+					textParam("lr", "Language restrict", "", "Beta"),
+					textParam("safe", "Safe search", "", "0 | 1"),
+					textParam("tlen", "Title length", "", ""),
 					textParam("dlen", "Snippet length", "", ""),
+					textParam("site", "Site", "", "Restrict to a domain"),
 				},
 				Hints: []string{"Key is sent in the query string and is redacted from logs automatically."},
 			},
@@ -793,7 +821,10 @@ func restSpecs() []restSpec {
 				Code: "exa", Name: "Exa",
 				Credentials: credentialFields("api_key"),
 				Params: []ParamField{
-					selectParam("type", "Query type", "auto", ParamOption{"Auto", "auto"}, ParamOption{"Neural", "neural"}, ParamOption{"Keyword", "keyword"}),
+					selectParam("type", "Query type", "auto", ParamOption{"Auto", "auto"}, ParamOption{"Neural", "neural"}, ParamOption{"Keyword", "keyword"}, ParamOption{"Fast", "fast"}),
+					textParam("category", "Category", "", "company, research paper, news, pdf, github, tweet, financial report"),
+					textParam("startPublishedDate", "Published after", "", "ISO 8601 date"),
+					textParam("endPublishedDate", "Published before", "", "ISO 8601 date"),
 					textParam("includeDomains", "Include domains", "", ""),
 					textParam("excludeDomains", "Exclude domains", "", ""),
 				},
@@ -842,12 +873,15 @@ func restSpecs() []restSpec {
 					selectParam("depth", "Depth", "standard", ParamOption{"Standard", "standard"}, ParamOption{"Deep", "deep"}),
 					textParam("includeDomains", "Include domains", "", ""),
 					textParam("excludeDomains", "Exclude domains", "", ""),
+					textParam("fromDate", "From date", "", "ISO 8601 date"),
+					textParam("toDate", "To date", "", "ISO 8601 date"),
+					textParam("language", "Language", "", "e.g. en, fr"),
 				},
 				Hints: []string{"outputType is fixed to searchResults for the Row contract."},
 			},
 		},
 		{
-			code: "perplexity_search", name: "Perplexity Search API", baseURL: "https://api.perplexity.ai",
+			code: "perplexity", name: "Perplexity Search API", baseURL: "https://api.perplexity.ai",
 			method: http.MethodPost, path: "/search", body: true,
 			auth:     restAuth{kind: "bearer", credKey: "api_key"},
 			queryKey: "query", countField: "max_results", countCap: 50,
@@ -857,15 +891,12 @@ func restSpecs() []restSpec {
 			fatalHTTP: commonFatal(), retryHTTP: commonRetry(),
 			build: func(ctx context.Context, q Query, c Credentials, p Params) (*http.Request, error) {
 				base := strings.TrimRight(defaultStr(p["base_url"], "https://api.perplexity.ai"), "/")
-				body := map[string]any{
-					"query":       q.Text,
-					"search_type": "web",
-				}
+				body := map[string]any{"query": q.Text}
 				if q.Count > 0 {
 					body["max_results"] = q.Count
 				}
 				for k, v := range p {
-					if isInternalParam(k) || v == "" || k == "search_type" {
+					if isInternalParam(k) || v == "" {
 						continue
 					}
 					body[k] = v
@@ -883,11 +914,11 @@ func restSpecs() []restSpec {
 				return req, nil
 			},
 			schema: ProviderSchema{
-				Code: "perplexity_search", Name: "Perplexity Search API",
+				Code: "perplexity", Name: "Perplexity Search API",
 				Credentials: credentialFields("api_key"),
 				Params: []ParamField{
 					selectParam("search_context_size", "Context size", "medium", ParamOption{"Low", "low"}, ParamOption{"Medium", "medium"}, ParamOption{"High", "high"}),
-					selectParam("search_type", "Search type", "web", ParamOption{"Web", "web"}, ParamOption{"People", "people"}),
+					selectParam("search_type", "Search type", "web", ParamOption{"Web", "web"}, ParamOption{"Fast", "fast"}, ParamOption{"People", "people"}),
 					textParam("search_recency_filter", "Recency filter", "", "month, week, day, hour"),
 					textParam("country", "Country", "us", ""),
 				},
@@ -980,10 +1011,52 @@ func restSpecs() []restSpec {
 				Code: "parallel", Name: "Parallel",
 				Credentials: credentialFields("api_key"),
 				Params: []ParamField{
-					selectParam("mode", "Mode", "advanced", ParamOption{"Advanced", "advanced"}, ParamOption{"Standard", "standard"}),
+					selectParam("mode", "Mode", "advanced", ParamOption{"Advanced", "advanced"}, ParamOption{"Fast", "fast"}, ParamOption{"Turbo", "turbo"}),
 					numberParam("max_chars_total", "Max total chars", "", ""),
 				},
 				Hints: []string{"search_queries is built automatically from the query text."},
+			},
+		},
+		{
+			code: "ollama", name: "Ollama Web Search", baseURL: "https://ollama.com",
+			method: http.MethodPost, path: "/api/web_search", body: true,
+			auth:     restAuth{kind: "bearer", credKey: "api_key"},
+			queryKey: "query", countField: "max_results", countCap: 10,
+			resultPath: []string{"results"},
+			linkKeys:   []string{"url"}, titleKey: "title", snippetKeys: []string{"content"},
+			fatalHTTP: commonFatal(), retryHTTP: commonRetry(),
+			// Ollama binds max_results to a Go int, so the JSON body must carry a
+			// real number (the generic builder would send a string).
+			build: func(ctx context.Context, q Query, c Credentials, p Params) (*http.Request, error) {
+				base := strings.TrimRight(defaultStr(p["base_url"], "https://ollama.com"), "/")
+				body := map[string]any{"query": q.Text}
+				if q.Count > 0 {
+					n := q.Count
+					if n > 10 {
+						n = 10
+					}
+					body["max_results"] = n
+				}
+				b, _ := json.Marshal(body)
+				req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/api/web_search", bytes.NewReader(b))
+				if err != nil {
+					return nil, err
+				}
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("Accept", "application/json")
+				if v := strings.TrimSpace(c["api_key"]); v != "" {
+					req.Header.Set("Authorization", "Bearer "+v)
+				}
+				return req, nil
+			},
+			schema: ProviderSchema{
+				Code: "ollama", Name: "Ollama Web Search",
+				Credentials: credentialFields("api_key"),
+				Params:      []ParamField{},
+				Hints: []string{
+					"Requires an Ollama account API key; max_results defaults to 5, maximum 10.",
+					"Each result's content is used as the snippet.",
+				},
 			},
 		},
 
@@ -998,7 +1071,36 @@ func restSpecs() []restSpec {
 			fatalHTTP: commonFatal(), retryHTTP: commonRetry(),
 			build: func(ctx context.Context, q Query, c Credentials, p Params) (*http.Request, error) {
 				base := strings.TrimRight(defaultStr(p["base_url"], "https://kagi.com"), "/")
-				body := map[string]any{"q": q.Text}
+				key := strings.TrimSpace(c["api_key"])
+				if defaultStr(p["mode"], "fastgpt") == "search" {
+					// Kagi Search API v1: GET with query params, Bot auth.
+					endpoint, err := url.Parse(base + "/api/v1/search")
+					if err != nil {
+						return nil, err
+					}
+					values := endpoint.Query()
+					values.Set("q", q.Text)
+					if q.Count > 0 {
+						values.Set("limit", strconv.Itoa(q.Count))
+					}
+					for k, v := range p {
+						if isInternalParam(k) || v == "" || k == "mode" {
+							continue
+						}
+						values.Set(k, v)
+					}
+					endpoint.RawQuery = values.Encode()
+					req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
+					if err != nil {
+						return nil, err
+					}
+					req.Header.Set("Accept", "application/json")
+					if key != "" {
+						req.Header.Set("Authorization", "Bot "+key)
+					}
+					return req, nil
+				}
+				body := map[string]any{"query": q.Text}
 				b, _ := json.Marshal(body)
 				req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/api/v0/fastgpt", bytes.NewReader(b))
 				if err != nil {
@@ -1006,8 +1108,8 @@ func restSpecs() []restSpec {
 				}
 				req.Header.Set("Content-Type", "application/json")
 				req.Header.Set("Accept", "application/json")
-				if v := strings.TrimSpace(c["api_key"]); v != "" {
-					req.Header.Set("Authorization", "Bot "+v)
+				if key != "" {
+					req.Header.Set("Authorization", "Bot "+key)
 				}
 				return req, nil
 			},
@@ -1026,9 +1128,13 @@ func restSpecs() []restSpec {
 				Code: "kagi", Name: "Kagi",
 				Credentials: credentialFields("api_key"),
 				Params: []ParamField{
-					selectParam("endpoint", "Endpoint", "fastgpt", ParamOption{"FastGPT", "fastgpt"}, ParamOption{"Enrich Web", "enrich_web"}, ParamOption{"Enrich News", "enrich_news"}, ParamOption{"Search", "search"}),
+					selectParam("mode", "API", "fastgpt", ParamOption{"FastGPT", "fastgpt"}, ParamOption{"Search API v1", "search"}),
+					textParam("limit", "Limit (Search API)", "", "Max results; count is used when empty"),
+					textParam("search_language", "Search language", "", "Search API v1"),
+					textParam("country", "Country", "", "Search API v1"),
+					textParam("no_cache", "No cache", "", "true | false"),
 				},
-				Hints: []string{"FastGPT returns references[]; data[] is used for enrich endpoints."},
+				Hints: []string{"FastGPT returns data.references[]; Search API v1 returns data[]. Both use Bot auth."},
 			},
 		},
 		{
@@ -1099,7 +1205,7 @@ func restSpecs() []restSpec {
 				}
 				values := endpoint.Query()
 				values.Set("query", q.Text)
-				fields := defaultStr(p["fields"], "title,abstract,url,year")
+				fields := defaultStr(p["fields"], "title,abstract,url,year,citationCount,tldr")
 				values.Set("fields", fields)
 				if q.Count > 0 {
 					limit := q.Count
@@ -1107,6 +1213,12 @@ func restSpecs() []restSpec {
 						limit = 100
 					}
 					values.Set("limit", strconv.Itoa(limit))
+				}
+				for k, v := range p {
+					if isInternalParam(k) || v == "" || k == "fields" {
+						continue
+					}
+					values.Set(k, v)
 				}
 				endpoint.RawQuery = values.Encode()
 				req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
@@ -1142,7 +1254,13 @@ func restSpecs() []restSpec {
 						if link == "" {
 							continue
 						}
-						rows = append(rows, Row{Link: link, Title: firstString(rm, "title"), Snippet: firstString(rm, "abstract")})
+						snippet := firstString(rm, "abstract")
+						if snippet == "" {
+							if tldr, ok := rm["tldr"].(map[string]any); ok {
+								snippet = firstString(tldr, "text")
+							}
+						}
+						rows = append(rows, Row{Link: link, Title: firstString(rm, "title"), Snippet: snippet})
 					}
 				}
 				return rows
@@ -1151,7 +1269,8 @@ func restSpecs() []restSpec {
 				Code: "semanticscholar", Name: "Semantic Scholar",
 				Credentials: credentialFields("api_key"),
 				Params: []ParamField{
-					textParam("fields", "Fields", "title,abstract,url,year", "Comma-separated paper fields"),
+					textParam("fields", "Fields", "title,abstract,url,year,citationCount,tldr", "Comma-separated paper fields"),
+					selectParam("sort", "Sort", "", ParamOption{"Default", ""}, ParamOption{"Relevance", "relevance"}, ParamOption{"Publication date", "publicationDate"}, ParamOption{"Citation count", "citationCount"}),
 					textParam("offset", "Offset", "", ""),
 				},
 				Hints: []string{"An API key increases rate limits but is optional."},
@@ -1259,6 +1378,10 @@ func restSpecs() []restSpec {
 					return nil, err
 				}
 				req.Header.Set("Accept", "application/vnd.github+json")
+				if searchType == "code" {
+					// Required for text_matches (code snippets) in search results.
+					req.Header.Set("Accept", "application/vnd.github.text-match+json")
+				}
 				req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
 				if v := strings.TrimSpace(c["api_key"]); v != "" {
 					req.Header.Set("Authorization", "Bearer "+v)
@@ -1279,6 +1402,17 @@ func restSpecs() []restSpec {
 					}
 					title := firstString(im, "full_name")
 					if title == "" {
+						if repo, ok := im["repository"].(map[string]any); ok {
+							if full := firstString(repo, "full_name"); full != "" {
+								if path := firstString(im, "path"); path != "" {
+									title = full + "/" + path
+								} else {
+									title = full
+								}
+							}
+						}
+					}
+					if title == "" {
 						title = firstString(im, "name")
 					}
 					if title == "" {
@@ -1287,6 +1421,9 @@ func restSpecs() []restSpec {
 					snippet := firstString(im, "description")
 					if snippet == "" {
 						snippet = firstString(im, "body")
+					}
+					if snippet == "" {
+						snippet = githubTextMatch(im)
 					}
 					rows = append(rows, Row{Link: link, Title: title, Snippet: snippet})
 				}
@@ -1300,12 +1437,14 @@ func restSpecs() []restSpec {
 					textParam("sort", "Sort", "", ""),
 					textParam("order", "Order", "", "asc | desc"),
 				},
-				Hints: []string{"Code search snippets require text-match media type and are not fetched here."},
+				Hints: []string{"Code search requests the text-match media type and uses text_matches.fragment as the snippet."},
 			},
 		},
 		{
 			code: "hn", name: "Hacker News", baseURL: "https://hn.algolia.com",
 			method: http.MethodGet, path: "/api/v1/search",
+			// search_type=date switches to the by-date Algolia endpoint.
+			pathParam: "search_type", pathMap: map[string]string{"date": "/api/v1/search_by_date"},
 			auth:     restAuth{kind: "none"},
 			queryKey: "query", countField: "hitsPerPage", countCap: 1000,
 			resultPath: []string{"hits"},
@@ -1342,7 +1481,8 @@ func restSpecs() []restSpec {
 				Code: "hn", Name: "Hacker News",
 				Credentials: []CredentialField{},
 				Params: []ParamField{
-					selectParam("tags", "Tags", "", ParamOption{"Any", ""}, ParamOption{"Story", "story"}, ParamOption{"Comment", "comment"}, ParamOption{"Ask HN", "ask_hn"}, ParamOption{"Show HN", "show_hn"}),
+					selectParam("search_type", "Sort", "relevance", ParamOption{"Relevance", "relevance"}, ParamOption{"Date", "date"}),
+					selectParam("tags", "Tags", "", ParamOption{"Any", ""}, ParamOption{"Story", "story"}, ParamOption{"Comment", "comment"}, ParamOption{"Ask HN", "ask_hn"}, ParamOption{"Show HN", "show_hn"}, ParamOption{"Front page", "front_page"}),
 					textParam("numericFilters", "Numeric filters", "", "points>10,num_comments>5"),
 					numberParam("page", "Page", "0", "0-based pagination"),
 				},
@@ -1419,6 +1559,8 @@ func restSpecs() []restSpec {
 					textParam("nottagged", "Not tagged", "", ""),
 					selectParam("sort", "Sort", "relevance", ParamOption{"Relevance", "relevance"}, ParamOption{"Activity", "activity"}, ParamOption{"Votes", "votes"}, ParamOption{"Creation", "creation"}),
 					selectParam("order", "Order", "desc", ParamOption{"Descending", "desc"}, ParamOption{"Ascending", "asc"}),
+					textParam("fromdate", "From date", "", "Unix epoch seconds"),
+					textParam("todate", "To date", "", "Unix epoch seconds"),
 				},
 				Hints: []string{"Responses are gzip; the HTTP client handles decompression."},
 			},
@@ -1521,6 +1663,7 @@ func restSpecs() []restSpec {
 					requiredTextParam("index_name", "Index name", "", ""),
 					selectParam("auth_mode", "Auth mode", "api_key", ParamOption{"API key", "api_key"}, ParamOption{"Microsoft Entra (RBAC)", "aad"}),
 					selectParam("query_type", "Query type", "simple", ParamOption{"Simple", "simple"}, ParamOption{"Full", "full"}, ParamOption{"Semantic", "semantic"}),
+					selectParam("searchMode", "Search mode", "any", ParamOption{"Any", "any"}, ParamOption{"All", "all"}),
 					textParam("semanticConfiguration", "Semantic config", "", "Required for semantic"),
 					textParam("title_field", "Title field", "title", "Index field mapped to Row.title"),
 					textParam("url_field", "URL field", "url", "Index field mapped to Row.link"),
@@ -1545,18 +1688,20 @@ func restSpecs() []restSpec {
 				if corpus == "" {
 					return nil, fmt.Errorf("corpus_key is required")
 				}
-				body := map[string]any{
-					"query": q.Text,
-					"search": map[string]any{
-						"corpora": []any{map[string]any{"corpus_key": corpus}},
-					},
-					"generation": nil,
-				}
+				search := map[string]any{}
 				if q.Count > 0 {
-					body["search"].(map[string]any)["limit"] = q.Count
+					search["limit"] = q.Count
+				}
+				if v := strings.TrimSpace(p["metadata_filter"]); v != "" {
+					search["metadata_filter"] = v
+				}
+				body := map[string]any{
+					"query":           q.Text,
+					"search":          search,
+					"stream_response": false,
 				}
 				b, _ := json.Marshal(body)
-				req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v2/query", bytes.NewReader(b))
+				req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/v2/corpora/"+url.PathEscape(corpus)+"/query", bytes.NewReader(b))
 				if err != nil {
 					return nil, err
 				}
@@ -1575,7 +1720,7 @@ func restSpecs() []restSpec {
 					if !ok {
 						continue
 					}
-					meta, _ := rm["metadata"].(map[string]any)
+					meta, _ := rm["document_metadata"].(map[string]any)
 					if meta == nil {
 						continue
 					}
@@ -1592,9 +1737,9 @@ func restSpecs() []restSpec {
 				Credentials: credentialFields("api_key"),
 				Params: []ParamField{
 					requiredTextParam("corpus_key", "Corpus key", "", "Required corpus key"),
-					textParam("metadata_filter", "Metadata filter", "", ""),
+					textParam("metadata_filter", "Metadata filter", "", "Vectara metadata filter expression"),
 				},
-				Hints: []string{"generation is disabled so the response stays in Row format."},
+				Hints: []string{"stream_response is disabled so the response stays in Row format."},
 			},
 		},
 		{
@@ -1690,4 +1835,20 @@ func stripHTML(s string) string {
 		}
 	}
 	return strings.TrimSpace(out.String())
+}
+
+// githubTextMatch returns the first text_matches fragment of a GitHub code
+// search item (requires the text-match media type in the Accept header).
+func githubTextMatch(item map[string]any) string {
+	matches, _ := item["text_matches"].([]any)
+	for _, m := range matches {
+		mm, ok := m.(map[string]any)
+		if !ok {
+			continue
+		}
+		if frag := firstString(mm, "fragment"); frag != "" {
+			return frag
+		}
+	}
+	return ""
 }

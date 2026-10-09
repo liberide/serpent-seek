@@ -9,6 +9,19 @@ import (
 	"strings"
 )
 
+// kimiBaseURL resolves the Moonshot endpoint. The `region` param explicitly
+// selects the international (.ai) or China (.cn) host; otherwise base_url (or
+// the international default) wins. Keys are not interchangeable between hosts.
+func kimiBaseURL(params Params) string {
+	switch defaultStr(params["region"], "") {
+	case "intl":
+		return "https://api.moonshot.ai"
+	case "cn":
+		return "https://api.moonshot.cn"
+	}
+	return defaultStr(params["base_url"], "https://api.moonshot.ai")
+}
+
 // kimiProvider calls the Kimi (Moonshot) Web Search Basic API
 // (POST /v1/tools/search). It returns the classic title/url/snippet list and,
 // when include_content is on, the full page text in the snippet field.
@@ -18,16 +31,17 @@ type kimiProvider struct {
 }
 
 // Code returns the provider identifier.
-func (p kimiProvider) Code() string { return "kimi" }
+func (p kimiProvider) Code() string { return "kimi_search" }
 
 // Schema describes the provider configuration UI.
 func (p kimiProvider) Schema() ProviderSchema {
 	return ProviderSchema{
-		Code:           "kimi",
+		Code:           "kimi_search",
 		Name:           "Kimi (Moonshot) Web Search",
 		DefaultBaseURL: "https://api.moonshot.ai",
 		Credentials:    credentialFields("api_key"),
 		Params: []ParamField{
+			selectParam("region", "API region", "", ParamOption{"Auto (base URL)", ""}, ParamOption{"International (api.moonshot.ai)", "intl"}, ParamOption{"China (api.moonshot.cn)", "cn"}),
 			numberParam("timeout_seconds", "Timeout seconds", "", "1-60; empty = no per-request timeout"),
 			boolParam("include_content", "Include full content", false, "Put the full page text into the result snippet"),
 			numberParam("max_rps", "Max requests/sec", "", "Per-driver rate limit override"),
@@ -37,6 +51,7 @@ func (p kimiProvider) Schema() ProviderSchema {
 		Hints: []string{
 			"Web Search Basic returns title/url/snippet; enable \"Include full content\" to fetch page text.",
 			"Billed per call returning a non-empty result list; empty results are free.",
+			"Keys are not interchangeable between api.moonshot.ai and api.moonshot.cn.",
 		},
 	}
 }
@@ -50,16 +65,17 @@ type kimiProProvider struct {
 }
 
 // Code returns the provider identifier.
-func (p kimiProProvider) Code() string { return "kimi_pro" }
+func (p kimiProProvider) Code() string { return "kimi_search_pro" }
 
 // Schema describes the provider configuration UI.
 func (p kimiProProvider) Schema() ProviderSchema {
 	return ProviderSchema{
-		Code:           "kimi_pro",
+		Code:           "kimi_search_pro",
 		Name:           "Kimi (Moonshot) Web Search Pro",
 		DefaultBaseURL: "https://api.moonshot.ai",
 		Credentials:    credentialFields("api_key"),
 		Params: []ParamField{
+			selectParam("region", "API region", "", ParamOption{"Auto (base URL)", ""}, ParamOption{"International (api.moonshot.ai)", "intl"}, ParamOption{"China (api.moonshot.cn)", "cn"}),
 			textParam("sites", "Sites", "", "Comma-separated domains (max 5), OR-combined"),
 			textParam("time_window_start", "Date from", "", "YYYY / YYYY-MM / YYYY-MM-DD"),
 			textParam("time_window_end", "Date to", "", "YYYY / YYYY-MM / YYYY-MM-DD"),
@@ -71,18 +87,19 @@ func (p kimiProProvider) Schema() ProviderSchema {
 		Hints: []string{
 			"Web Search Pro returns ranked content chunks (most relevant passages) per result.",
 			"sites and time_window narrow the search; billed per call returning a non-empty result list.",
+			"Keys are not interchangeable between api.moonshot.ai and api.moonshot.cn.",
 		},
 	}
 }
 
 func (p kimiProvider) Search(ctx context.Context, q Query, c Credentials, params Params) Result {
-	base := strings.TrimRight(defaultStr(params["base_url"], "https://api.moonshot.ai"), "/")
+	base := strings.TrimRight(kimiBaseURL(params), "/")
 	apiKey := strings.TrimSpace(c["api_key"])
 	fatalHTTP := parseIntCSV(params["fatal_http"], []int{400, 401, 403})
 	retryHTTP := parseIntCSV(params["retry_http_codes"], commonRetry())
 
 	if err := WaitLimit(ctx, p.Code(), maxRPSParam(params, 0)); err != nil {
-		return Result{Kind: ClassifyTransport(err), Provider: p.Code(), Error: "kimi: rate limiter wait: " + err.Error()}
+		return Result{Kind: ClassifyTransport(err), Provider: p.Code(), Error: "kimi_search: rate limiter wait: " + err.Error()}
 	}
 
 	body := map[string]any{"text_query": q.Text}
@@ -108,13 +125,13 @@ func (p kimiProvider) Search(ctx context.Context, q Query, c Credentials, params
 }
 
 func (p kimiProProvider) Search(ctx context.Context, q Query, c Credentials, params Params) Result {
-	base := strings.TrimRight(defaultStr(params["base_url"], "https://api.moonshot.ai"), "/")
+	base := strings.TrimRight(kimiBaseURL(params), "/")
 	apiKey := strings.TrimSpace(c["api_key"])
 	fatalHTTP := parseIntCSV(params["fatal_http"], []int{400, 401, 403})
 	retryHTTP := parseIntCSV(params["retry_http_codes"], commonRetry())
 
 	if err := WaitLimit(ctx, p.Code(), maxRPSParam(params, 0)); err != nil {
-		return Result{Kind: ClassifyTransport(err), Provider: p.Code(), Error: "kimi_pro: rate limiter wait: " + err.Error()}
+		return Result{Kind: ClassifyTransport(err), Provider: p.Code(), Error: "kimi_search_pro: rate limiter wait: " + err.Error()}
 	}
 
 	body := map[string]any{"text_query": q.Text}

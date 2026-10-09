@@ -1271,8 +1271,8 @@ func providerRequiresKey(code string) bool {
 	switch code {
 	case "apiserpent", "serpbase", "yandex", "yandex_gen", "google", "google_vertex", "google_cse",
 		"brave", "serper", "serpapi", "searchapi", "dataforseo", "youcom", "jina", "firecrawl",
-		"mojeek", "marginalia", "tavily", "exa", "linkup", "perplexity_search", "valyu",
-		"parallel", "kagi", "vectara", "anthropic", "kimi", "kimi_pro":
+		"mojeek", "marginalia", "tavily", "exa", "linkup", "perplexity", "valyu",
+		"parallel", "kagi", "vectara", "anthropic", "kimi_search", "kimi_search_pro", "ollama":
 		return true
 	default:
 		return false

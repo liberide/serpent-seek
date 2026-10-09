@@ -209,7 +209,7 @@ func Load() (*Config, error) {
 	c.DefaultYandexFolderID = envStr("YANDEX_FOLDER_ID", "")
 	c.DefaultNCBIAPIKey = envStr("NCBI_API_KEY", "")
 	c.DefaultGoogleAPIKey = envStr("GOOGLE_API_KEY", "")
-	c.DefaultGoogleModel = envStr("GOOGLE_MODEL", "gemini-2.0-flash")
+	c.DefaultGoogleModel = envStr("GOOGLE_MODEL", "gemini-3.8-flash")
 	c.DefaultGoogleCX = envStr("GOOGLE_CX", "")
 	c.DefaultGoogleDriver = strings.ToLower(envStr("GOOGLE_DRIVER", "vertex"))
 	c.DefaultTreatEmptyAsFailure = envBool("TREAT_EMPTY_AS_FAIL", true)

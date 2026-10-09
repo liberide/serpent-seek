@@ -263,28 +263,49 @@ func TestYandexForbiddenPermanent(t *testing.T) {
 }
 
 func TestGoogleGrounding(t *testing.T) {
+	var gotKey string
+	var gotBody map[string]any
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("key") != "secret" {
-			t.Errorf("api key missing in query")
-		}
-		_, _ = w.Write([]byte(`{"candidates":[{"groundingMetadata":{"groundingChunks":[{"web":{"uri":"https://a","title":"A"}}],"groundingSupports":[{"segment":{"text":"supporting"},"groundingChunkIndices":[0]}]}}]}`))
+		gotKey = r.Header.Get("x-goog-api-key")
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = w.Write([]byte(`{"steps":[{"type":"model_output","content":[{"type":"text","text":"Spain won Euro 2024.","annotations":[{"type":"url_citation","url":"https://uefa.com/x","title":"uefa.com","start_index":0,"end_index":5}]}]}]}`))
 	}))
 	defer server.Close()
 	p := googleProvider{http: testClient()}
-	res := p.Search(context.Background(), Query{Text: "x", Count: 3}, Credentials{"api_key": "secret"},
+	res := p.Search(context.Background(), Query{Text: "who won euro 2024", Count: 3}, Credentials{"api_key": "secret"},
 		Params{"base_url": server.URL, "driver_mode": "gemini"})
-	if !res.OK || len(res.Rows) != 1 || res.Rows[0].Snippet != "supporting" {
+	if !res.OK || len(res.Rows) != 1 {
 		t.Fatalf("unexpected grounding result: %+v", res)
+	}
+	if res.Rows[0].Link != "https://uefa.com/x" || res.Rows[0].Title != "uefa.com" || res.Rows[0].Snippet != "Spain" {
+		t.Fatalf("annotation mapping failed: %+v", res.Rows[0])
+	}
+	if res.Answer != "Spain won Euro 2024." {
+		t.Fatalf("model_output text must become the answer: %q", res.Answer)
+	}
+	if gotKey != "secret" {
+		t.Fatalf("x-goog-api-key header missing, got %q", gotKey)
+	}
+	if gotBody["input"] != "who won euro 2024" {
+		t.Fatalf("unexpected interactions body: %#v", gotBody)
+	}
+	tools, _ := gotBody["tools"].([]any)
+	if len(tools) != 1 {
+		t.Fatalf("expected one tool, got %#v", gotBody["tools"])
+	}
+	tool, _ := tools[0].(map[string]any)
+	if tool["type"] != "google_search" {
+		t.Fatalf("unexpected tool: %#v", tool)
 	}
 }
 
 func TestGoogleGroundingEmptyAndPermanent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("key") == "bad" {
+		if r.Header.Get("x-goog-api-key") == "bad" {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		_, _ = w.Write([]byte(`{"candidates":[{"groundingMetadata":{"groundingChunks":[]}}]}`))
+		_, _ = w.Write([]byte(`{"steps":[]}`))
 	}))
 	defer server.Close()
 	p := googleProvider{http: testClient()}

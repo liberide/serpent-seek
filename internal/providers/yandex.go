@@ -197,7 +197,10 @@ func yandexSearchBody(q Query, params Params, folder string) map[string]any {
 
 // --- yandex_gen: generative answer endpoint (answer-type driver) ---
 
-// yandexGenProvider calls POST /v2/gen/search (AI Studio generative search).
+// yandexGenProvider calls POST /v2/gen/search (AI Studio generative search =
+// REST GenSearch.Search). The response is a generative.result.
+// GenerativeSearchResult (text + sources). `getPartialResults` (JSON Lines
+// streaming) is not wired up.
 // The result is a generated answer; cited sources are mapped to (sparse) Rows
 // when present. The answer text itself is kept in Result.Answer and never
 // mixed into Row.Snippet (full `mode: answer` node support is a separate task).
