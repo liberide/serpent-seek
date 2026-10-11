@@ -1,6 +1,6 @@
 # 🐍 SerpentSeek — passerelle de recherche auto-hébergée pour Open WebUI, MCP et 40+ API
 
-[English](README.md "Read in English") | [Русский](README.ru.md "README по-русски") | [Deutsch](README.de.md "Auf Deutsch lesen") | **Français** | [中文](README.zh.md "阅读中文版")
+[English](README.md "Read in English") | [Русский](README.ru.md "README по-русски") | [Deutsch](README.de.md "Auf Deutsch lesen") | **Français** | [日本語](README.ja.md "日本語で読む") | [中文](README.zh.md "阅读中文版")
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE "Licence du projet — GNU GPL v3.0")
 [![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod "Backend écrit en Go")
@@ -46,6 +46,10 @@ dommage matériel (GPLv3 §§15–16, détails dans `NOTICE`).
   **Connecteur** logique fusionne les branches et supprime les URL en double,
   le reste suit les règles de fallback/réessai ; plusieurs instances nommées
   par pilote
+* 🔗 **Routage de chaîne par jeton** — associez chaque clé API à sa propre
+  chaîne (indépendamment de la chaîne active) ; les jetons non liés suivent la
+  chaîne par défaut/active et, en cas de suppression, les jetons liés y
+  retombent en toute sécurité
 * 🔌 **Prêt pour Open WebUI** — point d'accès `/search` clé en main : toujours
   HTTP 200, `[{"link","title","snippet"}]`
 * 🤖 **Serveur MCP** — outil `search` en HTTP streamable pour Claude, Cursor,
@@ -56,7 +60,7 @@ dommage matériel (GPLv3 §§15–16, détails dans `NOTICE`).
   SameSite=Strict avec CSRF, secrets en écriture seule, AES-GCM optionnel
 * 💾 **SQLite ⟷ PostgreSQL** — SQLite en mode WAL par défaut ; le profil
   `extdb` fournit PostgreSQL pour les déploiements multi-réplicas
-* 🌍 **UI multilingue** — English, Русский, Polski, Deutsch, Français, 中文
+* 🌍 **UI multilingue** — English, Русский, Polski, Deutsch, Français, 日本語, 中文
 * 🐳 **Un seul conteneur Docker** — backend Go avec la SPA SvelteKit embarquée
 
 ## Sommaire
@@ -75,7 +79,6 @@ dommage matériel (GPLv3 §§15–16, détails dans `NOTICE`).
 * [Développement](#développement)
 * [Dépendances et licences](#dépendances-et-licences)
 * [Risques et mises en garde](#risques-et-mises-en-garde)
-* [Captures d'écran](#captures-décran)
 * [Structure](#structure)
 
 ## Démarrage rapide
@@ -334,6 +337,25 @@ chaîne enregistrée exactement comme avant :
 La ramification parallèle, la fusion par Connecteur et la continuation
 `on_success` ne s'appliquent qu'aux chaînes contenant réellement un bloc Départ.
 
+### Liaison d'une chaîne à un jeton
+
+Chaque clé API peut être associée à une chaîne précise, indépendamment de la
+chaîne active. La liaison est définie par un administrateur sur la page
+**Utilisateurs et clés** et prend effet dès la requête suivante — sans rotation
+de clé :
+
+* un jeton lié exécute toujours sa chaîne, même inactive ; plusieurs jetons
+  peuvent partager la même chaîne ;
+* un jeton non lié retombe sur la **chaîne par défaut** — l'unique chaîne
+  `active` (il n'existe pas d'entité « chaîne par défaut » distincte) ;
+* si la chaîne liée disparaît, la liaison est effacée et le jeton retombe en
+  sécurité sur la chaîne active ; une chaîne explicitement liée mais absente
+  échoue en fermeture (fail-closed) ;
+* la page Chaînes indique combien de jetons l'utilisent (`🔑 N`, dont les
+  actifs) et avertit avant de supprimer une chaîne à laquelle des jetons actifs
+  sont liés — après confirmation, ils passent à la chaîne par défaut. La chaîne
+  active elle-même ne peut pas être supprimée.
+
 ## PostgreSQL (profil `extdb`)
 
 ```bash
@@ -378,7 +400,7 @@ limite. La même valeur (`0`) peut être saisie manuellement dans le champ
 
 ## Interface et localisation
 
-L'UI est traduite en 6 langues :
+L'UI est traduite en 7 langues :
 
 | Code | Langue |
 | --- | --- |
@@ -387,6 +409,7 @@ L'UI est traduite en 6 langues :
 | `pl` | Polski |
 | `de` | Deutsch |
 | `fr` | Français |
+| `ja` | 日本語 |
 | `zh` | 中文 |
 
 Le sélecteur de langue est en haut à droite, à côté du bouton « Quick search ».
@@ -496,15 +519,6 @@ un service séparé, pas une dépendance de code).
 * `TRUSTED_PROXIES` liste les proxys dont les en-têtes forwarded sont acceptés ;
   `BLOCK_PRIVATE_NETWORKS=true` limite les connexions sortantes aux adresses
   publiques.
-
-## Captures d'écran
-
-Après le démarrage, vous obtenez les écrans suivants : Dashboard, Analytics
-(graphiques de requêtes, filtres et réussite/échecs par fournisseur), History (avec un
-graphe de chaîne coloré et une chronologie des étapes), Chains (éditeur visuel),
-Providers, Playground, MCP, Logs, Users, Settings. Ajoutez vos captures d'écran
-dans `docs/screenshots/` (elles ne sont pas incluses dans le dépôt pour ne pas
-alourdir l'image).
 
 ## Structure
 

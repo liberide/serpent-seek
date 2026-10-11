@@ -20,7 +20,8 @@
 		"active": "active",
 		"unknown": "inconnu",
 		"copy": "Copier",
-		"copied": "Copié"
+		"copied": "Copié",
+		"dismiss": "Masquer"
 	},
 	"nav": {
 		"dashboard": "Tableau de bord",
@@ -31,6 +32,7 @@
 		"playground": "Bac à sable",
 		"mcp": "MCP",
 		"logs": "Journaux",
+		"audit": "Audit",
 		"users": "Utilisateurs",
 		"settings": "Paramètres"
 	},
@@ -68,7 +70,8 @@
 		"create": "Créer un administrateur",
 		"created": "Administrateur créé",
 		"saveKey": "Enregistrez la clé — elle n'est affichée qu'une seule fois :",
-		"goLogin": "Aller à la connexion"
+		"goLogin": "Aller à la connexion",
+		"tokenPlaceholder": "p. ex. ff1089a6"
 	},
 	"dashboard": {
 		"title": "Tableau de bord",
@@ -116,7 +119,9 @@
 			"emptyCount": "sans résultat : {n}",
 			"activeDays": "Jours actifs",
 			"busiest": "pic {date} : {n}",
-			"noBusiest": "aucune donnée"
+			"noBusiest": "aucune donnée",
+			"cost": "Coût estimé",
+			"costHint": "somme des coûts fournisseurs configurés"
 		},
 		"chart": {
 			"volume": "Volume",
@@ -146,6 +151,7 @@
 			"skip": "Ignorées",
 			"success": "Réussite",
 			"avg": "Temps moy.",
+			"cost": "Coût",
 			"legacy": "hérité",
 			"noData": "Aucune donnée fournisseur pour la période sélectionnée"
 		},
@@ -199,7 +205,11 @@
 		"deleteConfirm": "Supprimer la chaîne sélectionnée ?",
 		"activated": "Chaîne activée",
 		"copied": "Chaîne dupliquée",
-		"deleted": "Chaîne supprimée"
+		"deleted": "Chaîne supprimée",
+		"boundKeys": "{count} clés",
+		"deleteBound": "Cette chaîne est utilisée par {count} jeton(s) actif(s). En la supprimant, ils seront déplacés vers la chaîne par défaut (chaîne active). Supprimer ?",
+		"defaultHint": "Chaîne par défaut : utilisée par les jetons sans liaison",
+		"boundHint": "Jetons liés à cette chaîne"
 	},
 	"chain": {
 		"backChains": "← Chaînes",
@@ -253,7 +263,9 @@
 		"proxyBadge": "proxy",
 		"proxy": "Proxy",
 		"proxyNone": "Direct (sans proxy)",
-		"proxyHint": "Router les requêtes de ce fournisseur via le proxy sélectionné. Gérez les proxys dans Paramètres → Proxy."
+		"proxyHint": "Router les requêtes de ce fournisseur via le proxy sélectionné. Gérez les proxys dans Paramètres → Proxy.",
+		"costPerRequest": "Coût par requête",
+		"costPerRequestHint": "Coût facultatif d'un appel à ce fournisseur, en unité libre (USD, crédits…). Laisser vide pour ne pas compter."
 	},
 	"deadReason": {
 		"providerDisabled": "Le fournisseur est désactivé",
@@ -298,8 +310,17 @@
 			"providers": "Fournisseurs (codes d'erreur)",
 			"retention": "Stockage & rétention",
 			"storage": "Base de données",
+			"config": "Configuration",
+			"info": "À propos",
 			"maintenance": "Maintenance",
 			"danger": "Zone de danger"
+		},
+		"config": {
+			"hint": "Exporter un instantané sans secrets (fournisseurs, chaînes, réglages non secrets) ou l'importer. Les identifiants ne sont jamais exportés et doivent être ressaisis.",
+			"export": "Exporter",
+			"import": "Importer",
+			"overwrite": "Écraser l'existant",
+			"imported": "{providers} fournisseur(s) et {chains} chaîne(s) importés ; {skipped} ignorés."
 		},
 		"proxy": {
 			"add": "Ajouter un proxy",
@@ -329,11 +350,43 @@
 			"missingHost": "Saisissez un hôte de proxy.",
 			"usedBy": "Utilisé par : {providers}"
 		},
+		"info": {
+			"version": "Version",
+			"commit": "Commit",
+			"buildDate": "Date de build",
+			"go": "Environnement Go",
+			"uptime": "Durée de fonctionnement",
+			"started": "Démarré",
+			"source": "Code source",
+			"update": "Mise à jour",
+			"updateAvailable": "La version {version} est disponible",
+			"upToDate": "À jour",
+			"updateDisabled": "Vérification des mises à jour désactivée",
+			"updateError": "Échec de la vérification : {error}",
+			"updateNotChecked": "Pas encore vérifié",
+			"lastChecked": "Dernière vérification",
+			"checkNow": "Vérifier maintenant",
+			"releaseNotes": "Notes de version",
+			"checked": "Vérification terminée",
+			"unofficial": "Non officiel",
+			"unofficialHint": "Les mises à jour sont vérifiées via un flux non officiel."
+		},
+		"about": {
+			"tagline": "Passerelle de recherche auto-hébergée pour Open WebUI, MCP et 40+ API de recherche",
+			"build": "Build",
+			"runtime": "Système",
+			"updates": "Mises à jour",
+			"links": "Liens",
+			"docs": "Documentation",
+			"license": "Licence"
+		},
 		"fields": {
 			"auth_enabled": "Activer l'authentification",
 			"hide_auth_off_notice": "Masquer l'avertissement « authentification désactivée »",
 			"history_retention_days": "Rétention de l'historique (jours)",
 			"logs_retention_days": "Rétention des journaux (jours)",
+			"usage_retention_days": "Rétention des compteurs (jours)",
+			"audit_retention_days": "Rétention de l'audit (jours)",
 			"max_concurrency": "Concurrence max.",
 			"max_attempts": "Tentatives max.",
 			"user_agent": "User-Agent",
@@ -347,13 +400,25 @@
 			"database_url": "URL de la base de données",
 			"treat_empty_as_fail": "Résultat vide = échec",
 			"ignore_request_count": "Ignorer le nombre",
-			"allow_sparse_sources": "Mélanger les sources partielles"
+			"allow_sparse_sources": "Mélanger les sources partielles",
+			"search_rate_limit_per_minute": "Limite de recherche (/min)",
+			"search_daily_quota": "Quota de recherche quotidien",
+			"chain_timeout_seconds": "Délai de chaîne (s)",
+			"provider_failure_threshold": "Seuil d'échecs fournisseur",
+			"provider_cooldown_seconds": "Quarantaine fournisseur (s)",
+			"debug": "Points de debug",
+			"update_check_enabled": "Vérifier les mises à jour",
+			"update_check_url": "URL du flux de versions",
+			"update_check_interval_hours": "Intervalle de vérification (h)",
+			"webhook_url": "URL du webhook"
 		},
 		"fieldHints": {
 			"auth_enabled": "Exiger une clé API ou une clé d'accès pour le tableau de bord et l'API.",
 			"hide_auth_off_notice": "Masquer l'avertissement de la barre latérale tant que l'authentification est désactivée.",
 			"history_retention_days": "Nombre de jours de conservation de l'historique avant nettoyage.",
 			"logs_retention_days": "Nombre de jours de conservation des journaux avant nettoyage.",
+			"usage_retention_days": "Durée de conservation des compteurs de quota quotidiens.",
+			"audit_retention_days": "Durée de conservation du journal d'audit.",
 			"max_concurrency": "Nombre maximal de requêtes fournisseur exécutées en même temps.",
 			"max_attempts": "Nombre maximal de tentatives par fournisseur avant abandon.",
 			"user_agent": "En-tête User-Agent envoyé aux fournisseurs.",
@@ -367,7 +432,17 @@
 			"database_url": "Chaîne de connexion à la base de données (pour postgres).",
 			"treat_empty_as_fail": "Compter un résultat vide comme une tentative échouée.",
 			"ignore_request_count": "Ignorer le nombre de résultats demandé et renvoyer tout ce qui est trouvé.",
-			"allow_sparse_sources": "Les sources des nœuds Réponse (lien+titre, souvent sans extrait) sont ajoutées au résultat Row."
+			"allow_sparse_sources": "Les sources des nœuds Réponse (lien+titre, souvent sans extrait) sont ajoutées au résultat Row.",
+			"search_rate_limit_per_minute": "Requêtes de recherche par minute et par clé pour /search et /mcp (0 = illimité).",
+			"search_daily_quota": "Requêtes de recherche par clé et par jour UTC (0 = illimité).",
+			"chain_timeout_seconds": "Limite de temps absolue pour une recherche sur tous les fournisseurs (0 = désactivé).",
+			"provider_failure_threshold": "Nombre d'échecs consécutifs avant mise en quarantaine (0 = désactivé).",
+			"provider_cooldown_seconds": "Durée pendant laquelle un fournisseur défaillant est ignoré.",
+			"debug": "Exposer le profilage Go pprof sous /debug/pprof.",
+			"update_check_enabled": "Récupérer le flux public des versions et afficher un avis lorsqu'une version plus récente existe.",
+			"update_check_url": "Point d'accès des versions (GitHub « latest release » par défaut). Vider pour désactiver.",
+			"update_check_interval_hours": "Nombre d'heures entre les vérifications automatiques.",
+			"webhook_url": "Envoie une charge JSON à cette URL lors de l'ouverture du disjoncteur d'un fournisseur ou du dépassement du quota quotidien. Vide désactive les notifications."
 		}
 	},
 	"logs": {
@@ -379,6 +454,17 @@
 		"empty": "Aucun journal",
 		"deleted": "Supprimé : {n}",
 		"clearConfirm": "Supprimer toutes les entrées de journal ?"
+	},
+	"audit": {
+		"title": "Journal d'audit",
+		"action": "Action",
+		"actor": "Utilisateur",
+		"via": "Via",
+		"target": "Cible",
+		"details": "Détails",
+		"ip": "IP",
+		"search": "Recherche",
+		"empty": "Aucun enregistrement"
 	},
 	"users": {
 		"title": "Utilisateurs & clés",
@@ -409,7 +495,16 @@
 		"created": "Utilisateur créé",
 		"deleted": "Utilisateur supprimé",
 		"keyRevoked": "Clé révoquée",
-		"passkeyAdded": "Passkey ajouté"
+		"passkeyAdded": "Passkey ajouté",
+		"chain": "Chaîne",
+		"activeChain": "Chaîne active",
+		"unknownChain": "Chaîne inconnue",
+		"chainUpdated": "Association de chaîne mise à jour",
+		"bindTitle": "Chaîne du jeton",
+		"bindHint": "Le jeton utilise toujours la chaîne sélectionnée. Laissez sur « Par défaut » pour suivre la chaîne active.",
+		"chainMissing": "La chaîne liée n'existe plus ; le jeton utilise la chaîne par défaut.",
+		"changeChain": "Changer de chaîne",
+		"usedToday": "Aujourd'hui"
 	},
 	"playground": {
 		"title": "Bac à sable",
@@ -507,7 +602,6 @@
 		"selectHint": "Sélectionnez un nœud ou une flèche à modifier.",
 		"paramKey": "Paramètre (clé)",
 		"keyboardHint": "Delete — supprimer la sélection · clic droit sur un bloc — dupliquer/supprimer",
-		"start": "Départ",
 		"startOn": "Bloc de départ (entrée de la chaîne)",
 		"startTaken": "Bloc de départ déjà attribué à {name} ; désactivez-le d'abord là-bas",
 		"startReassigned": "Bloc de départ réattribué à {name}",

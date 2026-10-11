@@ -22,33 +22,56 @@
 
 	let items = $state<Request[]>([]);
 	let total = $state(0);
-	let page = $state(1);
 	let limit = 50;
 	let status = $state('');
 	let provider = $state('');
 	let query = $state('');
 	let loading = $state(false);
+	let cursors = $state<string[]>(['']);
+	let nextCursor = $state<string | null>(null);
 	let unsubscribe: (() => void) | undefined;
 	let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
-	async function load() {
+	const page = $derived(cursors.length);
+	const currentCursor = $derived(cursors[cursors.length - 1]);
+
+	async function load(cursor: string = currentCursor) {
 		loading = true;
 		try {
-			const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+			const params = new URLSearchParams({ limit: String(limit) });
+			if (cursor) params.set('cursor', cursor);
 			if (status) params.set('status', status);
 			if (provider) params.set('provider', provider);
 			if (query) params.set('q', query);
 			const data = await get<any>(`/api/requests?${params}`);
 			items = data.items;
 			total = data.total;
+			nextCursor = data.next_cursor ?? null;
 		} finally {
 			loading = false;
 		}
 	}
 
+	function applyFilters() {
+		cursors = [''];
+		load('');
+	}
+
+	function nextPage() {
+		if (!nextCursor) return;
+		cursors = [...cursors, nextCursor];
+		load(nextCursor);
+	}
+
+	function prevPage() {
+		if (cursors.length <= 1) return;
+		cursors = cursors.slice(0, -1);
+		load(cursors[cursors.length - 1]);
+	}
+
 	function scheduleRefresh() {
 		clearTimeout(refreshTimer);
-		refreshTimer = setTimeout(load, 500);
+		refreshTimer = setTimeout(() => load(), 500);
 	}
 
 	onMount(() => {
@@ -67,20 +90,18 @@
 			clearTimeout(refreshTimer);
 		};
 	});
-
-	const pages = $derived(Math.max(1, Math.ceil(total / limit)));
 </script>
 
 <div class="space-y-4">
 	<div class="flex flex-wrap items-center justify-between gap-2">
 		<h1 class="text-xl font-semibold">{t('history.title')}</h1>
-		<button class="btn" onclick={load}>{t('common.refresh')}</button>
+		<button class="btn" onclick={() => load()}>{t('common.refresh')}</button>
 	</div>
 
 	<div class="card grid grid-cols-1 gap-3 md:grid-cols-4">
 		<div>
 			<span class="label">{t('common.status')}</span>
-			<select class="input" bind:value={status} onchange={() => { page = 1; load(); }}>
+			<select class="input" bind:value={status} onchange={applyFilters}>
 				<option value="">{t('common.all')}</option>
 				<option value="ok">ok</option>
 				<option value="empty">empty</option>
@@ -97,7 +118,7 @@
 			<input class="input" bind:value={query} onkeydown={(e) => e.key === 'Enter' && load()} />
 		</div>
 		<div class="flex items-end">
-			<button class="btn btn-primary w-full" onclick={() => { page = 1; load(); }}>{t('common.apply')}</button>
+			<button class="btn btn-primary w-full" onclick={applyFilters}>{t('common.apply')}</button>
 		</div>
 	</div>
 
@@ -135,9 +156,9 @@
 		<div class="mt-3 flex items-center justify-between text-xs text-slate-400">
 			<span>{t('common.total', { n: total })}</span>
 			<div class="flex items-center gap-2">
-				<button class="btn px-2 py-0.5" disabled={page <= 1} onclick={() => { page--; load(); }}>←</button>
-				<span>{page} / {pages}</span>
-				<button class="btn px-2 py-0.5" disabled={page >= pages} onclick={() => { page++; load(); }}>→</button>
+				<button class="btn px-2 py-0.5" disabled={page <= 1} onclick={prevPage}>←</button>
+				<span>{page}</span>
+				<button class="btn px-2 py-0.5" disabled={!nextCursor} onclick={nextPage}>→</button>
 			</div>
 		</div>
 	</div>

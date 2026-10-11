@@ -8,6 +8,16 @@ import (
 
 func newID() string { return uuid.NewString() }
 
+// nullStr returns nil for an empty string so an optional TEXT column stores
+// SQL NULL (required for a nullable foreign key reference) rather than an
+// empty string.
+func nullStr(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
+}
+
 func dayStartUTC() string {
 	now := time.Now().UTC()
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).Format(time.RFC3339Nano)

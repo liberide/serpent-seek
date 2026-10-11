@@ -47,7 +47,7 @@
 			}}
 		>
 			<span class="label">{t('setup.token')}</span>
-			<input class="input font-mono text-xs" bind:value={token} placeholder="например ff1089a6" />
+			<input class="input font-mono text-xs" bind:value={token} placeholder={t('setup.tokenPlaceholder')} />
 			<span class="label mt-3">{t('setup.adminName')}</span>
 			<input class="input" bind:value={name} />
 			<button class="btn btn-primary mt-4 w-full" type="submit" disabled={busy || !token}>

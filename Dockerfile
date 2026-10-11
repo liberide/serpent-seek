@@ -13,7 +13,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=web /web/build ./web/build
-ARG TAG=1.0.0
+ARG TAG=1.1.0
 ARG COMMIT=dev
 ARG BUILD_DATE=unknown
 RUN CGO_ENABLED=0 GOOS=linux go build \
@@ -22,11 +22,11 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 
 # -- final stage -------------------------------------------------------------
 FROM alpine:3.21
-ARG TAG=1.0.0
+ARG TAG=1.1.0
 ARG COMMIT=dev
 ARG BUILD_DATE=unknown
 LABEL org.opencontainers.image.title="SerpentSeek" \
-      org.opencontainers.image.description="Search gateway microservice for Open WebUI" \
+      org.opencontainers.image.description="Search gateway microservice for Open WebUI with per-token chain routing" \
       org.opencontainers.image.version="${TAG}" \
       org.opencontainers.image.revision="${COMMIT}" \
       org.opencontainers.image.created="${BUILD_DATE}" \

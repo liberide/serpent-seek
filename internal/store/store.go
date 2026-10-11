@@ -18,6 +18,9 @@ type RequestFilter struct {
 	From     string
 	To       string
 	Query    string
+	// Cursor is an opaque keyset token from a previous page (next_cursor).
+	// When set, Offset is ignored and the next older page is returned.
+	Cursor string
 	// UserID restricts the listing to one owner.
 	UserID string
 }
@@ -26,6 +29,8 @@ type RequestFilter struct {
 type LogFilter struct {
 	Level string
 	Query string
+	// Cursor is an opaque keyset token from a previous page (next_cursor).
+	Cursor string
 }
 
 // Page describes limit/offset pagination.
@@ -59,10 +64,26 @@ type Storage interface {
 
 	// API keys
 	CreateAPIKey(ctx context.Context, k *APIKey) error
+	GetAPIKey(ctx context.Context, id string) (*APIKey, error)
 	GetAPIKeyByPrefix(ctx context.Context, prefix string) (*APIKey, error)
 	ListAPIKeys(ctx context.Context, userID string) ([]*APIKey, error)
 	UpdateAPIKey(ctx context.Context, k *APIKey) error
 	DeleteAPIKey(ctx context.Context, id string) error
+	// CountKeysByChain returns how many API keys are bound to a chain.
+	CountKeysByChain(ctx context.Context, chainID string) (int, error)
+	// CountActiveKeysByChain returns how many bound API keys are still active
+	// (not revoked); these are the tokens affected by deleting the chain.
+	CountActiveKeysByChain(ctx context.Context, chainID string) (int, error)
+	// ClearKeyChainRefs unbinds every API key selecting the given chain
+	// (used before deleting it) and returns the affected count.
+	ClearKeyChainRefs(ctx context.Context, chainID string) (int64, error)
+
+	// Usage counters. A subject is "key:<api_key id>", "user:<user id>" or
+	// "ip:<address>" and day is a UTC calendar date (YYYY-MM-DD).
+	IncrementUsage(ctx context.Context, subject, day string) (int, error)
+	GetUsage(ctx context.Context, subject, day string) (int, error)
+	UsageByDay(ctx context.Context, day string) (map[string]int, error)
+	DeleteOldUsage(ctx context.Context, beforeDay string) (int64, error)
 
 	// Passkeys
 	CreatePasskey(ctx context.Context, p *Passkey) error
@@ -122,6 +143,11 @@ type Storage interface {
 	ListLogs(ctx context.Context, f LogFilter, p Page) ([]*LogEntry, int, error)
 	ClearLogs(ctx context.Context) (int64, error)
 	DeleteOldLogs(ctx context.Context, before string) (int64, error)
+
+	// Audit log
+	AddAudit(ctx context.Context, e *AuditEntry) error
+	ListAudit(ctx context.Context, f AuditFilter, p Page) ([]*AuditEntry, int, error)
+	DeleteOldAudit(ctx context.Context, before string) (int64, error)
 
 	// Stats
 	Summary(ctx context.Context, days int) (*StatsSummary, error)

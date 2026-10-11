@@ -17,6 +17,8 @@ import (
 
 	"github.com/liberide/serpent-seek/internal/config"
 	"github.com/liberide/serpent-seek/internal/logging"
+	"github.com/liberide/serpent-seek/internal/metrics"
+	"github.com/liberide/serpent-seek/internal/notify"
 	"github.com/liberide/serpent-seek/internal/providers"
 	"github.com/liberide/serpent-seek/internal/store"
 )
@@ -28,6 +30,9 @@ type Input struct {
 	Client string
 	// UserID is the authenticated owner.
 	UserID string
+	// ChainID optionally forces one chain instead of the globally active one.
+	// It is set from the API key's binding; empty means "use the active chain".
+	ChainID string
 }
 
 // Output is the engine result.
@@ -46,6 +51,9 @@ type Engine struct {
 
 	limiter *semLimiter
 	seq     atomic.Uint64
+	metrics *metrics.Metrics
+	// cooldowns is a cross-request circuit breaker per provider instance.
+	cooldowns *providerCooldowns
 }
 
 // New builds an Engine.
@@ -55,13 +63,32 @@ func New(st store.Storage, reg *providers.Registry, settings *config.Manager, si
 		limit = cfg.MaxConcurrency
 	}
 	return &Engine{
-		store:    st,
-		reg:      reg,
-		settings: settings,
-		sink:     sink,
-		log:      log,
-		limiter:  newSemLimiter(limit),
+		store:     st,
+		reg:       reg,
+		settings:  settings,
+		sink:      sink,
+		log:       log,
+		limiter:   newSemLimiter(limit),
+		metrics:   metrics.New(),
+		cooldowns: newProviderCooldowns(),
 	}
+}
+
+// Metrics exposes the engine's process metrics for the /metrics endpoint.
+func (e *Engine) Metrics() *metrics.Metrics { return e.metrics }
+
+// CooldownCount reports how many provider instances are currently skipped by
+// the circuit breaker.
+func (e *Engine) CooldownCount() int { return e.cooldowns.active(time.Now()) }
+
+// notifyEvent posts a webhook for an operational event when WEBHOOK_URL is set.
+// It is fire-and-forget so a slow endpoint never delays a search.
+func (e *Engine) notifyEvent(ctx context.Context, event string, data map[string]any) {
+	url := e.settings.GetString(ctx, config.KeyWebhookURL)
+	if url == "" {
+		return
+	}
+	go notify.Emit(ctx, url, event, data, e.log)
 }
 
 // registry exposes the provider registry (used by handlers for /test).
@@ -165,11 +192,8 @@ func (e *Engine) prepare(ctx context.Context, in Input) (*runContext, error) {
 		count = 0
 	}
 
-	chain, err := e.store.GetActiveChain(ctx)
+	chain, err := e.resolveChain(ctx, in.ChainID)
 	if err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			return nil, errors.New("engine: no active chain configured")
-		}
 		return nil, err
 	}
 	plan, err := BuildPlan(chain)
@@ -227,6 +251,32 @@ func (e *Engine) prepare(ctx context.Context, in Input) (*runContext, error) {
 	rc := &runContext{req: req, plan: plan, providers: byID, proxies: proxiesByID, startedAt: time.Now()}
 	e.emitDeadProviders(ctx, rc)
 	return rc, nil
+}
+
+// resolveChain picks the chain for a request. An explicit chainID (bound to
+// the API key) wins; an empty id falls back to the globally active chain. A
+// missing explicitly-bound chain fails closed rather than silently running a
+// different (possibly more expensive) chain.
+func (e *Engine) resolveChain(ctx context.Context, chainID string) (*store.Chain, error) {
+	chainID = strings.TrimSpace(chainID)
+	if chainID == "" {
+		chain, err := e.store.GetActiveChain(ctx)
+		if err != nil {
+			if errors.Is(err, store.ErrNotFound) {
+				return nil, errors.New("engine: no active chain configured")
+			}
+			return nil, err
+		}
+		return chain, nil
+	}
+	chain, err := e.store.GetChain(ctx, chainID)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			return nil, fmt.Errorf("engine: chain %s not found", chainID)
+		}
+		return nil, err
+	}
+	return chain, nil
 }
 
 // paramBool reads a boolean-ish node parameter ("1"/"true"/"yes"/"on").
@@ -298,6 +348,7 @@ const (
 	deadAPIKey         = "api_key_missing"
 	deadMarked         = "provider_marked_dead"
 	deadUnknownDriver  = "unknown_driver"
+	deadCooldown       = "provider_cooldown"
 )
 
 func (e *Engine) instanceDeadReason(ctx context.Context, driver string, p *store.Provider) string {
@@ -344,6 +395,8 @@ func deadReasonText(code, driver string) string {
 		return "missing api key"
 	case deadMarked:
 		return "provider marked dead"
+	case deadCooldown:
+		return "provider in cooldown after repeated failures"
 	case deadUnknownDriver:
 		return "unknown provider driver " + driver
 	default:
@@ -356,6 +409,16 @@ func deadReasonText(code, driver string) string {
 
 // run walks the chain graph until a result is produced or the graph ends.
 func (e *Engine) run(ctx context.Context, rc *runContext) (*Output, error) {
+	if e.metrics != nil {
+		e.metrics.RequestStarted()
+		defer e.metrics.RequestEnded()
+	}
+	// Optional hard cap on the whole chain's wall-clock time.
+	if secs := e.settings.GetInt(ctx, config.KeyChainTimeout); secs > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, time.Duration(secs)*time.Second)
+		defer cancel()
+	}
 	maxAttempts := e.settings.GetInt(ctx, config.KeyMaxAttempts)
 	if maxAttempts <= 0 {
 		maxAttempts = 10
@@ -493,6 +556,9 @@ func (e *Engine) resolveNode(ctx context.Context, rc *runContext, ws *walkState,
 	if target.reason == "" && ws.isDead(node.ProviderID) {
 		target.reason = deadMarked
 	}
+	if target.reason == "" && e.cooldowns.blocked(node.ProviderID, time.Now()) {
+		target.reason = deadCooldown
+	}
 	if !known {
 		target.reason = deadUnknownDriver + ":" + driver
 	}
@@ -516,6 +582,9 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, id
 	creds := e.buildCredentials(target.inst)
 	treatEmpty := e.treatEmptyAsFail(ctx, node)
 	sparse := e.allowSparseSources(ctx, node)
+	failureThreshold := e.settings.GetInt(ctx, config.KeyProviderFailures)
+	cooldown := time.Duration(e.settings.GetInt(ctx, config.KeyProviderCooldown)) * time.Second
+	costPerRequest := target.inst.CostPerRequest()
 	timeout := time.Duration(node.TimeoutMS) * time.Millisecond
 	if timeout <= 0 {
 		timeout = 20 * time.Second
@@ -554,6 +623,13 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, id
 			result = target.provider.Search(callCtx, query, creds, params)
 			release()
 			cancel()
+		}
+		// Cost is charged only when the provider was actually invoked: a limiter
+		// timeout never reaches upstream. 0 means the operator set no cost, so it
+		// is not counted at all.
+		attemptCost := 0.0
+		if acquireErr == nil {
+			attemptCost = costPerRequest
 		}
 		result.Provider = target.display
 		result.Error = e.log.Redact(result.Error)
@@ -610,6 +686,7 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, id
 			ResultsCount: len(stepRows),
 			WaitBeforeMS: int(delay / time.Millisecond),
 			TookMS:       tookMS,
+			Cost:         attemptCost,
 			StartedAt:    startedAt,
 			FinishedAt:   store.Now(),
 		}
@@ -622,6 +699,14 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, id
 			TookMS: tookMS, Permanent: result.Permanent, Error: result.Error,
 		})
 		e.logStep(req.RID, target.display, node.Key, attempt, result, tookMS)
+		if e.cooldowns.observe(node.ProviderID, result.OK, failureThreshold, cooldown, time.Now()) {
+			e.notifyEvent(ctx, "provider_cooldown", map[string]any{
+				"target":      node.ProviderID,
+				"provider_id": node.ProviderID,
+				"provider":    target.display,
+				"reason":      result.Error,
+			})
+		}
 
 		// Multi-call drivers (pubmed esearch/esummary/efetch): one history row
 		// per upstream call under the same node; the attempt budget is consumed
@@ -978,10 +1063,7 @@ func (e *Engine) runFullChain(ctx context.Context, rc *runContext, maxAttempts i
 	}
 
 	done := map[string]bool{}
-	for {
-		if !ws.hasBudget() {
-			break
-		}
+	for ws.hasBudget() {
 		ready := make([]string, 0, len(reachable))
 		for _, key := range plan.order {
 			if reachable[key] && !done[key] && indeg[key] == 0 {
@@ -1095,6 +1177,9 @@ func (e *Engine) runFullChain(ctx context.Context, rc *runContext, maxAttempts i
 }
 
 func (e *Engine) recordSkip(ctx context.Context, rc *runContext, idx int, node *store.ChainNode, code, reason string) {
+	if e.metrics != nil {
+		e.metrics.RecordProvider(code, "skip", 0)
+	}
 	now := store.Now()
 	step := &store.RequestStep{
 		ID: uuid.NewString(), RequestID: rc.req.ID, Idx: idx, NodeKey: node.Key, Provider: code,
@@ -1120,6 +1205,9 @@ func (e *Engine) finalize(ctx context.Context, rc *runContext, status string, ro
 	req.Results = toRequestResults(rows)
 	req.TotalMS = int(time.Since(rc.startedAt) / time.Millisecond)
 	req.StepsCount = steps
+	if e.metrics != nil {
+		e.metrics.RecordSearch(status, req.TotalMS)
+	}
 	if status == "fail" && req.Error == "" {
 		if dbReq, err := e.store.GetRequest(ctx, req.ID); err == nil {
 			req.Error = lastError(dbReq.Steps)
@@ -1146,7 +1234,22 @@ func (e *Engine) finalize(ctx context.Context, rc *runContext, status string, ro
 	return &Output{Request: req, Rows: rows}, nil
 }
 
+// providerMetricStatus maps a provider result to a bounded metric label.
+func providerMetricStatus(r providers.Result) string {
+	switch {
+	case !r.OK:
+		return "fail"
+	case r.Kind == providers.KindEmpty:
+		return "empty"
+	default:
+		return "ok"
+	}
+}
+
 func (e *Engine) logStep(rid, code, node string, attempt int, r providers.Result, tookMS int) {
+	if e.metrics != nil {
+		e.metrics.RecordProvider(code, providerMetricStatus(r), tookMS)
+	}
 	level := "info"
 	if !r.OK {
 		level = "warn"

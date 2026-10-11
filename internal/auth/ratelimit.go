@@ -21,28 +21,26 @@ func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
 
 // Allow reports whether an event for key is permitted right now.
 func (l *RateLimiter) Allow(key string) bool {
-	if l.limit <= 0 {
+	return l.AllowLimit(key, l.limit, l.window)
+}
+
+// AllowLimit is Allow with a per-call limit and window. A limit <= 0 disables
+// the check. It lets callers read the limit from settings on every request and
+// keeps the limiter reusable for several endpoints.
+func (l *RateLimiter) AllowLimit(key string, limit int, window time.Duration) bool {
+	if limit <= 0 {
 		return true
 	}
+	if window <= 0 {
+		window = time.Minute
+	}
 	now := time.Now()
-	cutoff := now.Add(-l.window)
+	cutoff := now.Add(-window)
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	// Drop expired buckets periodically.
-	if now.Sub(l.lastSweep) >= l.window {
-		for k, times := range l.hits {
-			kept := times[:0]
-			for _, t := range times {
-				if t.After(cutoff) {
-					kept = append(kept, t)
-				}
-			}
-			if len(kept) == 0 {
-				delete(l.hits, k)
-			} else {
-				l.hits[k] = kept
-			}
-		}
+	if now.Sub(l.lastSweep) >= window {
+		l.sweep(cutoff)
 		l.lastSweep = now
 	}
 	kept := l.hits[key][:0]
@@ -51,10 +49,27 @@ func (l *RateLimiter) Allow(key string) bool {
 			kept = append(kept, t)
 		}
 	}
-	if len(kept) >= l.limit {
+	if len(kept) >= limit {
 		l.hits[key] = kept
 		return false
 	}
 	l.hits[key] = append(kept, now)
 	return true
+}
+
+// sweep drops entries older than cutoff. Callers hold l.mu.
+func (l *RateLimiter) sweep(cutoff time.Time) {
+	for k, times := range l.hits {
+		kept := times[:0]
+		for _, t := range times {
+			if t.After(cutoff) {
+				kept = append(kept, t)
+			}
+		}
+		if len(kept) == 0 {
+			delete(l.hits, k)
+		} else {
+			l.hits[k] = kept
+		}
+	}
 }

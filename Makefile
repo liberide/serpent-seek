@@ -1,5 +1,5 @@
 SHELL := /bin/sh
-VERSION ?= 1.0.7
+VERSION ?= 1.1.0
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo dev)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -s -w \
@@ -51,13 +51,13 @@ image:
 
 ## Compose helpers
 up:
-	docker compose up -d --build
+	APP_VERSION=$(VERSION) APP_COMMIT=$(COMMIT) APP_BUILD_DATE=$(BUILD_DATE) docker compose up -d --build
 
 down:
 	docker compose down
 
 up-extdb:
-	docker compose --profile extdb up -d --build
+	APP_VERSION=$(VERSION) APP_COMMIT=$(COMMIT) APP_BUILD_DATE=$(BUILD_DATE) docker compose --profile extdb up -d --build
 
 logs:
 	docker compose logs -f

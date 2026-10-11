@@ -126,3 +126,14 @@ func (h *Hub) Close() {
 
 // Now returns the current UTC time in RFC3339 (helper for event payloads).
 func Now() string { return time.Now().UTC().Format(time.RFC3339Nano) }
+
+// Clients returns the number of active subscribers across all keys.
+func (h *Hub) Clients() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	n := 0
+	for _, set := range h.subs {
+		n += len(set)
+	}
+	return n
+}

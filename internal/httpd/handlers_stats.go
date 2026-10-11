@@ -90,6 +90,16 @@ func (s *Server) handleStatsAnalytics(w http.ResponseWriter, r *http.Request) {
 
 	configured, _ := s.store.ListProviders(ctx)
 	views := mergeAnalyticsProviders(report.Providers, configured)
+	// Cost is "configured" when any provider declares a cost or when historical
+	// steps already recorded one; otherwise the UI hides the column so an
+	// unconfigured deployment never sees a misleading $0.00.
+	report.CostConfigured = report.CostTotal > 0
+	for i := range views {
+		if views[i].CostConfigured {
+			report.CostConfigured = true
+			break
+		}
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"report":    report,
@@ -115,9 +125,13 @@ func mergeAnalyticsProviders(stats []store.ProviderStat, providers []*store.Prov
 		v := store.AnalyticsProvider{
 			Provider: stat.Provider, Total: stat.Total, OK: stat.OK, Empty: stat.Empty,
 			Fail: stat.Fail, Skip: stat.Skip, AvgMS: stat.AvgMS, SuccessRate: stat.SuccessRate,
+			Cost: stat.Cost,
 		}
 		if p, ok := byName[stat.Provider]; ok {
 			v.Code, v.Enabled, v.Configured = p.Code, p.Enabled, true
+			v.CostConfigured = p.CostPerRequest() > 0 || stat.Cost > 0
+		} else {
+			v.CostConfigured = stat.Cost > 0
 		}
 		seen[stat.Provider] = true
 		out = append(out, v)
@@ -128,6 +142,7 @@ func mergeAnalyticsProviders(stats []store.ProviderStat, providers []*store.Prov
 		}
 		out = append(out, store.AnalyticsProvider{
 			Provider: p.Name, Code: p.Code, Enabled: p.Enabled, Configured: true,
+			CostConfigured: p.CostPerRequest() > 0,
 		})
 	}
 	sort.SliceStable(out, func(i, j int) bool {

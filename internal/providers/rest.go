@@ -386,7 +386,7 @@ func boolParam(key, label string, def bool, hint string) ParamField {
 func commonRetry() []int { return []int{429, 500, 502, 503, 504} }
 func commonFatal() []int { return []int{400, 401, 403, 404} }
 
-// newRestRegistry returns the providers described in the integration notes.
+// newRestRegistry builds the generic REST providers from restSpecs.
 func newRestRegistry(client *HTTPClient) []Provider {
 	var providers []Provider
 	for _, spec := range restSpecs() {
@@ -401,7 +401,7 @@ func newRestRegistry(client *HTTPClient) []Provider {
 // restSpecs defines the catalog of generic REST/JSON providers.
 func restSpecs() []restSpec {
 	return []restSpec{
-		// Part 1/5 — classic SERP
+		// Classic SERP.
 		{
 			code: "brave", name: "Brave Search", baseURL: "https://api.search.brave.com",
 			method: http.MethodGet, path: "/res/v1/web/search",
@@ -448,7 +448,7 @@ func restSpecs() []restSpec {
 			},
 		},
 
-		// Part 2/5 — multi-engine / scrapers
+		// Multi-engine / scrapers.
 		{
 			code: "serpapi", name: "SerpApi", baseURL: "https://serpapi.com",
 			method: http.MethodGet, path: "/search",
@@ -756,7 +756,7 @@ func restSpecs() []restSpec {
 			},
 		},
 
-		// Part 3/5 — AI/RAG search
+		// AI/RAG search.
 		{
 			code: "tavily", name: "Tavily", baseURL: "https://api.tavily.com",
 			method: http.MethodPost, path: "/search", body: true,
@@ -1060,7 +1060,7 @@ func restSpecs() []restSpec {
 			},
 		},
 
-		// Part 4/5 — Yandex XML, Kagi and vertical APIs
+		// Yandex XML, Kagi and vertical APIs.
 		{
 			code: "kagi", name: "Kagi", baseURL: "https://kagi.com",
 			method: http.MethodPost, path: "/api/v0/fastgpt", body: true,
@@ -1566,7 +1566,7 @@ func restSpecs() []restSpec {
 			},
 		},
 
-		// Part 5/5 — enterprise engines
+		// Enterprise engines.
 		{
 			code: "azure_search", name: "Azure AI Search", baseURL: "https://{}.search.windows.net",
 			method: http.MethodPost, path: "", body: true,
@@ -1751,7 +1751,7 @@ func restSpecs() []restSpec {
 			linkKeys:   []string{"url"}, titleKey: "title", snippetKeys: []string{"snippet"},
 			fatalHTTP: []int{400}, retryHTTP: commonRetry(),
 			build: func(ctx context.Context, q Query, c Credentials, p Params) (*http.Request, error) {
-				return nil, fmt.Errorf("Amazon Kendra requires AWS SigV4 signing and is not yet implemented")
+				return nil, fmt.Errorf("amazon Kendra requires AWS SigV4 signing and is not yet implemented")
 			},
 			extract: func(data map[string]any) Rows { return nil },
 			schema: ProviderSchema{

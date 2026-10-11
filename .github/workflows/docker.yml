@@ -44,7 +44,7 @@ jobs:
           else
             v=$(sed -n 's/.*Version = "\([^"]*\)".*/\1/p' internal/version/version.go | head -1)
           fi
-          echo "value=${v:-1.0.0}" >> "$GITHUB_OUTPUT"
+          echo "value=${v:-1.1.0}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to Docker Hub
         if: env.PUSH_IMAGE == 'true'
@@ -79,3 +79,41 @@ jobs:
             BUILD_DATE=${{ steps.builddate.outputs.value }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  # Vulnerability scan + SBOM of the built image. Runs on the same triggers,
+  # independent of the publish job.
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image for scanning
+        run: docker build -t serpentseek:scan .
+
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: serpentseek:scan
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "0"
+
+      - name: Upload Trivy SARIF
+        uses: github/codeql-action/upload-sarif@v3.38.3
+        with:
+          sarif_file: trivy-results.sarif
+
+      - name: Generate SBOM (syft)
+        uses: anchore/sbom-action@v0.24.3
+        with:
+          image: serpentseek:scan
+          format: spdx-json
+          output-file: sbom.spdx.json
+          artifact-name: serpentseek-sbom

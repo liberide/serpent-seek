@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { get } from '$lib/api';
-	import { dateTime, dayLabel, formatInt, formatPct, ms } from '$lib/format';
+	import { dateTime, dayLabel, formatCost, formatInt, formatPct, ms } from '$lib/format';
 	import { subscribeSSE } from '$lib/sse';
 	import { t } from '$lib/i18n.svelte';
 	import TrendChart from '$lib/components/charts/TrendChart.svelte';
@@ -46,6 +46,8 @@
 		daily: DailyStat[];
 		hourly: HourStat[];
 		top_queries: TopQuery[];
+		cost_total?: number;
+		cost_configured?: boolean;
 	};
 	type AnalyticsResponse = {
 		report: AnalyticsReport;
@@ -355,6 +357,15 @@
 				{/if}
 			</p>
 		</div>
+		{#if report?.cost_configured}
+			<div class="card">
+				<p class="text-xs uppercase tracking-wide text-slate-400">{t('analytics.kpi.cost')}</p>
+				<p class="mt-1 text-2xl font-semibold tabular-nums text-teal-300">
+					{formatCost(report?.cost_total ?? 0)}
+				</p>
+				<p class="text-[11px] text-slate-500">{t('analytics.kpi.costHint')}</p>
+			</div>
+		{/if}
 	</div>
 
 	<!-- Main charts -->

@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { get } from '$lib/api';
-	import { dateTime, ms } from '$lib/format';
+	import { dateTime, formatCost, ms } from '$lib/format';
 	import ChainGraph from '$lib/components/ChainGraph.svelte';
 	import StepTimeline from '$lib/components/StepTimeline.svelte';
 	import ProgressCube from '$lib/components/ProgressCube.svelte';
@@ -24,6 +24,7 @@
 		permanent: boolean;
 		results_count: number;
 		took_ms: number;
+		cost?: number;
 		started_at: string;
 	};
 	type Request = {
@@ -53,6 +54,7 @@
 	let unsubscribe: (() => void) | undefined;
 	let reloadTimer: ReturnType<typeof setTimeout> | undefined;
 	const id = $derived(page.params.id);
+	const totalCost = $derived(steps.reduce((sum, s) => sum + (s.cost ?? 0), 0));
 
 	async function load() {
 		loading = true;
@@ -177,6 +179,9 @@
 				<span>{t('request.provider')} {request.used_provider || '—'}</span>
 				<span>{t('request.results')} {request.results_count}</span>
 				<span>{t('request.time')} {ms(request.total_ms)}</span>
+				{#if totalCost > 0}
+					<span class="text-teal-300">{t('analytics.provider.cost')} {formatCost(totalCost)}</span>
+				{/if}
 				<span>{t('request.client')} {request.client || '—'}</span>
 				<span>{dateTime(request.created_at)}</span>
 			</div>

@@ -5,6 +5,7 @@
 	import Confirm from '$lib/components/Confirm.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import SecretField from '$lib/components/SecretField.svelte';
+	import { dateTime, formatUptime } from '$lib/format';
 	import { t } from '$lib/i18n.svelte';
 
 	type Descriptor = {
@@ -46,6 +47,11 @@
 	let saving = $state(false);
 	let active = $state('general');
 	let confirmAction = $state<'clear-logs' | 'clear-history' | null>(null);
+	let importOverwrite = $state(false);
+	let importResult = $state('');
+	let info = $state<any>(null);
+	let update = $state<any>(null);
+	let updateChecking = $state(false);
 
 	// Named proxies (Settings → Proxy tab).
 	let proxies = $state<Proxy[]>([]);
@@ -64,7 +70,9 @@
 		proxy: 'settings.groups.proxy',
 		providers: 'settings.groups.providers',
 		retention: 'settings.groups.retention',
-		storage: 'settings.groups.storage'
+		storage: 'settings.groups.storage',
+		config: 'settings.groups.config',
+		info: 'settings.groups.info'
 	};
 
 	// Fixed section order; unknown descriptor groups are inserted before the
@@ -112,6 +120,16 @@
 		} catch {
 			providerRefs = [];
 		}
+		try {
+			info = await get<any>('/api/info');
+		} catch {
+			info = null;
+		}
+		try {
+			update = await get<any>('/api/update');
+		} catch {
+			update = null;
+		}
 	}
 
 	onMount(async () => {
@@ -148,9 +166,12 @@
 		if (!out.some((s) => s.id === 'proxy')) {
 			out.push({ id: 'proxy', labelKey: 'settings.groups.proxy', items: [] });
 		}
+		// Info/About sits at the very bottom, visually separated from the rest.
 		out.push(
+			{ id: 'config', labelKey: 'settings.groups.config', items: [] },
 			{ id: 'maintenance', labelKey: 'settings.groups.maintenance', items: [] },
-			{ id: 'danger', labelKey: 'settings.groups.danger', items: [] }
+			{ id: 'danger', labelKey: 'settings.groups.danger', items: [] },
+			{ id: 'info', labelKey: 'settings.groups.info', items: [] }
 		);
 		return out;
 	});
@@ -206,6 +227,40 @@
 			return t('settings.deleted', { n: result.deleted });
 		}
 		return JSON.stringify(result);
+	}
+
+	async function importConfig(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		if (!file) return;
+		importResult = '';
+		try {
+			const bundle = JSON.parse(await file.text());
+			const result = await post<any>(`/api/config/import${importOverwrite ? '?overwrite=true' : ''}`, bundle);
+			importResult = t('settings.config.imported', {
+				providers: (result.providers_created ?? 0) + (result.providers_updated ?? 0),
+				chains: (result.chains_created ?? 0) + (result.chains_updated ?? 0),
+				skipped: result.chains_skipped ?? 0
+			});
+			notify(t('settings.saved'), 'success');
+			await load();
+		} catch (error) {
+			notify((error as Error).message, 'error');
+		} finally {
+			input.value = '';
+		}
+	}
+
+	async function checkUpdate() {
+		updateChecking = true;
+		try {
+			update = await post<any>('/api/update/check');
+			notify(t('settings.info.checked'), 'success');
+		} catch (error) {
+			notify((error as Error).message, 'error');
+		} finally {
+			updateChecking = false;
+		}
 	}
 
 	async function maintenance(path: string) {
@@ -341,6 +396,13 @@
 	{/if}
 {/snippet}
 
+{#snippet infoRow(label: string, value: string)}
+	<div class="flex flex-wrap items-baseline justify-between gap-2">
+		<span class="text-xs text-slate-500">{label}</span>
+		<span class="font-mono text-xs text-slate-200">{value}</span>
+	</div>
+{/snippet}
+
 <div class="space-y-4">
 	<div class="flex items-center justify-between gap-2">
 		<h1 class="text-xl font-semibold">{t('settings.title')}</h1>
@@ -366,6 +428,9 @@
 		<nav class="sticky top-4 hidden h-fit lg:block" aria-label={t('settings.section')}>
 			<ul class="space-y-1">
 				{#each sections as section (section.id)}
+					{#if section.id === 'info'}
+						<li class="my-2 border-t border-slate-800" aria-hidden="true"></li>
+					{/if}
 					<li>
 						<button
 							class="w-full rounded-lg px-3 py-1.5 text-left text-sm transition {active === section.id
@@ -510,6 +575,135 @@
 							<div class="card">
 								<p class="mb-2 text-xs text-slate-500">{t('settings.cronHint')}</p>
 								<button class="btn" onclick={() => maintenance('run-cleanup')}>{t('settings.runCleanupNow')}</button>
+							</div>
+						{:else if section.id === 'config'}
+							<div class="card space-y-3">
+								<p class="text-xs text-slate-500">{t('settings.config.hint')}</p>
+								<div class="flex flex-wrap items-center gap-2">
+									<a class="btn" href="/api/config/export" download="serpentseek-config.json">
+										{t('settings.config.export')}
+									</a>
+									<label class="btn cursor-pointer">
+										{t('settings.config.import')}
+										<input type="file" accept="application/json" class="hidden" onchange={importConfig} />
+									</label>
+									<label class="flex items-center gap-1.5 text-xs text-slate-400">
+										<input type="checkbox" bind:checked={importOverwrite} /> {t('settings.config.overwrite')}
+									</label>
+								</div>
+								{#if importResult}<p class="text-xs text-emerald-300">{importResult}</p>{/if}
+							</div>
+						{:else if section.id === 'info'}
+							<div class="space-y-4">
+								<div class="card flex items-center gap-3">
+									<span class="text-3xl">🐍</span>
+									<div class="min-w-0">
+										<h3 class="text-base font-semibold">SerpentSeek</h3>
+										<p class="text-xs text-slate-400">{t('settings.about.tagline')}</p>
+									</div>
+									<span class="badge ml-auto bg-emerald-500/15 font-mono text-emerald-300">
+										v{info?.version ?? '—'}
+									</span>
+								</div>
+
+								<div class="card space-y-2 text-sm">
+									<h4 class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+										🏷️ {t('settings.about.build')}
+									</h4>
+									{@render infoRow(t('settings.info.version'), info?.version ?? '—')}
+									{@render infoRow(t('settings.info.commit'), info?.commit ?? '—')}
+									{@render infoRow(t('settings.info.buildDate'), info?.build_date ?? '—')}
+									{@render infoRow(t('settings.info.go'), info?.go_version ?? '—')}
+								</div>
+
+								<div class="card space-y-2 text-sm">
+									<h4 class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+										⚙️ {t('settings.about.runtime')}
+									</h4>
+									{@render infoRow(t('settings.driver'), info?.storage_driver ?? '—')}
+									{@render infoRow(t('settings.info.uptime'), formatUptime(info?.uptime_seconds))}
+									{@render infoRow(t('settings.info.started'), info?.started_at ? dateTime(info.started_at) : '—')}
+								</div>
+
+								<div class="card space-y-2 text-sm">
+									<div class="flex flex-wrap items-center justify-between gap-2">
+										<h4 class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+											🔔 {t('settings.about.updates')}
+										</h4>
+										{#if update?.enabled !== false}
+											<button class="btn px-2 py-0.5 text-xs" onclick={checkUpdate} disabled={updateChecking}>
+												{updateChecking ? t('common.loading') : t('settings.info.checkNow')}
+											</button>
+										{/if}
+									</div>
+									<div class="flex flex-wrap items-center gap-2">
+										{#if update?.enabled === false}
+											<span class="badge bg-slate-700/40 text-slate-300">{t('settings.info.updateDisabled')}</span>
+										{:else if update?.update_available}
+											<span class="badge bg-amber-500/15 text-amber-300">
+												↑ {t('settings.info.updateAvailable', { version: update.latest })}
+											</span>
+											{#if update.url}
+												<a
+													class="text-xs text-emerald-300 underline decoration-slate-600"
+													href={update.url}
+													target="_blank"
+													rel="noopener noreferrer"
+												>
+													{t('settings.info.releaseNotes')}
+												</a>
+											{/if}
+										{:else if update?.error}
+											<span class="badge bg-rose-500/15 text-rose-300">
+												{t('settings.info.updateError', { error: update.error })}
+											</span>
+										{:else if update?.checked_at}
+											<span class="badge bg-emerald-500/15 text-emerald-300">{t('settings.info.upToDate')}</span>
+										{:else}
+											<span class="badge bg-slate-700/40 text-slate-300">{t('settings.info.updateNotChecked')}</span>
+										{/if}
+									</div>
+									{#if update?.unofficial}
+										<p class="text-[11px] text-amber-400">⚠ {t('settings.info.unofficialHint')}</p>
+									{/if}
+									{#if update?.checked_at}
+										<p class="text-[11px] text-slate-500">
+											{t('settings.info.lastChecked')}: {dateTime(update.checked_at)}
+										</p>
+									{/if}
+								</div>
+
+								<div class="card space-y-2 text-sm">
+									<h4 class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+										🔗 {t('settings.about.links')}
+									</h4>
+									<div class="flex flex-wrap gap-2">
+										<a
+											class="btn text-xs"
+											href="https://github.com/liberide/serpent-seek"
+											target="_blank"
+											rel="noopener noreferrer"
+										>
+											{t('settings.info.source')}
+										</a>
+										<a
+											class="btn text-xs"
+											href="https://github.com/liberide/serpent-seek/tree/main/docs"
+											target="_blank"
+											rel="noopener noreferrer"
+										>
+											{t('settings.about.docs')}
+										</a>
+										<a
+											class="btn text-xs"
+											href="https://github.com/liberide/serpent-seek/blob/main/LICENSE"
+											target="_blank"
+											rel="noopener noreferrer"
+										>
+											{t('settings.about.license')}
+										</a>
+									</div>
+								</div>
 							</div>
 						{/if}
 					{/if}

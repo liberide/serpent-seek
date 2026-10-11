@@ -20,7 +20,8 @@
 		"active": "aktiv",
 		"unknown": "unbekannt",
 		"copy": "Kopieren",
-		"copied": "Kopiert"
+		"copied": "Kopiert",
+		"dismiss": "Ausblenden"
 	},
 	"nav": {
 		"dashboard": "Dashboard",
@@ -31,6 +32,7 @@
 		"playground": "Spielwiese",
 		"mcp": "MCP",
 		"logs": "Protokolle",
+		"audit": "Audit",
 		"users": "Benutzer",
 		"settings": "Einstellungen"
 	},
@@ -68,7 +70,8 @@
 		"create": "Administrator erstellen",
 		"created": "Administrator erstellt",
 		"saveKey": "Speichern Sie den Schlüssel — er wird nur einmal angezeigt:",
-		"goLogin": "Zur Anmeldung"
+		"goLogin": "Zur Anmeldung",
+		"tokenPlaceholder": "z. B. ff1089a6"
 	},
 	"dashboard": {
 		"title": "Dashboard",
@@ -116,7 +119,9 @@
 			"emptyCount": "ohne Ergebnis: {n}",
 			"activeDays": "Aktive Tage",
 			"busiest": "Spitze {date}: {n}",
-			"noBusiest": "keine Daten"
+			"noBusiest": "keine Daten",
+			"cost": "Geschätzte Kosten",
+			"costHint": "Summe der konfigurierten Provider-Kosten"
 		},
 		"chart": {
 			"volume": "Volumen",
@@ -146,6 +151,7 @@
 			"skip": "Übersprungen",
 			"success": "Erfolg",
 			"avg": "Ø Zeit",
+			"cost": "Kosten",
 			"legacy": "veraltet",
 			"noData": "Keine Anbieterdaten für den gewählten Zeitraum"
 		},
@@ -199,7 +205,11 @@
 		"deleteConfirm": "Ausgewählte Kette löschen?",
 		"activated": "Kette aktiviert",
 		"copied": "Kette dupliziert",
-		"deleted": "Kette gelöscht"
+		"deleted": "Kette gelöscht",
+		"boundKeys": "{count} Schlüssel",
+		"deleteBound": "Diese Kette wird von {count} aktiven Token verwendet. Beim Löschen werden sie auf die Standardkette (aktive Kette) verschoben. Löschen?",
+		"defaultHint": "Standardkette: wird von Token ohne Bindung verwendet",
+		"boundHint": "An diese Kette gebundene Token"
 	},
 	"chain": {
 		"backChains": "← Ketten",
@@ -253,7 +263,9 @@
 		"proxyBadge": "Proxy",
 		"proxy": "Proxy",
 		"proxyNone": "Direkt (kein Proxy)",
-		"proxyHint": "Anfragen dieses Providers über das ausgewählte Proxy leiten. Proxys verwaltest du unter Einstellungen → Proxy."
+		"proxyHint": "Anfragen dieses Providers über das ausgewählte Proxy leiten. Proxys verwaltest du unter Einstellungen → Proxy.",
+		"costPerRequest": "Kosten pro Anfrage",
+		"costPerRequestHint": "Optionaler Preis eines Aufrufs dieses Providers (USD, Credits …). Leer lassen, um nicht zu zählen."
 	},
 	"deadReason": {
 		"providerDisabled": "Provider ist deaktiviert",
@@ -298,8 +310,17 @@
 			"providers": "Anbieter (Fehlercodes)",
 			"retention": "Speicherung & Aufbewahrung",
 			"storage": "Datenbank",
+			"config": "Konfiguration",
+			"info": "Über",
 			"maintenance": "Wartung",
 			"danger": "Gefahrenzone"
+		},
+		"config": {
+			"hint": "Einen geheimnisfreien Snapshot exportieren (Provider, Ketten, nicht-geheime Einstellungen) oder importieren. Zugangsdaten werden nie exportiert und müssen neu eingegeben werden.",
+			"export": "Export",
+			"import": "Import",
+			"overwrite": "Vorhandene überschreiben",
+			"imported": "{providers} Provider und {chains} Ketten importiert; {skipped} übersprungen."
 		},
 		"proxy": {
 			"add": "Proxy hinzufügen",
@@ -329,11 +350,43 @@
 			"missingHost": "Gib einen Proxy-Host ein.",
 			"usedBy": "Genutzt von: {providers}"
 		},
+		"info": {
+			"version": "Version",
+			"commit": "Commit",
+			"buildDate": "Build-Datum",
+			"go": "Go-Laufzeit",
+			"uptime": "Laufzeit",
+			"started": "Gestartet",
+			"source": "Quellcode",
+			"update": "Update",
+			"updateAvailable": "Version {version} ist verfügbar",
+			"upToDate": "Aktuell",
+			"updateDisabled": "Update-Prüfung ist deaktiviert",
+			"updateError": "Prüfung fehlgeschlagen: {error}",
+			"updateNotChecked": "Noch nicht geprüft",
+			"lastChecked": "Zuletzt geprüft",
+			"checkNow": "Jetzt prüfen",
+			"releaseNotes": "Versionshinweise",
+			"checked": "Update-Prüfung abgeschlossen",
+			"unofficial": "Inoffiziell",
+			"unofficialHint": "Updates werden über eine benutzerdefinierte (nicht offizielle) Quelle geprüft."
+		},
+		"about": {
+			"tagline": "Selbst gehostetes Such-Gateway für Open WebUI, MCP und 40+ Such-APIs",
+			"build": "Build",
+			"runtime": "System",
+			"updates": "Updates",
+			"links": "Links",
+			"docs": "Dokumentation",
+			"license": "Lizenz"
+		},
 		"fields": {
 			"auth_enabled": "Authentifizierung aktivieren",
 			"hide_auth_off_notice": "Hinweis „Authentifizierung deaktiviert“ ausblenden",
 			"history_retention_days": "Verlauf aufbewahren (Tage)",
 			"logs_retention_days": "Protokolle aufbewahren (Tage)",
+			"usage_retention_days": "Nutzungszähler aufbewahren (Tage)",
+			"audit_retention_days": "Audit aufbewahren (Tage)",
 			"max_concurrency": "Max. Parallelität",
 			"max_attempts": "Max. Versuche",
 			"user_agent": "User-Agent",
@@ -347,13 +400,25 @@
 			"database_url": "Datenbank-URL",
 			"treat_empty_as_fail": "Leeres Ergebnis als Fehler",
 			"ignore_request_count": "Anzahl ignorieren",
-			"allow_sparse_sources": "Sparse-Quellen einmischen"
+			"allow_sparse_sources": "Sparse-Quellen einmischen",
+			"search_rate_limit_per_minute": "Suchlimit (pro Minute)",
+			"search_daily_quota": "Tägliches Suchkontingent",
+			"chain_timeout_seconds": "Ketten-Timeout (s)",
+			"provider_failure_threshold": "Provider-Fehlerschwelle",
+			"provider_cooldown_seconds": "Provider-Cooldown (s)",
+			"debug": "Debug-Endpunkte",
+			"update_check_enabled": "Auf Updates prüfen",
+			"update_check_url": "Release-Feed-URL",
+			"update_check_interval_hours": "Prüfintervall (Std.)",
+			"webhook_url": "Webhook-URL"
 		},
 		"fieldHints": {
 			"auth_enabled": "API-Schlüssel oder Passkey für Dashboard und API erforderlich.",
 			"hide_auth_off_notice": "Seitenleisten-Warnung ausblenden, solange die Authentifizierung deaktiviert ist.",
 			"history_retention_days": "Wie viele Tage der Anfrageverlauf vor der Bereinigung aufbewahrt wird.",
 			"logs_retention_days": "Wie viele Tage Protokolle vor der Bereinigung aufbewahrt werden.",
+			"usage_retention_days": "Wie lange tägliche Suchkontingent-Zähler aufbewahrt werden.",
+			"audit_retention_days": "Wie lange administrative Audit-Einträge aufbewahrt werden.",
 			"max_concurrency": "Maximale Anzahl gleichzeitig ausgeführter Anbieteranfragen.",
 			"max_attempts": "Maximale Versuche pro Anbieter, bevor aufgegeben wird.",
 			"user_agent": "HTTP-User-Agent-Header, der an Anbieter gesendet wird.",
@@ -367,7 +432,17 @@
 			"database_url": "Verbindungszeichenfolge zur Datenbank (für postgres).",
 			"treat_empty_as_fail": "Leeres Ergebnis als fehlgeschlagenen Versuch zählen.",
 			"ignore_request_count": "Angeforderte Ergebnisanzahl ignorieren und alles Gefundene zurückgeben.",
-			"allow_sparse_sources": "Quellen von Antwort-Knoten (Link+Titel, oft ohne Snippet) werden in das Row-Ergebnis aufgenommen."
+			"allow_sparse_sources": "Quellen von Antwort-Knoten (Link+Titel, oft ohne Snippet) werden in das Row-Ergebnis aufgenommen.",
+			"search_rate_limit_per_minute": "Suchanfragen pro Minute und Schlüssel für /search und /mcp (0 = unbegrenzt).",
+			"search_daily_quota": "Suchanfragen pro Schlüssel und UTC-Tag (0 = unbegrenzt).",
+			"chain_timeout_seconds": "Harte Zeitgrenze für eine Suche über alle Provider (0 = aus).",
+			"provider_failure_threshold": "Aufeinanderfolgende Provider-Fehler bis zum Cooldown (0 = aus).",
+			"provider_cooldown_seconds": "So lange wird ein fehlerhafter Provider übersprungen.",
+			"debug": "Go-pprof-Profiling unter /debug/pprof bereitstellen.",
+			"update_check_enabled": "Den öffentlichen Release-Feed abrufen und bei einer neueren Version einen Hinweis anzeigen.",
+			"update_check_url": "Release-API-Endpunkt (standardmäßig GitHub „latest release“). Leeren zum Deaktivieren.",
+			"update_check_interval_hours": "Wie viele Stunden zwischen automatischen Prüfungen.",
+			"webhook_url": "Sendet bei Ausfällen (Circuit Breaker) und Überschreitung des Tageslimits eine JSON-Nutzlast an diese URL. Leer deaktiviert Benachrichtigungen."
 		}
 	},
 	"logs": {
@@ -379,6 +454,17 @@
 		"empty": "Keine Protokolle",
 		"deleted": "Gelöscht: {n}",
 		"clearConfirm": "Alle Protokolleinträge löschen?"
+	},
+	"audit": {
+		"title": "Audit-Protokoll",
+		"action": "Aktion",
+		"actor": "Benutzer",
+		"via": "Über",
+		"target": "Ziel",
+		"details": "Details",
+		"ip": "IP",
+		"search": "Suche",
+		"empty": "Keine Einträge"
 	},
 	"users": {
 		"title": "Benutzer & Schlüssel",
@@ -409,7 +495,16 @@
 		"created": "Benutzer erstellt",
 		"deleted": "Benutzer gelöscht",
 		"keyRevoked": "Schlüssel widerrufen",
-		"passkeyAdded": "Passkey hinzugefügt"
+		"passkeyAdded": "Passkey hinzugefügt",
+		"chain": "Kette",
+		"activeChain": "Aktive Kette",
+		"unknownChain": "Unbekannte Kette",
+		"chainUpdated": "Kettenbindung aktualisiert",
+		"bindTitle": "Kette für Token",
+		"bindHint": "Das Token verwendet immer die ausgewählte Kette. Auf „Standard“ belassen, um der aktiven Kette zu folgen.",
+		"chainMissing": "Die gebundene Kette existiert nicht mehr; das Token verwendet die Standardkette.",
+		"changeChain": "Kette ändern",
+		"usedToday": "Heute"
 	},
 	"playground": {
 		"title": "Spielwiese",
@@ -507,7 +602,6 @@
 		"selectHint": "Wählen Sie einen Knoten oder eine Kante zum Bearbeiten.",
 		"paramKey": "Parameter (Schlüssel)",
 		"keyboardHint": "Delete — Auswahl entfernen · Rechtsklick auf Block — duplizieren/löschen",
-		"start": "Start",
 		"startOn": "Startblock (Ketteneinstieg)",
 		"startTaken": "Startblock bereits {name} zugewiesen; schalten Sie ihn dort zuerst aus",
 		"startReassigned": "Startblock auf {name} umgewiesen",

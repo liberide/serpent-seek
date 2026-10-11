@@ -1,6 +1,6 @@
 # 🐍 SerpentSeek — 自托管搜索网关，面向 Open WebUI、MCP 及 40+ 搜索 API
 
-[English](README.md "Read in English") | [Русский](README.ru.md "README по-русски") | [Deutsch](README.de.md "Auf Deutsch lesen") | [Français](README.fr.md "Lire en français") | **中文**
+[English](README.md "Read in English") | [Русский](README.ru.md "README по-русски") | [Deutsch](README.de.md "Auf Deutsch lesen") | [Français](README.fr.md "Lire en français") | [日本語](README.ja.md "日本語で読む") | **中文**
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE "项目许可证 — GNU GPL v3.0")
 [![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod "后端使用 Go 编写")
@@ -35,6 +35,8 @@ API；任何费用均由运维方与其提供方之间解决。作者不对这�
 * 🧩 **可视化链路编辑器** —— 真正的节点/连线图：逻辑**起点**模块可向多个
   提供商分叉，逻辑**合并**模块汇合分支并去除重复 URL，其余由回退/重试策略
   控制；同一驱动可创建多个命名实例
+* 🔗 **按令牌绑定链路** — 为每个 API 密钥绑定独立链路（与活动链路无关）；
+  未绑定的令牌走默认/活动链路，删除链路时绑定令牌会安全回退到它
 * 🔌 **开箱接入 Open WebUI** — `/search` 端点：始终返回 HTTP 200 与
   `[{"link","title","snippet"}]`
 * 🤖 **MCP 服务器** — 通过 streamable HTTP 提供 `search` 工具，适用于 Claude、
@@ -45,7 +47,7 @@ API；任何费用均由运维方与其提供方之间解决。作者不对这�
   SameSite=Strict 会话与 CSRF 防护、只写机密、可选 AES-GCM 静态加密
 * 💾 **SQLite ⟷ PostgreSQL** — 默认 WAL 模式 SQLite；`extdb` profile 提供
   PostgreSQL 以支持多副本部署
-* 🌍 **多语言界面** — English, Русский, Polski, Deutsch, Français, 中文
+* 🌍 **多语言界面** — English, Русский, Polski, Deutsch, Français, 日本語, 中文
 * 🐳 **单 Docker 容器** — Go 后端内嵌 SvelteKit SPA
 
 ## 目录
@@ -64,7 +66,6 @@ API；任何费用均由运维方与其提供方之间解决。作者不对这�
 * [开发](#开发)
 * [依赖与许可证](#依赖与许可证)
 * [风险与注意事项](#风险与注意事项)
-* [截图](#截图)
 * [目录结构](#目录结构)
 
 ## 快速开始
@@ -291,6 +292,20 @@ SerpentSeek **不自行运行 SearXNG** —— compose 中没有该服务。请�
 并行分叉、合并模块的合并以及 `on_success` 继续行为只对确实包含起点模块的
 链路生效。
 
+### 按令牌绑定链路
+
+每个 API 密钥都可以绑定到一条特定链路，不受哪条链路处于活动状态影响。绑定由
+管理员在 **用户与密钥** 页面设置，从下一个请求起立即生效——无需轮换密钥：
+
+* 已绑定的令牌始终使用自己的链路，即使该链路未激活；多个令牌可共享同一条链路；
+* 未绑定的令牌回退到 **默认** 链路，即唯一的 `active` 链路（不存在单独的
+  “默认链路”实体）；
+* 若绑定的链路消失，绑定会被清除，令牌安全回退到活动链路；显式绑定但不存在的
+  链路会直接报错（fail-closed）；
+* “链路”页面显示每条链路被多少令牌使用（`🔑 N` 及活跃数量），并在删除仍有
+  活跃令牌绑定的链路前发出警告——确认后这些令牌会转到默认链路。活动链路本身
+  不可删除。
+
 ## PostgreSQL（`extdb` profile）
 
 ```bash
@@ -327,7 +342,7 @@ PostgreSQL 是独立容器（PostgreSQL License），**不是** SerpentSeek 的�
 
 ## 界面与本地化
 
-UI 已翻译为 6 种语言：
+UI 已翻译为 7 种语言：
 
 | 代码 | 语言 |
 | --- | --- |
@@ -336,6 +351,7 @@ UI 已翻译为 6 种语言：
 | `pl` | Polski |
 | `de` | Deutsch |
 | `fr` | Français |
+| `ja` | 日本語 |
 | `zh` | 中文 |
 
 语言切换器位于右上角、「Quick search」按钮旁。所选语言保存在 `localStorage` 中；
@@ -433,13 +449,6 @@ cd web && npx license-checker --production --excludePrivatePackages
   可选 `ENCRYPTION_KEY` 启用静态加密（AES-256-GCM）。
 * `TRUSTED_PROXIES` 指定其 forwarded 头可被信任的代理；
   `BLOCK_PRIVATE_NETWORKS=true` 将出站连接限制为公共地址。
-
-## 截图
-
-启动后可看到以下界面：Dashboard、Analytics（请求图表、筛选以及各提供商成功/失败）、
-History（带彩色链路图和步骤时间线）、Chains（可视化编辑器）、Providers、Playground、
-MCP、Logs、Users、Settings。请将截图放入
-`docs/screenshots/`（为避免镜像体积膨胀，仓库中未包含截图）。
 
 ## 目录结构
 

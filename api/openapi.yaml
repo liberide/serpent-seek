@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: SerpentSeek API
-  version: "1.0.0"
-  summary: Search gateway microservice — visual provider chains, live request tracing, API-key/Passkeys auth, SQLite/PostgreSQL storage.
+  version: "1.1.0"
+  summary: Search gateway microservice — visual provider chains, per-token chain binding, live request tracing, API-key/Passkeys auth, SQLite/PostgreSQL storage.
   description: |
     SerpentSeek is a drop-in replacement for the serpent-shim used by Open WebUI, upgraded to a full
     service with an admin SPA.
@@ -19,6 +19,11 @@ info:
     **Request tracing.** Every response carries `X-Serpent-Rid`. Live step-by-step execution of a request's
     chain is exposed over SSE (see `/api/requests/{id}/events`).
 
+    **Chains & tokens.** Each API key can be bound to a specific chain (`chain_id`), independent of the active
+    one; unbound keys use the default (= active) chain. `GET /api/chains` reports `bound_keys` and
+    `active_bound_keys`; a bound but missing chain fails closed. Deleting a non-active chain unbinds its keys
+    (they fall back to the default) and returns `unbound_keys`; the active chain cannot be deleted.
+
     **Errors.** All `4xx/5xx` responses: `{ "error": { "code", "message", "rid" } }`.
   license:
     name: MIT
@@ -30,6 +35,8 @@ servers:
 tags:
   - name: machine
     description: Open WebUI-compatible machine search endpoint
+  - name: mcp
+    description: Model Context Protocol (MCP) search tool over streamable HTTP
   - name: meta
     description: Health and version
   - name: auth
@@ -46,6 +53,8 @@ tags:
     description: Runtime settings (env overrides marked readonly)
   - name: logs
     description: In-app log browsing
+  - name: audit
+    description: Administrative audit trail
   - name: maintenance
     description: Cleanup jobs and manual maintenance actions
   - name: stats
@@ -85,23 +94,67 @@ paths:
                 properties: { ok: { type: boolean }, reason: { type: string } }
               example: { ok: false, reason: migrations_running }
 
-  /version:
+  /livez:
     get:
       tags: [meta]
-      summary: Build metadata
+      summary: Liveness probe (always 200 while the process is up)
       security: []
       responses:
         "200":
-          description: Version info
+          description: Alive
           content:
             application/json:
               schema:
                 type: object
-                properties:
-                  version: { type: string }
-                  commit: { type: string }
-                  build_date: { type: string, format: date-time }
-              example: { version: "1.0.0", commit: "a1b2c3d", build_date: "2026-09-22T10:00:00Z" }
+                properties: { ok: { type: boolean } }
+              example: { ok: true }
+
+  /readyz:
+    get:
+      tags: [meta]
+      summary: Readiness probe (503 while the database is unreachable)
+      security: []
+      responses:
+        "200":
+          description: Ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { ok: { type: boolean } }
+        "503":
+          description: Not ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties: { ok: { type: boolean }, error: { type: string } }
+
+  /version:
+    get:
+      tags: [meta]
+      summary: Version string (plain text, one line)
+      security: []
+      responses:
+        "200":
+          description: The running version (commit/build details are in `/api/info`)
+          content:
+            text/plain:
+              schema: { type: string }
+              example: 1.1.0
+
+  /metrics:
+    get:
+      tags: [meta]
+      summary: Prometheus metrics (text exposition format 0.0.4)
+      description: Aggregate counters/gauges only (search outcomes, provider attempts, durations, SSE clients, build info). No query text or secrets.
+      security: []
+      responses:
+        "200":
+          description: Metrics
+          content:
+            text/plain:
+              schema: { type: string }
 
   /search:
     post:
@@ -146,6 +199,84 @@ paths:
                   snippet: "Privacy-respecting metasearch engine."
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  # ---------------- mcp ----------------
+  /mcp:
+    get:
+      tags: [mcp]
+      summary: Open an MCP SSE stream (Streamable HTTP transport)
+      description: |
+        Model Context Protocol endpoint exposing a single `search` tool. GET opens an SSE stream and returns
+        the session id in the `Mcp-Session-Id` header; POST sends JSON-RPC 2.0 requests; DELETE closes the
+        session. POST without a session id also works as a plain JSON-RPC request/response endpoint.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: 'SSE stream of `event: message` frames carrying JSON-RPC responses'
+          headers:
+            Mcp-Session-Id: { schema: { type: string } }
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    post:
+      tags: [mcp]
+      summary: Send a JSON-RPC 2.0 message (`initialize`, `ping`, `tools/list`, `tools/call`)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: Mcp-Session-Id
+          in: header
+          required: false
+          schema: { type: string }
+          description: When present, the response is delivered over the matching SSE stream.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [jsonrpc, method]
+              properties:
+                jsonrpc: { type: string, enum: ["2.0"] }
+                id: { description: Request id; omit for a notification }
+                method: { type: string }
+                params: {}
+            example: { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: search, arguments: { query: "hello", count: 3 } } }
+      responses:
+        "200":
+          description: JSON-RPC response (no session id) or an acknowledgement when a session id is used
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jsonrpc: { type: string }
+                  id: {}
+                  result: {}
+                  error:
+                    type: object
+                    properties:
+                      code: { type: integer }
+                      message: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+    delete:
+      tags: [mcp]
+      summary: Close an MCP session
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: Mcp-Session-Id
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Session closed }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
   # ---------------- auth ----------------
   /api/me:
@@ -159,6 +290,25 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/MeResponse" }
 
+  /api/setup/status:
+    get:
+      tags: [auth]
+      summary: First-run / auth-mode status (public)
+      security: []
+      responses:
+        "200":
+          description: Setup state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  needs_setup: { type: boolean }
+                  auth_enabled: { type: boolean }
+                  auth_off_notice_hidden: { type: boolean }
+                  passkeys_enabled: { type: boolean }
+                  rp_id: { type: string }
+
   /api/auth/setup:
     post:
       tags: [auth]
@@ -171,12 +321,10 @@ paths:
           application/json:
             schema:
               type: object
-              required: [setup_token, admin_name]
+              required: [token, name]
               properties:
-                setup_token: { type: string }
-                admin_name: { type: string }
-                create_key: { type: boolean, default: true }
-                key_name: { type: string, default: first-admin-key }
+                token: { type: string, description: One-time SETUP_TOKEN printed to the server logs }
+                name: { type: string, description: Name of the first administrator }
       responses:
         "201":
           description: Admin created; API key secret is shown once
@@ -186,7 +334,7 @@ paths:
                 type: object
                 properties:
                   user: { $ref: "#/components/schemas/User" }
-                  api_key: { $ref: "#/components/schemas/ApiKeyCreated" }
+                  api_key: { type: string, description: Plaintext admin key, shown only once }
         "409": { $ref: "#/components/responses/Conflict" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "410":
@@ -377,10 +525,27 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ApiKeyCreated" }
 
+  /api/keys/bulk:
+    post:
+      tags: [users]
+      summary: Bulk revoke or delete API keys (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BulkInput" }
+      responses:
+        "200":
+          description: Bulk result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BulkResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /api/keys/{id}:
     patch:
       tags: [users]
-      summary: Update key (rename, expiry, revoke)
+      summary: Update key (rename, chain binding, expiry, revoke)
       parameters: [ { $ref: "#/components/parameters/KeyId" } ]
       requestBody:
         required: true
@@ -390,6 +555,7 @@ paths:
               type: object
               properties:
                 name: { type: string }
+                chain_id: { type: string, nullable: true, description: Bind the token to a chain; empty string clears the binding (active chain) }
                 expires_at: { type: string, format: date-time, nullable: true }
                 revoke: { type: boolean }
       responses:
@@ -398,6 +564,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ApiKey" }
+        "400": { description: Unknown chain_id }
         "404": { $ref: "#/components/responses/NotFound" }
     delete:
       tags: [users]
@@ -407,10 +574,11 @@ paths:
         "204": { description: Deleted }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/passkeys:
+  /api/users/{id}/passkeys:
     get:
       tags: [users]
-      summary: List passkey credentials (own or all for admin)
+      summary: List a user's passkey credentials
+      parameters: [ { $ref: "#/components/parameters/UserId" } ]
       responses:
         "200":
           description: Passkeys
@@ -586,11 +754,24 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
     delete:
       tags: [chains]
-      summary: Delete chain (the ACTIVE chain cannot be deleted)
+      summary: Delete chain (the ACTIVE chain cannot be deleted; bound API keys move to the active chain)
       parameters: [ { $ref: "#/components/parameters/ChainId" } ]
       responses:
-        "204": { description: Deleted }
-        "409": { $ref: "#/components/responses/Conflict" }
+        "200":
+          description: Deleted; `unbound_keys` reports how many API keys were unbound and `moved_to_default` how many active ones moved to the active chain
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  unbound_keys: { type: integer }
+                  moved_to_default: { type: integer }
+        "409":
+          description: The active chain cannot be deleted (`chain_active`).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
         "404": { $ref: "#/components/responses/NotFound" }
 
   /api/chains/{id}/activate:
@@ -622,11 +803,15 @@ paths:
               schema: { $ref: "#/components/schemas/Chain" }
         "404": { $ref: "#/components/responses/NotFound" }
 
-  /api/chains/{id}/validate:
+  /api/chains/validate:
     post:
       tags: [chains]
-      summary: Dry-run validation (also used live by the editor canvas)
-      parameters: [ { $ref: "#/components/parameters/ChainId" } ]
+      summary: Dry-run validation of a draft graph (also used live by the editor canvas)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChainInput" }
       responses:
         "200":
           description: Validation result (cycles, orphans, >1 start, dangling edges, bad params)
@@ -640,9 +825,35 @@ paths:
                   errors:
                     type: array
                     items: { $ref: "#/components/schemas/ValidationIssue" }
-        "404": { $ref: "#/components/responses/NotFound" }
+        "400": { $ref: "#/components/responses/BadRequest" }
 
   # ---------------- providers ----------------
+  /api/providers/drivers:
+    get:
+      tags: [providers]
+      summary: List the built-in driver catalog (credentials/params schema per driver)
+      responses:
+        "200":
+          description: Driver schemas (one per registered code, regardless of configured instances)
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    code: { type: string }
+                    name: { type: string }
+                    deprecated: { type: boolean }
+                    default_base_url: { type: string }
+                    credentials:
+                      type: array
+                      items: { $ref: "#/components/schemas/CredentialMeta" }
+                    params:
+                      type: array
+                      items: { type: object }
+                    hints: { type: array, items: { type: string } }
+
   /api/providers:
     get:
       tags: [providers]
@@ -670,6 +881,24 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Provider" }
         "409": { $ref: "#/components/responses/Conflict" }
+
+  /api/providers/bulk:
+    post:
+      tags: [providers]
+      summary: Bulk enable, disable or delete provider instances (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BulkInput" }
+            description: "`action` is one of `enable`, `disable`, `delete`"
+      responses:
+        "200":
+          description: Bulk result; deletion skips providers referenced by a chain (`provider_in_use`)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BulkResult" }
+        "400": { $ref: "#/components/responses/BadRequest" }
 
   /api/providers/{id}:
     get:
@@ -868,6 +1097,70 @@ paths:
               schema: { $ref: "#/components/schemas/SettingsUpdateResponse" }
         "422": { $ref: "#/components/responses/ValidationFailed" }
 
+  /api/info:
+    get:
+      tags: [settings]
+      summary: Build and runtime metadata (read scope)
+      responses:
+        "200":
+          description: Version, commit, build date, Go runtime, storage driver and uptime
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version: { type: string, example: 1.1.0 }
+                  commit: { type: string, example: d412056 }
+                  build_date: { type: string, example: "2026-10-09T21:35:39Z" }
+                  go_version: { type: string, example: go1.26.0 }
+                  storage_driver: { type: string, enum: [sqlite, postgres] }
+                  started_at: { type: string, format: date-time }
+                  uptime_seconds: { type: integer }
+
+  /api/update:
+    get:
+      tags: [settings]
+      summary: Cached update status (read scope; never performs a network request)
+      responses:
+        "200":
+          description: Update status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UpdateStatus" }
+
+  /api/update/check:
+    post:
+      tags: [settings]
+      summary: Force an immediate release check (admin)
+      responses:
+        "200":
+          description: Update status (may carry `error` when the check failed)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UpdateStatus" }
+        "400":
+          description: Update checks are disabled or no URL is configured
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+
+  /api/settings/storage/test:
+    post:
+      tags: [settings]
+      summary: Test storage connectivity and report the active driver
+      responses:
+        "200":
+          description: Connectivity result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  driver: { type: string }
+                  ok: { type: boolean }
+                  error: { type: string }
+                  restart_required_for_switch: { type: boolean }
+
   # ---------------- logs ----------------
   /api/logs:
     get:
@@ -896,7 +1189,115 @@ paths:
                     items: { $ref: "#/components/schemas/LogEntry" }
                   next_cursor: { type: string, nullable: true }
 
+  # ---------------- audit ----------------
+  /api/audit:
+    get:
+      tags: [audit]
+      summary: Administrative audit trail (admin)
+      parameters:
+        - name: action
+          in: query
+          schema: { type: string }
+          description: Exact action name, e.g. `chain.update`
+        - name: actor
+          in: query
+          schema: { type: string }
+          description: Match the actor's user name or id
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - name: q
+          in: query
+          schema: { type: string }
+          description: Substring match over action, target, user name and details
+        - name: page
+          in: query
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        "200":
+          description: Page of audit records (newest first)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AuditEntry" }
+                  total: { type: integer }
+                  page: { type: integer }
+                  limit: { type: integer }
+
+  # ---------------- config ----------------
+  /api/config/export:
+    get:
+      tags: [settings]
+      summary: Export configuration (admin) — providers, chains and non-secret settings
+      description: Credentials and proxy passwords are never included; re-enter them after an import.
+      responses:
+        "200":
+          description: Configuration bundle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ConfigBundle" }
+
+  /api/config/import:
+    post:
+      tags: [settings]
+      summary: Import configuration (admin)
+      parameters:
+        - name: overwrite
+          in: query
+          schema: { type: boolean, default: false }
+          description: Update existing providers/chains matched by name instead of skipping them.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ConfigBundle" }
+      responses:
+        "200":
+          description: Import summary
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers_created: { type: integer }
+                  providers_updated: { type: integer }
+                  chains_created: { type: integer }
+                  chains_updated: { type: integer }
+                  chains_skipped: { type: integer }
+                  settings_applied: { type: integer }
+
   # ---------------- maintenance ----------------
+  /api/maintenance/status:
+    get:
+      tags: [maintenance]
+      summary: Background job status (last run, last error)
+      responses:
+        "200":
+          description: Job status keyed by job name
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        last_run: { type: string, nullable: true }
+                        last_error: { type: string, nullable: true }
+
   /api/maintenance/clear-logs:
     post:
       tags: [maintenance]
@@ -1007,6 +1408,7 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PlaygroundResponse" }
+        "429": { $ref: "#/components/responses/RateLimited" }
 
 components:
   securitySchemes:
@@ -1085,11 +1487,13 @@ components:
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example: { error: { code: not_found, message: "entity not found", rid: "0008-1c77" } }
     Conflict:
       description: State conflict (unique violation, rule violation, etc.)
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example: { error: { code: conflict, message: "name already exists", rid: "0008-1c77" } }
     ValidationFailed:
       description: Domain validation failed (e.g. chain graph errors)
       content:
@@ -1102,11 +1506,22 @@ components:
               issues:
                 type: array
                 items: { $ref: "#/components/schemas/ValidationIssue" }
+          example:
+            error: { code: validation_failed, message: "chain graph is invalid", rid: "0008-1c77" }
+            issues:
+              - node_key: blk-2
+                field: provider
+                message: "unknown provider node"
     RateLimited:
-      description: Too many attempts (auth endpoints, 10/min per IP)
+      description: |
+        Too many requests. Auth endpoints allow 10 attempts/min per IP. `/search`, `/mcp` and the
+        playground enforce the optional `SEARCH_RATE_LIMIT_PER_MINUTE` (code `rate_limited`) and
+        `SEARCH_DAILY_QUOTA` (code `quota_exceeded`); a `Retry-After` header and, on success,
+        `X-Serpent-Quota-Remaining` are returned where applicable.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example: { error: { code: rate_limited, message: "search rate limit exceeded", rid: "0008-1c77" } }
 
   schemas:
     # ---------- shared ----------
@@ -1138,7 +1553,7 @@ components:
           description: >
             Result cap. 0 (or omitted) = return everything found — providers are
             queried without a num/pageSize limit and the response is not truncated.
-            The global setting IGNORE_REQUEST_COUNT («Settings → Сеть») forces this
+            The global setting IGNORE_REQUEST_COUNT ("Settings → Network & engine") forces this
             behaviour for every request.
 
     ErrorObject:
@@ -1154,6 +1569,30 @@ components:
       required: [error]
       properties:
         error: { $ref: "#/components/schemas/ErrorObject" }
+
+    BulkInput:
+      type: object
+      required: [action, ids]
+      properties:
+        action: { type: string, description: "keys: revoke|delete; providers: enable|disable|delete" }
+        ids:
+          type: array
+          maxItems: 500
+          items: { type: string }
+
+    BulkResult:
+      type: object
+      required: [updated, requested, skipped]
+      properties:
+        updated: { type: integer }
+        requested: { type: integer }
+        skipped:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string }
+              reason: { type: string, example: provider_in_use }
 
     # ---------- enums ----------
     RequestStatus:
@@ -1218,6 +1657,7 @@ components:
         results_count: { type: integer }
         wait_before_ms: { type: integer, format: int64, description: Backoff applied before the call }
         took_ms: { type: integer, format: int64 }
+        cost: { type: number, description: "Snapshot of the provider's configured cost_per_request at execution time (0/absent = not counted)" }
         started_at: { type: string, format: date-time, nullable: true }
         finished_at: { type: string, format: date-time, nullable: true }
 
@@ -1363,6 +1803,8 @@ components:
           items: { $ref: "#/components/schemas/ChainEdge" }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+        bound_keys: { type: integer, description: Number of API keys bound to this chain (computed) }
+        active_bound_keys: { type: integer, description: Number of bound API keys that are still active/not revoked; these move to the default chain if the chain is deleted (computed) }
 
     ChainSummary:
       type: object
@@ -1375,6 +1817,8 @@ components:
         version: { type: integer }
         nodes_count: { type: integer }
         updated_at: { type: string, format: date-time }
+        bound_keys: { type: integer, description: Number of API keys bound to this chain (computed) }
+        active_bound_keys: { type: integer, description: Number of bound API keys that are still active/not revoked (computed) }
 
     ValidationIssue:
       type: object
@@ -1418,6 +1862,10 @@ components:
         params:
           type: object
           additionalProperties: { type: string }
+          description: |
+            Driver-specific parameters. The reserved key `cost_per_request` (a positive
+            decimal, in any unit) declares the estimated cost of one call; leave it unset
+            or non-positive to exclude the provider from cost analytics.
         updated_at: { type: string, format: date-time }
 
     ProviderInput:
@@ -1546,6 +1994,62 @@ components:
         api: { type: string, nullable: true, description: 'Provider tag from [rid|api]' }
         message: { type: string, description: Already redacted server-side }
 
+    AuditEntry:
+      type: object
+      required: [id, ts, action]
+      properties:
+        id: { type: string, format: uuid }
+        ts: { type: string, format: date-time }
+        user_id: { type: string, description: Actor user id (empty in open-admin mode) }
+        user: { type: string, description: Actor user name }
+        via: { type: string, enum: [key, session, disabled] }
+        ip: { type: string }
+        action: { type: string, example: chain.update }
+        target: { type: string, description: Entity id or setting key }
+        details:
+          type: object
+          additionalProperties: { type: string }
+          description: Small non-secret context (names, counts, changed setting keys)
+
+    ConfigBundle:
+      type: object
+      required: [version, providers, chains]
+      description: Portable, secret-free configuration snapshot (providers, chains, non-secret settings).
+      properties:
+        version: { type: integer }
+        exported_at: { type: string, format: date-time }
+        providers:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, description: Source instance id, used to remap chain nodes on import }
+              code: { type: string }
+              name: { type: string }
+              enabled: { type: boolean }
+              base_url: { type: string }
+              params: { type: object, additionalProperties: { type: string } }
+        chains:
+          type: array
+          items: { $ref: "#/components/schemas/Chain" }
+        settings:
+          type: object
+          additionalProperties: { type: string }
+
+    UpdateStatus:
+      type: object
+      properties:
+        enabled: { type: boolean, description: false when UPDATE_CHECK_ENABLED is off }
+        current: { type: string, example: 1.1.0 }
+        latest: { type: string, nullable: true, example: 1.2.0 }
+        update_available: { type: boolean }
+        url: { type: string, nullable: true, description: Release notes URL }
+        name: { type: string, nullable: true }
+        published_at: { type: string, nullable: true }
+        prerelease: { type: boolean }
+        checked_at: { type: string, nullable: true }
+        error: { type: string, nullable: true, description: Non-fatal reason the last check failed }
+
     # ---------- maintenance / stats ----------
     DeletedResponse:
       type: object
@@ -1610,6 +2114,8 @@ components:
               skip: { type: integer }
               avg_ms: { type: integer }
               success_rate: { type: number, example: 92.5 }
+              cost: { type: number, description: Summed cost of the provider's executed attempts }
+              cost_configured: { type: boolean, description: false = no cost configured, so the UI shows a dash instead of 0 }
 
     AnalyticsReport:
       type: object
@@ -1624,6 +2130,8 @@ components:
         active_days: { type: integer }
         busiest_date: { type: string, format: date }
         busiest_count: { type: integer }
+        cost_total: { type: number, description: Estimated cost of executed attempts in the range (absent when no provider has a cost configured) }
+        cost_configured: { type: boolean, description: Whether any provider declares a cost; the UI hides the cost column otherwise }
         daily:
           type: array
           items: { $ref: "#/components/schemas/DailyStat" }
@@ -1688,15 +2196,25 @@ components:
 
     ApiKey:
       type: object
-      required: [id, user_id, name, prefix, scope, created_at]
+      required: [id, user_id, name, prefix, scopes, created_at]
       properties:
         id: { type: string, format: uuid }
         user_id: { type: string, format: uuid }
         name: { type: string }
         prefix: { type: string, description: Identifiable prefix only, e.g. seek_ak_ab12cd34 }
-        scope: { $ref: "#/components/schemas/ApiKeyScope" }
+        scopes:
+          type: string
+          description: Comma-separated granted scopes, e.g. "admin,search,read"
+          example: "search"
+        chain_id:
+          type: string
+          nullable: true
+          description: Chain bound to this token; null/empty means the active chain. Cleared when the chain is deleted.
         last_used_at: { type: string, format: date-time, nullable: true }
         expires_at: { type: string, format: date-time, nullable: true }
+        used_today:
+          type: integer
+          description: Search requests made with this key today (UTC). Computed by the server; not stored with the key.
         revoked_at: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time }
 
@@ -1707,18 +2225,17 @@ components:
         user_id: { type: string, format: uuid }
         name: { type: string }
         scope: { $ref: "#/components/schemas/ApiKeyScope", default: search }
-        expires_at: { type: string, format: date-time, nullable: true }
+        chain_id: { type: string, nullable: true, description: Optional chain to bind; omit/empty for the active chain }
 
     ApiKeyCreated:
-      allOf:
-        - $ref: "#/components/schemas/ApiKey"
-        - type: object
-          required: [secret]
-          properties:
-            secret:
-              type: string
-              description: Full key material — returned ONCE at creation, never stored or shown again
-              example: "seek_ak_ab12cd34.8f3a1c9d7b2e4a5f6c0d1e2b3a4c5d6e7f"
+      type: object
+      required: [key, plaintext]
+      properties:
+        key: { $ref: "#/components/schemas/ApiKey" }
+        plaintext:
+          type: string
+          description: Full key material — returned ONCE at creation, never stored or shown again
+          example: "seek_ak_ab12cd34.8f3a1c9d7b2e4a5f6c0d1e2b3a4c5d6e7f"
 
     PasskeyCredential:
       type: object
@@ -1729,22 +2246,21 @@ components:
         name: { type: string, nullable: true }
         created_at: { type: string, format: date-time }
         last_used_at: { type: string, format: date-time, nullable: true }
+        sign_count: { type: integer }
 
     MeResponse:
       type: object
-      required: [auth_enabled]
       properties:
-        auth_enabled: { type: boolean, description: false → open-admin mode (banner in UI) }
-        passkeys_available:
+        via: { type: string, enum: [key, session, disabled], description: How the caller authenticated }
+        scopes:
+          type: object
+          additionalProperties: { type: boolean }
+          description: Granted scopes keyed by name (admin/read/search)
+        admin: { type: boolean }
+        passkeys_enabled:
           type: boolean
           description: false when PUBLIC_ORIGIN is http:// or an IP (WebAuthn requires HTTPS + domain)
-        user:
-          allOf:
-            - $ref: "#/components/schemas/User"
-          nullable: true
-        passkeys:
-          type: array
-          items: { $ref: "#/components/schemas/PasskeyCredential" }
+        user: { $ref: "#/components/schemas/User" }
 
     # ---------- playground / sse payloads ----------
     PlaygroundResponse:

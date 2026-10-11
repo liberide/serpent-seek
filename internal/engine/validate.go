@@ -156,10 +156,7 @@ func ValidateChain(c *store.Chain, knownProviders map[string]bool, maxAttempts .
 			entry[c.Nodes[i].Key] = true
 		}
 	}
-	var starts []string
-	for _, key := range sortedKeys(entry) {
-		starts = append(starts, key)
-	}
+	starts := sortedKeys(entry)
 	if len(starts) == 0 {
 		errf("chain has no start block (add a Start block or toggle is_start on exactly one node)")
 	}

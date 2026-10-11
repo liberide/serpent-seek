@@ -1,7 +1,7 @@
 {
   "name": "serpentseek-web",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {
@@ -9,9 +9,13 @@
     "build": "vite build",
     "postbuild": "node -e \"require('node:fs').writeFileSync('build/.keep', 'Placeholder tracked in git so //go:embed all:build always has a file. See web/embed.go.\\n')\"",
     "preview": "vite preview",
+    "pretest": "svelte-kit sync",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
     "check": "svelte-kit sync && node scripts/check-i18n.mjs && svelte-check --tsconfig ./tsconfig.json"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.0",
     "@sveltejs/adapter-static": "3.0.10",
     "@sveltejs/kit": "2.70.3",
     "@sveltejs/vite-plugin-svelte": "7.3.0",
@@ -20,7 +24,8 @@
     "svelte-check": "4.7.6",
     "tailwindcss": "4.3.3",
     "typescript": "5.9.3",
-    "vite": "8.3.0"
+    "vite": "8.3.0",
+    "vitest": "^5.0.3"
   },
   "dependencies": {
     "@simplewebauthn/browser": "14.0.0",

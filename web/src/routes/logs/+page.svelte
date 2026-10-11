@@ -9,30 +9,53 @@
 
 	let items = $state<LogEntry[]>([]);
 	let total = $state(0);
-	let page = $state(1);
 	let limit = 100;
 	let level = $state('');
 	let query = $state('');
 	let confirmClear = $state(false);
+	let cursors = $state<string[]>(['']);
+	let nextCursor = $state<string | null>(null);
 
-	async function load() {
-		const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+	const page = $derived(cursors.length);
+	const currentCursor = $derived(cursors[cursors.length - 1]);
+
+	async function load(cursor: string = currentCursor) {
+		const params = new URLSearchParams({ limit: String(limit) });
+		if (cursor) params.set('cursor', cursor);
 		if (level) params.set('level', level);
 		if (query) params.set('q', query);
 		const data = await get<any>(`/api/logs?${params}`);
 		items = data.items;
 		total = data.total;
+		nextCursor = data.next_cursor ?? null;
 	}
 
-	onMount(load);
+	function applyFilters() {
+		cursors = [''];
+		load('');
+	}
+
+	function nextPage() {
+		if (!nextCursor) return;
+		cursors = [...cursors, nextCursor];
+		load(nextCursor);
+	}
+
+	function prevPage() {
+		if (cursors.length <= 1) return;
+		cursors = cursors.slice(0, -1);
+		load(cursors[cursors.length - 1]);
+	}
+
+	onMount(() => load());
 
 	async function clearLogs() {
 		try {
 			const result = await post<any>('/api/maintenance/clear-logs');
 			notify(t('logs.deleted', { n: result.deleted }), 'success');
 			confirmClear = false;
-			page = 1;
-			await load();
+			cursors = [''];
+			await load('');
 		} catch (error) {
 			notify((error as Error).message, 'error');
 		}
@@ -44,14 +67,13 @@
 		error: 'bg-rose-500/15 text-rose-300',
 		debug: 'bg-slate-700/30 text-slate-400'
 	};
-	const pages = $derived(Math.max(1, Math.ceil(total / limit)));
 </script>
 
 <div class="space-y-4">
 	<div class="flex flex-wrap items-center justify-between gap-2">
 		<h1 class="text-xl font-semibold">{t('logs.title')}</h1>
 		<div class="flex gap-2">
-			<button class="btn" onclick={load}>{t('common.refresh')}</button>
+			<button class="btn" onclick={() => load()}>{t('common.refresh')}</button>
 			<button class="btn btn-danger" onclick={() => (confirmClear = true)}>{t('logs.clear')}</button>
 		</div>
 	</div>
@@ -59,7 +81,7 @@
 	<div class="card grid grid-cols-1 gap-3 md:grid-cols-3">
 		<div>
 			<span class="label">{t('logs.level')}</span>
-			<select class="input" bind:value={level} onchange={() => { page = 1; load(); }}>
+			<select class="input" bind:value={level} onchange={applyFilters}>
 				<option value="">{t('common.all')}</option>
 				<option value="debug">debug</option>
 				<option value="info">info</option>
@@ -72,7 +94,7 @@
 			<input class="input" bind:value={query} onkeydown={(e) => e.key === 'Enter' && load()} />
 		</div>
 		<div class="flex items-end">
-			<button class="btn btn-primary w-full" onclick={() => { page = 1; load(); }}>{t('common.apply')}</button>
+			<button class="btn btn-primary w-full" onclick={applyFilters}>{t('common.apply')}</button>
 		</div>
 	</div>
 
@@ -97,9 +119,9 @@
 		<div class="mt-3 flex items-center justify-between text-xs text-slate-400">
 			<span>{t('common.total', { n: total })}</span>
 			<div class="flex items-center gap-2">
-				<button class="btn px-2 py-0.5" disabled={page <= 1} onclick={() => { page--; load(); }}>←</button>
-				<span>{page} / {pages}</span>
-				<button class="btn px-2 py-0.5" disabled={page >= pages} onclick={() => { page++; load(); }}>→</button>
+				<button class="btn px-2 py-0.5" disabled={page <= 1} onclick={prevPage}>←</button>
+				<span>{page}</span>
+				<button class="btn px-2 py-0.5" disabled={!nextCursor} onclick={nextPage}>→</button>
 			</div>
 		</div>
 	</div>

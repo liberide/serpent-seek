@@ -208,15 +208,15 @@ func (s *Store) CountAdmins(ctx context.Context) (int, error) {
 // CreateAPIKey inserts a hashed key.
 func (s *Store) CreateAPIKey(ctx context.Context, k *store.APIKey) error {
 	_, err := s.exec(ctx,
-		`INSERT INTO api_keys (id, user_id, name, prefix, hash, scopes, last_used_at, expires_at, revoked_at, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		k.ID, k.UserID, k.Name, k.Prefix, k.Hash, k.Scopes, k.LastUsedAt, k.ExpiresAt, k.RevokedAt, k.CreatedAt)
+		`INSERT INTO api_keys (id, user_id, name, prefix, hash, scopes, chain_id, last_used_at, expires_at, revoked_at, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		k.ID, k.UserID, k.Name, k.Prefix, k.Hash, k.Scopes, nullStr(k.ChainID), k.LastUsedAt, k.ExpiresAt, k.RevokedAt, k.CreatedAt)
 	return err
 }
 
 func scanAPIKey(row interface{ Scan(...any) error }) (*store.APIKey, error) {
 	var k store.APIKey
-	err := row.Scan(&k.ID, &k.UserID, &k.Name, &k.Prefix, &k.Hash, &k.Scopes,
+	err := row.Scan(&k.ID, &k.UserID, &k.Name, &k.Prefix, &k.Hash, &k.Scopes, &k.ChainID,
 		&k.LastUsedAt, &k.ExpiresAt, &k.RevokedAt, &k.CreatedAt)
 	if err != nil {
 		return nil, err
@@ -224,8 +224,17 @@ func scanAPIKey(row interface{ Scan(...any) error }) (*store.APIKey, error) {
 	return &k, nil
 }
 
-const apiKeyCols = `id, user_id, name, prefix, hash, scopes,
+const apiKeyCols = `id, user_id, name, prefix, hash, scopes, COALESCE(chain_id, ''),
 	COALESCE(last_used_at, ''), COALESCE(expires_at, ''), COALESCE(revoked_at, ''), created_at`
+
+// GetAPIKey returns one key by id.
+func (s *Store) GetAPIKey(ctx context.Context, id string) (*store.APIKey, error) {
+	k, err := scanAPIKey(s.queryRow(ctx, `SELECT `+apiKeyCols+` FROM api_keys WHERE id = ?`, id))
+	if err == sql.ErrNoRows {
+		return nil, store.ErrNotFound
+	}
+	return k, err
+}
 
 // GetAPIKeyByPrefix looks up a key by its public prefix.
 func (s *Store) GetAPIKeyByPrefix(ctx context.Context, prefix string) (*store.APIKey, error) {
@@ -261,10 +270,10 @@ func (s *Store) ListAPIKeys(ctx context.Context, userID string) ([]*store.APIKey
 	return out, rows.Err()
 }
 
-// UpdateAPIKey updates usage/expiry/revocation fields.
+// UpdateAPIKey updates name, scopes, chain binding and lifecycle fields.
 func (s *Store) UpdateAPIKey(ctx context.Context, k *store.APIKey) error {
-	_, err := s.exec(ctx, `UPDATE api_keys SET name = ?, scopes = ?, last_used_at = ?, expires_at = ?, revoked_at = ? WHERE id = ?`,
-		k.Name, k.Scopes, k.LastUsedAt, k.ExpiresAt, k.RevokedAt, k.ID)
+	_, err := s.exec(ctx, `UPDATE api_keys SET name = ?, scopes = ?, chain_id = ?, last_used_at = ?, expires_at = ?, revoked_at = ? WHERE id = ?`,
+		k.Name, k.Scopes, nullStr(k.ChainID), k.LastUsedAt, k.ExpiresAt, k.RevokedAt, k.ID)
 	return err
 }
 
@@ -272,6 +281,90 @@ func (s *Store) UpdateAPIKey(ctx context.Context, k *store.APIKey) error {
 func (s *Store) DeleteAPIKey(ctx context.Context, id string) error {
 	_, err := s.exec(ctx, `DELETE FROM api_keys WHERE id = ?`, id)
 	return err
+}
+
+// CountKeysByChain returns how many API keys are bound to a chain.
+func (s *Store) CountKeysByChain(ctx context.Context, chainID string) (int, error) {
+	if chainID == "" {
+		return 0, nil
+	}
+	var n int
+	err := s.queryRow(ctx, `SELECT COUNT(*) FROM api_keys WHERE chain_id = ?`, chainID).Scan(&n)
+	return n, err
+}
+
+// CountActiveKeysByChain returns how many non-revoked API keys are bound to a
+// chain. Revoked tokens keep a stale binding but are operationally irrelevant.
+func (s *Store) CountActiveKeysByChain(ctx context.Context, chainID string) (int, error) {
+	if chainID == "" {
+		return 0, nil
+	}
+	var n int
+	err := s.queryRow(ctx, `SELECT COUNT(*) FROM api_keys WHERE chain_id = ? AND COALESCE(revoked_at, '') = ''`, chainID).Scan(&n)
+	return n, err
+}
+
+// ClearKeyChainRefs unbinds every API key selecting the given chain and
+// returns the number of keys affected.
+func (s *Store) ClearKeyChainRefs(ctx context.Context, chainID string) (int64, error) {
+	res, err := s.exec(ctx, `UPDATE api_keys SET chain_id = NULL WHERE chain_id = ?`, chainID)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// --- Usage counters ---
+
+// IncrementUsage adds one to the subject's counter for a UTC day and returns
+// the new value. The atomic upsert keeps the counter correct across concurrent
+// requests and multiple replicas.
+func (s *Store) IncrementUsage(ctx context.Context, subject, day string) (int, error) {
+	var count int
+	err := s.queryRow(ctx,
+		`INSERT INTO usage_daily (subject, day, count) VALUES (?, ?, 1)
+		 ON CONFLICT (subject, day) DO UPDATE SET count = usage_daily.count + 1
+		 RETURNING count`,
+		subject, day).Scan(&count)
+	return count, err
+}
+
+// GetUsage returns the subject's counter for a UTC day (0 when absent).
+func (s *Store) GetUsage(ctx context.Context, subject, day string) (int, error) {
+	var count int
+	err := s.queryRow(ctx, `SELECT count FROM usage_daily WHERE subject = ? AND day = ?`, subject, day).Scan(&count)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	return count, err
+}
+
+// UsageByDay returns every subject's counter for a UTC day.
+func (s *Store) UsageByDay(ctx context.Context, day string) (map[string]int, error) {
+	rows, err := s.query(ctx, `SELECT subject, count FROM usage_daily WHERE day = ?`, day)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var subject string
+		var count int
+		if err := rows.Scan(&subject, &count); err != nil {
+			return nil, err
+		}
+		out[subject] = count
+	}
+	return out, rows.Err()
+}
+
+// DeleteOldUsage removes counters for days strictly before beforeDay (YYYY-MM-DD).
+func (s *Store) DeleteOldUsage(ctx context.Context, beforeDay string) (int64, error) {
+	res, err := s.exec(ctx, `DELETE FROM usage_daily WHERE day < ?`, beforeDay)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
 }
 
 // --- Passkeys ---
@@ -950,8 +1043,16 @@ func (s *Store) ListRequests(ctx context.Context, f store.RequestFilter, p store
 	if p.Offset < 0 {
 		p.Offset = 0
 	}
-	q := `SELECT ` + requestCols + ` FROM requests WHERE ` + clause + ` ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`
-	rows, err := s.query(ctx, q, append(append([]any{}, args...), p.Limit, p.Offset)...)
+	pageClause := clause
+	pageArgs := append([]any{}, args...)
+	if f.Cursor != "" {
+		if keys, ok := store.DecodeCursor(f.Cursor); ok && len(keys) == 2 {
+			pageClause += ` AND (created_at < ? OR (created_at = ? AND id < ?))`
+			pageArgs = append(pageArgs, keys[0], keys[0], keys[1])
+		}
+	}
+	q := `SELECT ` + requestCols + ` FROM requests WHERE ` + pageClause + ` ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`
+	rows, err := s.query(ctx, q, append(pageArgs, p.Limit, p.Offset)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -971,10 +1072,11 @@ func (s *Store) ListRequests(ctx context.Context, f store.RequestFilter, p store
 func (s *Store) AddStep(ctx context.Context, st *store.RequestStep) error {
 	_, err := s.exec(ctx,
 		`INSERT INTO request_steps (id, request_id, idx, node_key, provider, engine, attempt_no, status, kind,
-		 http_status, error, permanent, results_count, wait_before_ms, took_ms, started_at, finished_at, stage)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		 http_status, error, permanent, results_count, wait_before_ms, took_ms, cost, started_at, finished_at, stage)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		st.ID, st.RequestID, st.Idx, st.NodeKey, st.Provider, st.Engine, st.AttemptNo, st.Status, st.Kind,
-		st.HTTPStatus, st.Error, store.Bool(st.Permanent), st.ResultsCount, st.WaitBeforeMS, st.TookMS, st.StartedAt, st.FinishedAt, st.Stage)
+		st.HTTPStatus, st.Error, store.Bool(st.Permanent), st.ResultsCount, st.WaitBeforeMS, st.TookMS,
+		st.Cost, st.StartedAt, st.FinishedAt, st.Stage)
 	return err
 }
 
@@ -983,7 +1085,7 @@ func (s *Store) ListSteps(ctx context.Context, requestID string) ([]*store.Reque
 	rows, err := s.query(ctx,
 		`SELECT id, request_id, idx, COALESCE(node_key, ''), provider, COALESCE(engine, ''), attempt_no, status,
 		 COALESCE(kind, ''), COALESCE(http_status, 0), COALESCE(error, ''), permanent, results_count,
-		 wait_before_ms, took_ms, COALESCE(started_at, ''), COALESCE(finished_at, ''), COALESCE(stage, '')
+		 wait_before_ms, took_ms, COALESCE(cost, 0), COALESCE(started_at, ''), COALESCE(finished_at, ''), COALESCE(stage, '')
 		 FROM request_steps WHERE request_id = ? ORDER BY idx, attempt_no, started_at`, requestID)
 	if err != nil {
 		return nil, err
@@ -995,7 +1097,7 @@ func (s *Store) ListSteps(ctx context.Context, requestID string) ([]*store.Reque
 		var permanent store.Bool
 		if err := rows.Scan(&st.ID, &st.RequestID, &st.Idx, &st.NodeKey, &st.Provider, &st.Engine, &st.AttemptNo,
 			&st.Status, &st.Kind, &st.HTTPStatus, &st.Error, &permanent, &st.ResultsCount,
-			&st.WaitBeforeMS, &st.TookMS, &st.StartedAt, &st.FinishedAt, &st.Stage); err != nil {
+			&st.WaitBeforeMS, &st.TookMS, &st.Cost, &st.StartedAt, &st.FinishedAt, &st.Stage); err != nil {
 			return nil, err
 		}
 		st.Permanent = bool(permanent)
@@ -1053,8 +1155,18 @@ func (s *Store) ListLogs(ctx context.Context, f store.LogFilter, p store.Page) (
 	if p.Limit <= 0 {
 		p.Limit = 100
 	}
-	rows, err := s.query(ctx, `SELECT id, ts, level, COALESCE(rid, ''), COALESCE(api, ''), message FROM logs WHERE `+clause+
-		` ORDER BY id DESC LIMIT ? OFFSET ?`, append(append([]any{}, args...), p.Limit, p.Offset)...)
+	pageClause := clause
+	pageArgs := append([]any{}, args...)
+	if f.Cursor != "" {
+		if keys, ok := store.DecodeCursor(f.Cursor); ok && len(keys) == 1 {
+			if id, err := strconv.ParseInt(keys[0], 10, 64); err == nil {
+				pageClause += ` AND id < ?`
+				pageArgs = append(pageArgs, id)
+			}
+		}
+	}
+	rows, err := s.query(ctx, `SELECT id, ts, level, COALESCE(rid, ''), COALESCE(api, ''), message FROM logs WHERE `+pageClause+
+		` ORDER BY id DESC LIMIT ? OFFSET ?`, append(pageArgs, p.Limit, p.Offset)...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1082,6 +1194,85 @@ func (s *Store) ClearLogs(ctx context.Context) (int64, error) {
 // DeleteOldLogs removes logs older than the cutoff.
 func (s *Store) DeleteOldLogs(ctx context.Context, before string) (int64, error) {
 	res, err := s.exec(ctx, `DELETE FROM logs WHERE ts < ?`, before)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// --- Audit log ---
+
+// AddAudit appends an administrative action record. Details are stored as a
+// compact JSON object.
+func (s *Store) AddAudit(ctx context.Context, e *store.AuditEntry) error {
+	_, err := s.exec(ctx,
+		`INSERT INTO audit_log (id, ts, user_id, user_name, via, ip, action, target, details)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.ID, e.TS, e.UserID, e.User, e.Via, e.IP, e.Action, e.Target, store.EncodeMap(e.Details))
+	return err
+}
+
+// ListAudit returns a filtered, paginated slice of audit records (newest first).
+func (s *Store) ListAudit(ctx context.Context, f store.AuditFilter, p store.Page) ([]*store.AuditEntry, int, error) {
+	where := []string{"1 = 1"}
+	var args []any
+	if f.Action != "" {
+		where = append(where, "action = ?")
+		args = append(args, f.Action)
+	}
+	if f.Actor != "" {
+		where = append(where, "(user_name = ? OR user_id = ?)")
+		args = append(args, f.Actor, f.Actor)
+	}
+	if f.From != "" {
+		where = append(where, "ts >= ?")
+		args = append(args, f.From)
+	}
+	if f.To != "" {
+		where = append(where, "ts <= ?")
+		args = append(args, f.To)
+	}
+	if f.Query != "" {
+		where = append(where, "(action LIKE ? OR target LIKE ? OR user_name LIKE ? OR details LIKE ?)")
+		like := "%" + f.Query + "%"
+		args = append(args, like, like, like, like)
+	}
+	clause := strings.Join(where, " AND ")
+
+	var total int
+	if err := s.queryRow(ctx, `SELECT COUNT(*) FROM audit_log WHERE `+clause, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+	if p.Limit <= 0 {
+		p.Limit = 100
+	}
+	if p.Offset < 0 {
+		p.Offset = 0
+	}
+	rows, err := s.query(ctx,
+		`SELECT id, ts, user_id, user_name, via, ip, action, target, details FROM audit_log WHERE `+clause+
+			` ORDER BY ts DESC, id DESC LIMIT ? OFFSET ?`,
+		append(append([]any{}, args...), p.Limit, p.Offset)...)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+	var out []*store.AuditEntry
+	for rows.Next() {
+		var e store.AuditEntry
+		var details string
+		if err := rows.Scan(&e.ID, &e.TS, &e.UserID, &e.User, &e.Via, &e.IP, &e.Action, &e.Target, &details); err != nil {
+			return nil, 0, err
+		}
+		e.Details = store.DecodeMap(details)
+		out = append(out, &e)
+	}
+	return out, total, rows.Err()
+}
+
+// DeleteOldAudit removes audit records older than before (RFC3339 timestamp).
+func (s *Store) DeleteOldAudit(ctx context.Context, before string) (int64, error) {
+	res, err := s.exec(ctx, `DELETE FROM audit_log WHERE ts < ?`, before)
 	if err != nil {
 		return 0, err
 	}
@@ -1250,30 +1441,25 @@ func (s *Store) Analytics(ctx context.Context, f store.AnalyticsFilter) (*store.
 
 	// Daily rollups, then fill every day in the range so the chart has a
 	// continuous x-axis even on quiet days.
-	dailyRows, err := s.query(ctx,
+	daily := map[string]store.DailyStat{}
+	if err := s.forEachRow(ctx,
 		`SELECT substr(created_at, 1, 10) AS d,
 		        COUNT(*),
 		        COALESCE(SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END), 0),
 		        COALESCE(SUM(CASE WHEN status = 'empty' THEN 1 ELSE 0 END), 0),
 		        COALESCE(SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END), 0),
 		        COALESCE(AVG(total_ms), 0)
-		 FROM requests WHERE `+clause+` GROUP BY d ORDER BY d`, args...)
-	if err != nil {
-		return nil, err
-	}
-	daily := map[string]store.DailyStat{}
-	for dailyRows.Next() {
-		var d store.DailyStat
-		var avgMS float64
-		if err := dailyRows.Scan(&d.Date, &d.Requests, &d.OK, &d.Empty, &d.Fail, &avgMS); err != nil {
-			dailyRows.Close()
-			return nil, err
-		}
-		d.AvgMS = int(avgMS)
-		daily[d.Date] = d
-	}
-	dailyRows.Close()
-	if err := dailyRows.Err(); err != nil {
+		 FROM requests WHERE `+clause+` GROUP BY d ORDER BY d`, args,
+		func(rows *sql.Rows) error {
+			var d store.DailyStat
+			var avgMS float64
+			if err := rows.Scan(&d.Date, &d.Requests, &d.OK, &d.Empty, &d.Fail, &avgMS); err != nil {
+				return err
+			}
+			d.AvgMS = int(avgMS)
+			daily[d.Date] = d
+			return nil
+		}); err != nil {
 		return nil, err
 	}
 	fromDate, _ := time.Parse("2006-01-02", from)
@@ -1296,60 +1482,50 @@ func (s *Store) Analytics(ctx context.Context, f store.AnalyticsFilter) (*store.
 	}
 
 	// Activity by hour of day (UTC).
-	hourRows, err := s.query(ctx,
+	byHour := make([]store.HourStat, 24)
+	for i := range byHour {
+		byHour[i].Hour = i
+	}
+	if err := s.forEachRow(ctx,
 		`SELECT substr(created_at, 12, 2) AS h,
 		        COUNT(*),
 		        COALESCE(SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END), 0),
 		        COALESCE(SUM(CASE WHEN status = 'empty' THEN 1 ELSE 0 END), 0),
 		        COALESCE(SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END), 0)
-		 FROM requests WHERE `+clause+` GROUP BY h`, args...)
-	if err != nil {
-		return nil, err
-	}
-	byHour := make([]store.HourStat, 24)
-	for i := range byHour {
-		byHour[i].Hour = i
-	}
-	for hourRows.Next() {
-		var h string
-		var requests, ok, empty, fail int
-		if err := hourRows.Scan(&h, &requests, &ok, &empty, &fail); err != nil {
-			hourRows.Close()
-			return nil, err
-		}
-		n, err := strconv.Atoi(strings.TrimSpace(h))
-		if err != nil || n < 0 || n > 23 {
-			continue
-		}
-		byHour[n] = store.HourStat{Hour: n, Requests: requests, OK: ok, Empty: empty, Fail: fail}
-	}
-	hourRows.Close()
-	if err := hourRows.Err(); err != nil {
+		 FROM requests WHERE `+clause+` GROUP BY h`, args,
+		func(rows *sql.Rows) error {
+			var h string
+			var requests, ok, empty, fail int
+			if err := rows.Scan(&h, &requests, &ok, &empty, &fail); err != nil {
+				return err
+			}
+			n, err := strconv.Atoi(strings.TrimSpace(h))
+			if err != nil || n < 0 || n > 23 {
+				return nil
+			}
+			byHour[n] = store.HourStat{Hour: n, Requests: requests, OK: ok, Empty: empty, Fail: fail}
+			return nil
+		}); err != nil {
 		return nil, err
 	}
 	out.Hourly = byHour
 
 	// Most frequent queries.
-	topRows, err := s.query(ctx,
+	out.TopQueries = []store.TopQuery{}
+	if err := s.forEachRow(ctx,
 		`SELECT query,
 		        COUNT(*),
 		        COALESCE(SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END), 0),
 		        COALESCE(SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END), 0)
-		 FROM requests WHERE `+clause+` GROUP BY query ORDER BY COUNT(*) DESC LIMIT 8`, args...)
-	if err != nil {
-		return nil, err
-	}
-	out.TopQueries = []store.TopQuery{}
-	for topRows.Next() {
-		var q store.TopQuery
-		if err := topRows.Scan(&q.Query, &q.Count, &q.OK, &q.Fail); err != nil {
-			topRows.Close()
-			return nil, err
-		}
-		out.TopQueries = append(out.TopQueries, q)
-	}
-	topRows.Close()
-	if err := topRows.Err(); err != nil {
+		 FROM requests WHERE `+clause+` GROUP BY query ORDER BY COUNT(*) DESC LIMIT 8`, args,
+		func(rows *sql.Rows) error {
+			var q store.TopQuery
+			if err := rows.Scan(&q.Query, &q.Count, &q.OK, &q.Fail); err != nil {
+				return err
+			}
+			out.TopQueries = append(out.TopQueries, q)
+			return nil
+		}); err != nil {
 		return nil, err
 	}
 
@@ -1363,19 +1539,20 @@ func (s *Store) Analytics(ctx context.Context, f store.AnalyticsFilter) (*store.
 		        COALESCE(SUM(CASE WHEN s.status = 'empty' THEN 1 ELSE 0 END), 0),
 		        COALESCE(SUM(CASE WHEN s.status = 'fail' THEN 1 ELSE 0 END), 0),
 		        COALESCE(SUM(CASE WHEN s.status = 'skip' THEN 1 ELSE 0 END), 0),
-		        COALESCE(AVG(CASE WHEN s.status IN ('ok', 'empty', 'fail') THEN s.took_ms ELSE NULL END), 0)
+		        COALESCE(AVG(CASE WHEN s.status IN ('ok', 'empty', 'fail') THEN s.took_ms ELSE NULL END), 0),
+		        COALESCE(SUM(s.cost), 0)
 		 FROM request_steps s JOIN requests r ON r.id = s.request_id
 		 WHERE r.created_at >= ? AND r.created_at < ?
 		 GROUP BY COALESCE(s.provider, '') ORDER BY COUNT(*) DESC`, fromTS, toTS)
 	if err != nil {
 		return nil, err
 	}
+	defer provRows.Close()
 	out.Providers = []store.ProviderStat{}
 	for provRows.Next() {
 		var p store.ProviderStat
 		var avgMS float64
-		if err := provRows.Scan(&p.Provider, &p.Total, &p.OK, &p.Empty, &p.Fail, &p.Skip, &avgMS); err != nil {
-			provRows.Close()
+		if err := provRows.Scan(&p.Provider, &p.Total, &p.OK, &p.Empty, &p.Fail, &p.Skip, &avgMS, &p.Cost); err != nil {
 			return nil, err
 		}
 		p.AvgMS = int(avgMS)
@@ -1384,11 +1561,45 @@ func (s *Store) Analytics(ctx context.Context, f store.AnalyticsFilter) (*store.
 		}
 		out.Providers = append(out.Providers, p)
 	}
-	provRows.Close()
 	if err := provRows.Err(); err != nil {
 		return nil, err
 	}
+
+	// Total estimated cost for the selected range, respecting the status and
+	// provider filters (unlike the per-provider table, which is date-only).
+	costWhere := []string{"r.created_at >= ?", "r.created_at < ?"}
+	costArgs := []any{fromTS, toTS}
+	if f.Status != "" {
+		costWhere = append(costWhere, "r.status = ?")
+		costArgs = append(costArgs, f.Status)
+	}
+	if f.Provider != "" {
+		costWhere = append(costWhere, "r.id IN (SELECT request_id FROM request_steps WHERE provider = ?)")
+		costArgs = append(costArgs, f.Provider)
+	}
+	if err := s.queryRow(ctx,
+		`SELECT COALESCE(SUM(s.cost), 0) FROM request_steps s JOIN requests r ON r.id = s.request_id WHERE `+
+			strings.Join(costWhere, " AND "), costArgs...).Scan(&out.CostTotal); err != nil {
+		return nil, err
+	}
 	return out, nil
+}
+
+// forEachRow runs a query and invokes fn for every row, closing the result set
+// with defer so it never stays open across the sequential queries below
+// (important for SQLite's single connection).
+func (s *Store) forEachRow(ctx context.Context, q string, args []any, fn func(*sql.Rows) error) error {
+	rows, err := s.query(ctx, q, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		if err := fn(rows); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
 }
 
 // percentileMS returns the total_ms value at the given percentile (0-100) for

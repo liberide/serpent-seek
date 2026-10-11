@@ -20,7 +20,8 @@
 		"active": "active",
 		"unknown": "unknown",
 		"copy": "Copy",
-		"copied": "Copied"
+		"copied": "Copied",
+		"dismiss": "Dismiss"
 	},
 	"nav": {
 		"dashboard": "Dashboard",
@@ -31,6 +32,7 @@
 		"playground": "Playground",
 		"mcp": "MCP",
 		"logs": "Logs",
+		"audit": "Audit",
 		"users": "Users",
 		"settings": "Settings"
 	},
@@ -68,7 +70,8 @@
 		"create": "Create administrator",
 		"created": "Administrator created",
 		"saveKey": "Save the key — it is shown only once:",
-		"goLogin": "Go to sign-in"
+		"goLogin": "Go to sign-in",
+		"tokenPlaceholder": "e.g. ff1089a6"
 	},
 	"dashboard": {
 		"title": "Dashboard",
@@ -116,7 +119,9 @@
 			"emptyCount": "no results: {n}",
 			"activeDays": "Active days",
 			"busiest": "peak {date}: {n}",
-			"noBusiest": "no data"
+			"noBusiest": "no data",
+			"cost": "Estimated cost",
+			"costHint": "sum of configured provider costs"
 		},
 		"chart": {
 			"volume": "Volume",
@@ -146,6 +151,7 @@
 			"skip": "Skipped",
 			"success": "Success",
 			"avg": "Avg time",
+			"cost": "Cost",
 			"legacy": "legacy",
 			"noData": "No provider data for the selected period"
 		},
@@ -199,7 +205,11 @@
 		"deleteConfirm": "Delete the selected chain?",
 		"activated": "Chain activated",
 		"copied": "Chain duplicated",
-		"deleted": "Chain deleted"
+		"deleted": "Chain deleted",
+		"boundKeys": "{count} keys",
+		"deleteBound": "This chain is used by {count} active token(s). Deleting it will move them to the default (active) chain. Delete?",
+		"defaultHint": "Default chain: used by tokens without a binding",
+		"boundHint": "Tokens bound to this chain"
 	},
 	"chain": {
 		"backChains": "← Chains",
@@ -253,7 +263,9 @@
 		"proxyBadge": "proxy",
 		"proxy": "Proxy",
 		"proxyNone": "Direct (no proxy)",
-		"proxyHint": "Route this provider’s requests through the selected proxy. Manage proxies in Settings → Proxy."
+		"proxyHint": "Route this provider’s requests through the selected proxy. Manage proxies in Settings → Proxy.",
+		"costPerRequest": "Cost per request",
+		"costPerRequestHint": "Optional cost of one call to this provider, in any unit (USD, credits…). Leave empty to not count it."
 	},
 	"deadReason": {
 		"providerDisabled": "Provider is disabled",
@@ -298,8 +310,17 @@
 			"providers": "Providers (error codes)",
 			"retention": "Storage & retention",
 			"storage": "Database",
+			"config": "Configuration",
+			"info": "About",
 			"maintenance": "Maintenance",
 			"danger": "Danger zone"
+		},
+		"config": {
+			"hint": "Export a secret-free snapshot (providers, chains, non-secret settings) or import one from another instance. Credentials are never exported and must be re-entered.",
+			"export": "Export",
+			"import": "Import",
+			"overwrite": "Overwrite existing",
+			"imported": "Imported {providers} provider(s) and {chains} chain(s); skipped {skipped}."
 		},
 		"proxy": {
 			"add": "Add proxy",
@@ -329,11 +350,43 @@
 			"missingHost": "Enter a proxy host.",
 			"usedBy": "Used by: {providers}"
 		},
+		"info": {
+			"version": "Version",
+			"commit": "Commit",
+			"buildDate": "Build date",
+			"go": "Go runtime",
+			"uptime": "Uptime",
+			"started": "Started",
+			"source": "Source code",
+			"update": "Update",
+			"updateAvailable": "Version {version} is available",
+			"upToDate": "Up to date",
+			"updateDisabled": "Update checks are disabled",
+			"updateError": "Check failed: {error}",
+			"updateNotChecked": "Not checked yet",
+			"lastChecked": "Last checked",
+			"checkNow": "Check now",
+			"releaseNotes": "Release notes",
+			"checked": "Update check complete",
+			"unofficial": "Unofficial",
+			"unofficialHint": "Updates are checked against a custom (non-official) release feed."
+		},
+		"about": {
+			"tagline": "Self-hosted search gateway for Open WebUI, MCP and 40+ search APIs",
+			"build": "Build",
+			"runtime": "System",
+			"updates": "Updates",
+			"links": "Links",
+			"docs": "Documentation",
+			"license": "License"
+		},
 		"fields": {
 			"auth_enabled": "Enable authentication",
 			"hide_auth_off_notice": "Hide “authentication disabled” notice",
 			"history_retention_days": "History retention (days)",
 			"logs_retention_days": "Log retention (days)",
+			"usage_retention_days": "Usage counter retention (days)",
+			"audit_retention_days": "Audit retention (days)",
 			"max_concurrency": "Max concurrency",
 			"max_attempts": "Max attempts",
 			"user_agent": "User agent",
@@ -347,13 +400,25 @@
 			"database_url": "Database URL",
 			"treat_empty_as_fail": "Treat empty as failure",
 			"ignore_request_count": "Ignore request count",
-			"allow_sparse_sources": "Mix sparse sources"
+			"allow_sparse_sources": "Mix sparse sources",
+			"search_rate_limit_per_minute": "Search rate limit (/min)",
+			"search_daily_quota": "Daily search quota",
+			"chain_timeout_seconds": "Chain timeout (s)",
+			"provider_failure_threshold": "Provider failure threshold",
+			"provider_cooldown_seconds": "Provider cooldown (s)",
+			"debug": "Debug endpoints",
+			"update_check_enabled": "Check for updates",
+			"update_check_url": "Release feed URL",
+			"update_check_interval_hours": "Update check interval (h)",
+			"webhook_url": "Webhook URL"
 		},
 		"fieldHints": {
 			"auth_enabled": "Require an API key or passkey to access the dashboard and API.",
 			"hide_auth_off_notice": "Hide the sidebar warning shown while authentication is disabled.",
 			"history_retention_days": "How many days request history is kept before cleanup.",
 			"logs_retention_days": "How many days logs are kept before cleanup.",
+			"usage_retention_days": "How long daily search-quota counters are kept before cleanup.",
+			"audit_retention_days": "How long administrative audit records are kept before cleanup.",
 			"max_concurrency": "Maximum number of provider requests running at the same time.",
 			"max_attempts": "Maximum attempts per provider before giving up.",
 			"user_agent": "HTTP User-Agent header sent to providers.",
@@ -367,7 +432,17 @@
 			"database_url": "Database connection string (for postgres).",
 			"treat_empty_as_fail": "Count an empty result set as a failed attempt.",
 			"ignore_request_count": "Ignore the requested result count and return everything found.",
-			"allow_sparse_sources": "Answer-node sources (link+title, often without a snippet) are added to the Row result."
+			"allow_sparse_sources": "Answer-node sources (link+title, often without a snippet) are added to the Row result.",
+			"search_rate_limit_per_minute": "Per-key search requests allowed per minute on /search and /mcp (0 = unlimited).",
+			"search_daily_quota": "Per-key search requests allowed per UTC day (0 = unlimited).",
+			"chain_timeout_seconds": "Hard wall-clock limit for one search across all providers (0 disables).",
+			"provider_failure_threshold": "Consecutive provider failures before it is skipped for a cooldown (0 disables).",
+			"provider_cooldown_seconds": "How long a failing provider is skipped by the circuit breaker.",
+			"debug": "Expose Go pprof profiling under /debug/pprof.",
+			"update_check_enabled": "Fetch the public release feed and show a notice when a newer version is available.",
+			"update_check_url": "Release API endpoint (GitHub \"latest release\" by default). Clear to disable.",
+			"update_check_interval_hours": "How many hours between automatic checks.",
+			"webhook_url": "POST a JSON payload to this URL on provider circuit-breaker trips and daily quota exhaustion. Empty disables notifications."
 		}
 	},
 	"logs": {
@@ -379,6 +454,17 @@
 		"empty": "No logs",
 		"deleted": "Deleted: {n}",
 		"clearConfirm": "Delete all log entries?"
+	},
+	"audit": {
+		"title": "Audit log",
+		"action": "Action",
+		"actor": "User",
+		"via": "Via",
+		"target": "Target",
+		"details": "Details",
+		"ip": "IP",
+		"search": "Search",
+		"empty": "No records"
 	},
 	"users": {
 		"title": "Users & keys",
@@ -409,7 +495,16 @@
 		"created": "User created",
 		"deleted": "User deleted",
 		"keyRevoked": "Key revoked",
-		"passkeyAdded": "Passkey added"
+		"passkeyAdded": "Passkey added",
+		"chain": "Chain",
+		"activeChain": "Active chain",
+		"unknownChain": "Unknown chain",
+		"chainUpdated": "Chain binding updated",
+		"bindTitle": "Chain for token",
+		"bindHint": "The token always uses the selected chain. Leave on Default to follow the active chain.",
+		"chainMissing": "The bound chain no longer exists; the token uses the default chain.",
+		"changeChain": "Change chain",
+		"usedToday": "Today"
 	},
 	"playground": {
 		"title": "Playground",
@@ -507,7 +602,6 @@
 		"selectHint": "Select a node or edge to edit.",
 		"paramKey": "Parameter (key)",
 		"keyboardHint": "Delete — remove selection · right-click a block to duplicate/delete",
-		"start": "Start",
 		"startOn": "Start block (chain entry point)",
 		"startTaken": "Start block already assigned to {name}; turn it off there first",
 		"startReassigned": "Start block reassigned to {name}",

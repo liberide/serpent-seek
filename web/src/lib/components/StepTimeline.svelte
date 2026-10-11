@@ -1,6 +1,6 @@
 <script lang="ts">
 	import StatusBadge from './StatusBadge.svelte';
-	import { dateTime, ms } from '$lib/format';
+	import { dateTime, formatCost, ms } from '$lib/format';
 	import { providerReason } from '$lib/reason';
 	import { t } from '$lib/i18n.svelte';
 
@@ -18,6 +18,7 @@
 		permanent?: boolean;
 		results_count?: number;
 		took_ms?: number;
+		cost?: number;
 		started_at?: string;
 		finished_at?: string;
 	};
@@ -64,6 +65,9 @@
 				<div class="mt-1 flex flex-wrap gap-3 text-xs text-slate-500">
 					{#if step.attempt_no}<span>{t('timeline.attempt', { n: step.attempt_no })}</span>{/if}
 					<span>{t('timeline.results', { n: step.results_count ?? 0 })}</span>
+					{#if (step.cost ?? 0) > 0}
+						<span class="text-teal-300">{t('analytics.provider.cost')}: {formatCost(step.cost)}</span>
+					{/if}
 					{#if step.permanent}<span class="text-rose-400">permanent</span>{/if}
 					{#if step.started_at}<span>{dateTime(step.started_at)}</span>{/if}
 				</div>

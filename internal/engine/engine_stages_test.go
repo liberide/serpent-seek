@@ -35,11 +35,12 @@ func TestStageStepsArePersistedAndBudgeted(t *testing.T) {
 	}
 	var aggregate, stages int
 	for _, s := range h.sink.steps {
-		if s.Stage == "" {
+		switch s.Stage {
+		case "":
 			aggregate++
-		} else if s.Stage == "esearch" || s.Stage == "esummary" {
+		case "esearch", "esummary":
 			stages++
-		} else {
+		default:
 			t.Fatalf("unexpected stage %q", s.Stage)
 		}
 	}

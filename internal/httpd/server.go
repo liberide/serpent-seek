@@ -5,12 +5,15 @@ import (
 	"errors"
 	"io/fs"
 	"net/http"
+	_ "net/http/pprof"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/liberide/serpent-seek/internal/auth"
 	"github.com/liberide/serpent-seek/internal/config"
@@ -19,24 +22,29 @@ import (
 	"github.com/liberide/serpent-seek/internal/logging"
 	"github.com/liberide/serpent-seek/internal/sse"
 	"github.com/liberide/serpent-seek/internal/store"
+	"github.com/liberide/serpent-seek/internal/updatecheck"
 	"github.com/liberide/serpent-seek/internal/version"
 )
 
 // Server holds all HTTP dependencies.
 type Server struct {
-	cfg         *config.Config
-	settings    *config.Manager
-	store       store.Storage
-	engine      *engine.Engine
-	hub         *sse.Hub
-	log         *logging.Logger
-	authn       *auth.Authenticator
-	mw          *auth.Middleware
-	clientIP    *auth.ClientIPResolver
-	passkeys    *auth.PasskeyService
-	jobs        *jobs.Manager
-	limiter     *auth.RateLimiter
-	mcpSessions *mcpSessionStore
+	cfg      *config.Config
+	settings *config.Manager
+	store    store.Storage
+	engine   *engine.Engine
+	hub      *sse.Hub
+	log      *logging.Logger
+	authn    *auth.Authenticator
+	mw       *auth.Middleware
+	clientIP *auth.ClientIPResolver
+	passkeys *auth.PasskeyService
+	jobs     *jobs.Manager
+	limiter  *auth.RateLimiter
+	// searchLimiter throttles /search, /mcp and the playground per subject; its
+	// limit is read from settings on every request (see searchGuard).
+	searchLimiter *auth.RateLimiter
+	mcpSessions   *mcpSessionStore
+	updater       *updatecheck.Checker
 
 	setupMu    sync.Mutex
 	setupRun   sync.Mutex
@@ -79,21 +87,23 @@ func New(
 		})
 	}
 	return &Server{
-		cfg:         cfg,
-		settings:    settings,
-		store:       st,
-		engine:      eng,
-		hub:         hub,
-		log:         log,
-		authn:       authn,
-		mw:          &auth.Middleware{Auth: authn},
-		clientIP:    auth.NewClientIPResolver(cfg.TrustedProxies),
-		passkeys:    passkeys,
-		jobs:        jobManager,
-		limiter:     auth.NewRateLimiter(10, time.Minute),
-		mcpSessions: newMCPSessionStore(),
-		setupToken:  setupToken,
-		startedAt:   time.Now(),
+		cfg:           cfg,
+		settings:      settings,
+		store:         st,
+		engine:        eng,
+		hub:           hub,
+		log:           log,
+		authn:         authn,
+		mw:            &auth.Middleware{Auth: authn},
+		clientIP:      auth.NewClientIPResolver(cfg.TrustedProxies),
+		passkeys:      passkeys,
+		jobs:          jobManager,
+		limiter:       auth.NewRateLimiter(10, time.Minute),
+		searchLimiter: auth.NewRateLimiter(0, time.Minute),
+		mcpSessions:   newMCPSessionStore(),
+		updater:       updatecheck.New(&http.Client{Timeout: updateCheckTimeout}, cfg.UserAgent),
+		setupToken:    setupToken,
+		startedAt:     time.Now(),
 	}
 }
 
@@ -106,10 +116,15 @@ func (s *Server) Routes() http.Handler {
 
 	// Machine endpoints.
 	r.Get("/healthz", s.handleHealthz)
+	r.Get("/livez", s.handleLivez)
+	r.Get("/readyz", s.handleReadyz)
 	r.Get("/version", s.handleVersion)
-	r.With(s.mw.Authenticate, s.mw.RequireScope("search")).Post("/search", s.handleSearch)
+	r.Get("/metrics", s.handleMetrics)
+	// pprof is mounted but gated by the DEBUG setting (see debugGuard).
+	r.Mount("/debug/pprof", s.debugGuard(http.DefaultServeMux))
+	r.With(s.mw.Authenticate, s.mw.RequireScope("search"), s.searchGuard).Post("/search", s.handleSearch)
 	// MCP (Model Context Protocol) HTTP JSON-RPC 2.0 endpoint exposing the search tool.
-	r.With(s.mw.Authenticate, s.mw.RequireScope("search")).Handle("/mcp", http.HandlerFunc(s.handleMCP))
+	r.With(s.mw.Authenticate, s.mw.RequireScope("search"), s.searchGuard).Handle("/mcp", http.HandlerFunc(s.handleMCP))
 
 	// API.
 	r.Route("/api", func(r chi.Router) {
@@ -125,7 +140,7 @@ func (s *Server) Routes() http.Handler {
 			r.Post("/auth/logout", s.handleLogout)
 			r.With(s.mw.RequireScope("read")).Post("/auth/passkey/register/begin", s.handlePasskeyRegisterBegin)
 			r.With(s.mw.RequireScope("read")).Post("/auth/passkey/register/finish", s.handlePasskeyRegisterFinish)
-			r.With(s.mw.RequireScope("search")).Post("/search/ui", s.handleSearchUI)
+			r.With(s.mw.RequireScope("search"), s.searchGuard).Post("/search/ui", s.handleSearchUI)
 
 			// Read-only endpoints require the read scope.
 			r.Group(func(r chi.Router) {
@@ -137,6 +152,8 @@ func (s *Server) Routes() http.Handler {
 				r.Get("/stats/analytics", s.handleStatsAnalytics)
 				r.Get("/logs", s.handleListLogs)
 				r.Get("/settings", s.handleGetSettings)
+				r.Get("/info", s.handleInfo)
+				r.Get("/update", s.handleUpdate)
 			})
 
 			// Global feed (administrators only).
@@ -147,6 +164,10 @@ func (s *Server) Routes() http.Handler {
 				r.Put("/settings", s.handlePutSettings)
 				r.Post("/settings/storage/test", s.handleStorageTest)
 				r.Get("/maintenance/status", s.handleMaintenanceStatus)
+				r.Get("/audit", s.handleListAudit)
+				r.Post("/update/check", s.handleUpdateCheck)
+				r.Get("/config/export", s.handleExportConfig)
+				r.Post("/config/import", s.handleImportConfig)
 				r.Post("/maintenance/clear-logs", s.handleClearLogs)
 				r.Post("/maintenance/clear-history", s.handleClearHistory)
 				r.Post("/maintenance/vacuum-now", s.handleVacuumNow)
@@ -166,6 +187,7 @@ func (s *Server) Routes() http.Handler {
 					r.Get("/", s.handleListProviders)
 					r.Get("/drivers", s.handleListDrivers)
 					r.Post("/", s.handleCreateProvider)
+					r.Post("/bulk", s.handleBulkProviders)
 					r.Get("/{id}", s.handleGetProvider)
 					r.Put("/{id}", s.handleUpdateProvider)
 					r.Patch("/{id}", s.handlePatchProvider)
@@ -190,6 +212,8 @@ func (s *Server) Routes() http.Handler {
 				r.Route("/keys", func(r chi.Router) {
 					r.Get("/", s.handleListKeys)
 					r.Post("/", s.handleCreateKey)
+					r.Post("/bulk", s.handleBulkKeys)
+					r.Patch("/{id}", s.handleUpdateKey)
 					r.Delete("/{id}", s.handleRevokeKey)
 				})
 				r.Delete("/passkeys/{id}", s.handleDeletePasskey)
@@ -207,10 +231,13 @@ func (s *Server) Routes() http.Handler {
 // plain HTTP access logs carry no rid.
 func (s *Server) requestContext(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := otel.Tracer("serpentseek/httpd").Start(r.Context(), r.Method+" "+shortPath(r.URL.Path))
+		defer span.End()
 		w.Header().Set("X-Serpent-Api", "-")
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 		start := time.Now()
-		next.ServeHTTP(ww, r)
+		next.ServeHTTP(ww, r.WithContext(ctx))
+		span.SetAttributes(attribute.Int("http.status_code", ww.Status()))
 		if !strings.HasPrefix(r.URL.Path, "/api/events") && !strings.HasSuffix(r.URL.Path, "/events") {
 			s.log.Info("", "", r.Method+" "+shortPath(r.URL.Path)+" "+itoa(ww.Status())+" "+time.Since(start).Round(time.Millisecond).String())
 		}
@@ -258,9 +285,56 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// handleLivez is a pure liveness probe: the process is answering, storage is
+// not consulted.
+func (s *Server) handleLivez(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// handleReadyz is a readiness probe: the storage layer must be reachable.
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+	if err := s.store.Ping(ctx); err != nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"ok": false, "error": "database unavailable"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// debugGuard gates the pprof endpoints behind the DEBUG setting.
+func (s *Server) debugGuard(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.settings.GetBool(r.Context(), config.KeyDebug) {
+			writeError(w, r, http.StatusNotFound, "not_found", "debug endpoints are disabled")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	// The footer only needs the version; commit/build metadata is served by
+	// /api/info and rendered on the Settings → Info page.
 	_, _ = w.Write([]byte(version.Version + "\n"))
+}
+
+// handleMetrics serves Prometheus text-format metrics. It is intentionally
+// public (like /healthz) and exposes only aggregate counters, never query text.
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	if s.engine == nil || s.engine.Metrics() == nil {
+		_, _ = w.Write([]byte("# serpentseek metrics unavailable\n"))
+		return
+	}
+	clients := 0
+	if s.hub != nil {
+		clients = s.hub.Clients()
+	}
+	if err := s.engine.Metrics().Render(w, clients); err != nil {
+		s.log.Warn("", "", "metrics render failed: "+err.Error())
+	}
 }
 
 // handleSPA serves the embedded SvelteKit bundle with an index.html fallback.
@@ -283,6 +357,15 @@ func (s *Server) handleSPA(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// A missing asset (path with an extension) must NOT fall back to the SPA
+	// shell: the browser would receive HTML where it expects a JavaScript
+	// module ("Importing a module script failed"). A 404 lets the client detect
+	// a stale chunk and reload.
+	if hasFileExtension(r.URL.Path) {
+		w.Header().Set("Cache-Control", "no-store")
+		http.NotFound(w, r)
+		return
+	}
 	index, err := fs.ReadFile(fsys, "index.html")
 	if err != nil {
 		http.NotFound(w, r)
@@ -299,6 +382,7 @@ func (s *Server) handleMaintenanceStatus(w http.ResponseWriter, r *http.Request)
 
 // Run starts the HTTP server and shuts it down gracefully when ctx is done.
 func (s *Server) Run(ctx context.Context) error {
+	go s.updateLoop(ctx)
 	addr := ":" + itoa(s.cfg.Port)
 	srv := &http.Server{
 		Addr:              addr,
@@ -334,6 +418,16 @@ func shortPath(p string) string {
 		return p[:120]
 	}
 	return p
+}
+
+// hasFileExtension reports whether the last path segment looks like a file
+// (contains a dot), used to distinguish a missing asset from an SPA route.
+func hasFileExtension(p string) bool {
+	base := p
+	if i := strings.LastIndexByte(p, '/'); i >= 0 {
+		base = p[i+1:]
+	}
+	return strings.Contains(base, ".")
 }
 
 func itoa(n int) string {

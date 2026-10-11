@@ -12,6 +12,7 @@ func (s *Server) handleClearLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("", "", "logs cleared deleted="+itoa(int(n)))
+	s.audit(r.Context(), r, "maintenance.clear-logs", "", map[string]string{"deleted": itoa(int(n))})
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": n})
 }
 
@@ -23,6 +24,7 @@ func (s *Server) handleClearHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("", "", "history cleared deleted="+itoa(int(n)))
+	s.audit(r.Context(), r, "maintenance.clear-history", "", map[string]string{"deleted": itoa(int(n))})
 	writeJSON(w, http.StatusOK, map[string]any{"deleted": n})
 }
 
@@ -32,6 +34,7 @@ func (s *Server) handleVacuumNow(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusInternalServerError, "vacuum_failed", err.Error())
 		return
 	}
+	s.audit(r.Context(), r, "maintenance.vacuum", "", nil)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "driver": s.store.Driver()})
 }
 
@@ -42,5 +45,6 @@ func (s *Server) handleRunCleanup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusInternalServerError, "cleanup_failed", err.Error())
 		return
 	}
+	s.audit(r.Context(), r, "maintenance.run-cleanup", "", nil)
 	writeJSON(w, http.StatusOK, report)
 }

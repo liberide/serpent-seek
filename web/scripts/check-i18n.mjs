@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'lib', 'i18n');
-const locales = ['ru', 'pl', 'de', 'fr', 'zh'];
+const locales = ['ru', 'pl', 'de', 'fr', 'ja', 'zh'];
 const base = 'en';
 
 function flatten(obj, prefix = '', out = new Set()) {
@@ -24,8 +24,38 @@ function loadKeys(code) {
 	return flatten(JSON.parse(fs.readFileSync(path.join(dir, `${code}.json`), 'utf8')));
 }
 
+// JSON.parse silently keeps the last duplicate key, which would mask a missing
+// translation. The dictionaries are pretty-printed and contain no arrays, so a
+// simple indentation-based scan can catch sibling keys with the same name.
+function duplicateKeys(text) {
+	const dups = [];
+	const stack = [];
+	for (const raw of text.split('\n')) {
+		const m = raw.match(/^(\t*)"((?:[^"\\]|\\.)*)":/);
+		if (!m) continue;
+		const indent = m[1].length;
+		while (stack.length && stack[stack.length - 1].indent > indent) stack.pop();
+		if (!stack.length || stack[stack.length - 1].indent !== indent) {
+			stack.push({ indent, keys: new Set() });
+		}
+		const frame = stack[stack.length - 1];
+		if (frame.keys.has(m[2])) dups.push(m[2]);
+		frame.keys.add(m[2]);
+	}
+	return dups;
+}
+
 const expected = loadKeys(base);
 let failed = false;
+
+// Duplicate sibling keys in any dictionary (masked by JSON.parse).
+for (const code of [base, ...locales]) {
+	const dups = [...new Set(duplicateKeys(fs.readFileSync(path.join(dir, `${code}.json`), 'utf8')))];
+	if (dups.length) {
+		failed = true;
+		console.error(`i18n ${code}.json has duplicate keys: ${dups.join(', ')}`);
+	}
+}
 
 for (const code of locales) {
 	const actual = loadKeys(code);

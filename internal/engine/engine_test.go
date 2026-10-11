@@ -151,6 +151,8 @@ type scriptedProvider struct {
 	mu      sync.Mutex
 	results []providers.Result
 	idx     int
+	// calls counts how many times Search was invoked (for cache/breaker tests).
+	calls int
 	// gate, when non-nil, blocks Search until it is closed or ctx is done.
 	// Tests use it to hold an async run in the "running" state deterministically.
 	gate chan struct{}
@@ -172,6 +174,7 @@ func (p *scriptedProvider) Search(ctx context.Context, _ providers.Query, _ prov
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
+	p.calls++
 	if len(p.results) == 0 {
 		return providers.Result{Kind: providers.KindNet, Error: "no script"}
 	}

@@ -1,6 +1,11 @@
 // Package store defines the persistence interface and domain models.
 package store
 
+import (
+	"strconv"
+	"strings"
+)
+
 // Timestamps are stored as RFC3339 strings in UTC to keep SQLite and
 // PostgreSQL behaviour identical without driver-specific time handling.
 
@@ -15,17 +20,24 @@ type User struct {
 
 // APIKey is a hashed access token. The plaintext is never stored.
 type APIKey struct {
-	ID         string `json:"id"`
-	UserID     string `json:"user_id"`
-	UserName   string `json:"user_name,omitempty"`
-	Name       string `json:"name"`
-	Prefix     string `json:"prefix"`
-	Hash       string `json:"-"`
-	Scopes     string `json:"scopes"`
+	ID       string `json:"id"`
+	UserID   string `json:"user_id"`
+	UserName string `json:"user_name,omitempty"`
+	Name     string `json:"name"`
+	Prefix   string `json:"prefix"`
+	Hash     string `json:"-"`
+	Scopes   string `json:"scopes"`
+	// ChainID optionally binds this token to a chain. Empty means the token
+	// uses the globally active chain. The reference is cleared (set to NULL)
+	// when the chain is deleted, so the token never breaks.
+	ChainID    string `json:"chain_id"`
 	LastUsedAt string `json:"last_used_at"`
 	ExpiresAt  string `json:"expires_at"`
 	RevokedAt  string `json:"revoked_at"`
 	CreatedAt  string `json:"created_at"`
+	// UsedToday is the number of search requests made with this key today
+	// (UTC). It is computed by the HTTP layer and never persisted with the key.
+	UsedToday int `json:"used_today"`
 }
 
 // Passkey is a WebAuthn credential.
@@ -70,6 +82,24 @@ type Provider struct {
 	UpdatedAt   string            `json:"updated_at"`
 }
 
+// CostPerRequest returns the operator-declared cost of one call to this provider
+// instance, read from the `cost_per_request` param. It returns 0 when the value
+// is absent, empty, non-numeric or not positive — 0 means "do not count cost".
+func (p *Provider) CostPerRequest() float64 {
+	if p == nil || p.Params == nil {
+		return 0
+	}
+	raw := strings.TrimSpace(p.Params["cost_per_request"])
+	if raw == "" {
+		return 0
+	}
+	v, err := strconv.ParseFloat(raw, 64)
+	if err != nil || v <= 0 {
+		return 0
+	}
+	return v
+}
+
 // Proxy is a named outbound proxy that provider instances may route through.
 // Password is write-only: the API never returns it.
 type Proxy struct {
@@ -104,6 +134,13 @@ type Chain struct {
 	Edges     []ChainEdge `json:"edges"`
 	CreatedAt string      `json:"created_at"`
 	UpdatedAt string      `json:"updated_at"`
+	// BoundKeys is the number of API tokens bound to this chain. It is
+	// computed by the HTTP layer and not persisted with the chain row.
+	BoundKeys int `json:"bound_keys"`
+	// ActiveBoundKeys is the subset of BoundKeys that is still usable (not
+	// revoked). Only these tokens must be confirmed and fall back to the
+	// default (active) chain when the bound chain is deleted.
+	ActiveBoundKeys int `json:"active_bound_keys"`
 }
 
 // Chain node modes. A search node is a Row source; an answer node produces a
@@ -223,8 +260,11 @@ type RequestStep struct {
 	ResultsCount int    `json:"results_count"`
 	WaitBeforeMS int    `json:"wait_before_ms"`
 	TookMS       int    `json:"took_ms"`
-	StartedAt    string `json:"started_at"`
-	FinishedAt   string `json:"finished_at"`
+	// Cost is the snapshot of the provider instance's configured per-request
+	// cost at execution time (0 = not counted).
+	Cost       float64 `json:"cost,omitempty"`
+	StartedAt  string  `json:"started_at"`
+	FinishedAt string  `json:"finished_at"`
 }
 
 // LogEntry is an in-DB log line surfaced in the UI.
@@ -235,6 +275,30 @@ type LogEntry struct {
 	RID     string `json:"rid"`
 	API     string `json:"api"`
 	Message string `json:"message"`
+}
+
+// AuditEntry is one recorded administrative mutation (settings, providers,
+// chains, keys, users, proxies, maintenance). Secrets are never stored in
+// Details.
+type AuditEntry struct {
+	ID      string            `json:"id"`
+	TS      string            `json:"ts"`
+	UserID  string            `json:"user_id,omitempty"`
+	User    string            `json:"user,omitempty"`
+	Via     string            `json:"via,omitempty"` // key|session|disabled
+	IP      string            `json:"ip,omitempty"`
+	Action  string            `json:"action"`
+	Target  string            `json:"target,omitempty"`
+	Details map[string]string `json:"details,omitempty"`
+}
+
+// AuditFilter narrows an audit listing.
+type AuditFilter struct {
+	Action string
+	Actor  string
+	From   string
+	To     string
+	Query  string
 }
 
 // DailyStat is a per-day rollup for the dashboard.
@@ -280,6 +344,9 @@ type ProviderStat struct {
 	Skip        int     `json:"skip"`
 	AvgMS       int     `json:"avg_ms"`
 	SuccessRate float64 `json:"success_rate"`
+	// Cost is the summed per-request cost of executed attempts (0 when no
+	// provider in the group had a cost configured).
+	Cost float64 `json:"cost,omitempty"`
 }
 
 // HourStat holds request counts for one hour of the day (0-23, UTC).
@@ -314,6 +381,11 @@ type AnalyticsReport struct {
 	Daily         []DailyStat `json:"daily"`
 	Hourly        []HourStat  `json:"hourly"`
 	TopQueries    []TopQuery  `json:"top_queries"`
+	// CostTotal is the summed per-request cost of every executed attempt in the
+	// selected range; CostConfigured is set by the HTTP layer and reports whether
+	// any provider has a cost configured (so the UI can hide cost when unused).
+	CostTotal      float64 `json:"cost_total,omitempty"`
+	CostConfigured bool    `json:"cost_configured"`
 	// Providers is consumed by the HTTP layer to build the enriched provider
 	// table; it is not serialised inside the report to avoid duplication.
 	Providers []ProviderStat `json:"-"`
@@ -333,4 +405,8 @@ type AnalyticsProvider struct {
 	Skip        int     `json:"skip"`
 	AvgMS       int     `json:"avg_ms"`
 	SuccessRate float64 `json:"success_rate"`
+	Cost        float64 `json:"cost,omitempty"`
+	// CostConfigured reports whether this provider has a cost configured (or
+	// recorded), so the UI can show "—" instead of a misleading 0.
+	CostConfigured bool `json:"cost_configured"`
 }

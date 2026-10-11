@@ -2,6 +2,8 @@ package httpd
 
 import (
 	"net/http"
+	"sort"
+	"strings"
 
 	"github.com/liberide/serpent-seek/internal/config"
 )
@@ -48,10 +50,16 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	for _, d := range s.cfg.Descriptors() {
 		descriptors[d.Key] = d
 	}
-	var rejected []string
+	var rejected, applied []string
 	for key, value := range body {
 		d, ok := descriptors[key]
 		if !ok {
+			continue
+		}
+		if d.EnvOnly {
+			// Environment-managed settings (e.g. the update feed URL) are never
+			// editable through the API.
+			rejected = append(rejected, key)
 			continue
 		}
 		if d.Secret && value == "" {
@@ -59,15 +67,22 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 		}
 		if err := s.settings.Set(ctx, key, value); err != nil {
 			rejected = append(rejected, key)
+		} else {
+			applied = append(applied, key)
 		}
 	}
 	if len(rejected) > 0 {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": map[string]any{
 			"code":    "readonly_setting",
-			"message": "some settings are pinned by environment variables",
+			"message": "some settings are read-only (pinned by an environment variable or locked)",
 			"details": rejected,
 		}})
 		return
+	}
+	if len(applied) > 0 {
+		sort.Strings(applied)
+		// Only key names are recorded; secret values are never logged.
+		s.audit(ctx, r, "settings.update", "", map[string]string{"keys": strings.Join(applied, ",")})
 	}
 	values, env := s.settings.Snapshot(ctx)
 	writeJSON(w, http.StatusOK, map[string]any{"values": values, "env": env})

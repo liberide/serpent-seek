@@ -3,6 +3,7 @@ package httpd
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -125,6 +126,7 @@ func (s *Server) handleCreateProxy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
 		return
 	}
+	s.audit(ctx, r, "proxy.create", p.ID, map[string]string{"name": p.Name})
 	writeJSON(w, http.StatusCreated, toProxyView(p))
 }
 
@@ -174,6 +176,7 @@ func (s *Server) handleUpdateProxy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
 		return
 	}
+	s.audit(ctx, r, "proxy.update", existing.ID, map[string]string{"name": existing.Name})
 	writeJSON(w, http.StatusOK, toProxyView(existing))
 }
 
@@ -200,6 +203,7 @@ func (s *Server) handlePatchProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p, _ := s.store.GetProxy(ctx, id)
+	s.audit(ctx, r, "proxy.patch", id, nil)
 	writeJSON(w, http.StatusOK, toProxyView(p))
 }
 
@@ -222,6 +226,7 @@ func (s *Server) handleDeleteProxy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
 		return
 	}
+	s.audit(ctx, r, "proxy.delete", id, map[string]string{"cleared": strconv.FormatInt(affected, 10)})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "cleared": affected, "providers": names})
 }
 
