@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -15,12 +16,24 @@ type contextKey int
 
 const identityKey contextKey = iota
 
+// PermissionAll is the wildcard endpoint permission granted to full-access
+// developer tokens.
+const PermissionAll = "*"
+
 // Identity is the authenticated principal for a request.
 type Identity struct {
 	User   *store.User
 	Scopes map[string]bool
 	Via    string // session|key|disabled
 	KeyID  string
+	// Developer is true when the request authenticated with a developer token
+	// (seek_dev_…). Developer tokens are only accepted while DEVELOPER_MODE is
+	// enabled and carry full administrative scope.
+	Developer bool
+	// Permissions lists the endpoint ids ("METHOD /path") a developer token may
+	// call. Empty, or containing PermissionAll, means full access. It is ignored
+	// for sessions and non-developer keys.
+	Permissions []string
 	// ChainID is the chain bound to the API key this request was authenticated
 	// with (empty for sessions or unbound keys, meaning "use the active chain").
 	ChainID string
@@ -39,6 +52,30 @@ func (i *Identity) HasScope(scope string) bool {
 
 // IsAdmin reports admin capability.
 func (i *Identity) IsAdmin() bool { return i.HasScope("admin") }
+
+// IsDeveloper reports whether the identity authenticated with a developer token.
+func (i *Identity) IsDeveloper() bool { return i != nil && i.Developer }
+
+// AllowsAll reports whether the identity may call any endpoint. Sessions,
+// regular keys and full-access developer tokens (empty permissions or "*")
+// may; a restricted developer token may not.
+func (i *Identity) AllowsAll() bool {
+	return i == nil || !i.Developer || IsFullAccess(i.Permissions)
+}
+
+// AllowsEndpoint reports whether the identity may call the given endpoint id
+// ("METHOD /path").
+func (i *Identity) AllowsEndpoint(endpoint string) bool {
+	if i.AllowsAll() {
+		return true
+	}
+	for _, p := range i.Permissions {
+		if p == endpoint {
+			return true
+		}
+	}
+	return false
+}
 
 // WithIdentity stores an identity in the context.
 func WithIdentity(ctx context.Context, id *Identity) context.Context {
@@ -108,6 +145,11 @@ func (a *Authenticator) resolveKey(ctx context.Context, token string) (*Identity
 	if !ok {
 		return nil, ErrInvalidKey
 	}
+	// Developer tokens are only valid while developer mode is enabled. Turning
+	// the setting off disables every developer token without revoking them.
+	if kind == KindDeveloper && !a.Settings.GetBool(ctx, config.KeyDeveloperMode) {
+		return nil, ErrInvalidKey
+	}
 	key, err := a.Store.GetAPIKeyByPrefix(ctx, prefix)
 	if err != nil {
 		return nil, ErrInvalidKey
@@ -134,13 +176,49 @@ func (a *Authenticator) resolveKey(ctx context.Context, token string) (*Identity
 			scopes[s] = true
 		}
 	}
-	if kind == "admin" {
+	developer := kind == KindDeveloper
+	if kind == KindAdmin || developer {
 		scopes["admin"] = true
+	}
+	var permissions []string
+	if developer {
+		scopes["developer"] = true
+		scopes["read"] = true
+		permissions = ParsePermissions(key.Permissions)
 	}
 	scopes["search"] = true
 	key.LastUsedAt = store.Now()
 	_ = a.Store.UpdateAPIKey(ctx, key)
-	return &Identity{User: user, Scopes: scopes, Via: "key", KeyID: key.ID, ChainID: key.ChainID}, nil
+	return &Identity{User: user, Scopes: scopes, Via: "key", KeyID: key.ID, Developer: developer, Permissions: permissions, ChainID: key.ChainID}, nil
+}
+
+// IsFullAccess reports whether a permission list grants every endpoint: it is
+// empty (no explicit restriction) or contains the PermissionAll wildcard.
+func IsFullAccess(permissions []string) bool {
+	if len(permissions) == 0 {
+		return true
+	}
+	for _, p := range permissions {
+		if p == PermissionAll {
+			return true
+		}
+	}
+	return false
+}
+
+// ParsePermissions decodes the stored JSON permission array. A malformed or
+// empty value is treated as "no explicit permissions" (nil), which for a
+// developer token means full access (all endpoints).
+func ParsePermissions(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil
+	}
+	return out
 }
 
 // LoginWithKey validates an API key for the login endpoint, regardless of the

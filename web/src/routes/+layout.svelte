@@ -36,6 +36,10 @@
 		href: string;
 		labelKey: string;
 		icon: string;
+		// When set, the item is only rendered for administrators.
+		adminOnly?: boolean;
+		// When set, the item is only rendered while developer mode is enabled.
+		developerOnly?: boolean;
 		// Optional expandable sub-sections rendered under the item (selected
 		// from the sidebar instead of in-page tabs).
 		children?: NavChild[];
@@ -60,8 +64,19 @@
 		{ href: '/logs', labelKey: 'nav.logs', icon: '📝' },
 		{ href: '/audit', labelKey: 'nav.audit', icon: '📋' },
 		{ href: '/users', labelKey: 'nav.users', icon: '👤' },
+		{ href: '/developer', labelKey: 'nav.developer', icon: '🛠️', adminOnly: true, developerOnly: true },
 		{ href: '/settings', labelKey: 'nav.settings', icon: '⚙️' }
 	];
+
+	// Top-level items hidden from non-admins (e.g. Developer mode) or while
+	// developer mode is disabled.
+	const visibleNav = $derived(
+		nav.filter(
+			(item) =>
+				(!item.adminOnly || $session?.admin) &&
+				(!item.developerOnly || $session?.developer_mode)
+		)
+	);
 
 	// Which sidebar groups are expanded, keyed by the parent href. A group
 	// auto-opens whenever the current route is inside it, so the active
@@ -162,7 +177,7 @@
 				</div>
 			</div>
 			<nav class="space-y-1">
-				{#each nav as item (item.href)}
+				{#each visibleNav as item (item.href)}
 					{#if item.children}
 						{@const active = inGroup(item)}
 						<div>

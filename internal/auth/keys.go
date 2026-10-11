@@ -13,10 +13,18 @@ import (
 	"golang.org/x/crypto/argon2"
 )
 
-// Key prefixes distinguish search and admin keys.
+// Key prefixes distinguish search, admin and developer keys.
 const (
-	SearchKeyPrefix = "seek_ak_"
-	AdminKeyPrefix  = "seek_admin_"
+	SearchKeyPrefix    = "seek_ak_"
+	AdminKeyPrefix     = "seek_admin_"
+	DeveloperKeyPrefix = "seek_dev_"
+)
+
+// Key kinds returned by ParseKey.
+const (
+	KindSearch    = "search"
+	KindAdmin     = "admin"
+	KindDeveloper = "developer"
 )
 
 // argon2id parameters: 16 MiB, 3 iterations, 2 lanes, 32-byte tag.
@@ -34,6 +42,20 @@ var ErrInvalidKey = errors.New("auth: invalid api key")
 // GenerateKey creates a new plaintext API key with its stored prefix and hash.
 // The plaintext is returned exactly once and never persisted.
 func GenerateKey(admin bool) (plaintext, prefix, hash string, err error) {
+	if admin {
+		return generate(AdminKeyPrefix)
+	}
+	return generate(SearchKeyPrefix)
+}
+
+// GenerateDeveloperKey creates a new plaintext developer token. Developer
+// tokens carry full administrative scope and are only accepted while the
+// DEVELOPER_MODE setting is enabled (see Authenticator.resolveKey).
+func GenerateDeveloperKey() (plaintext, prefix, hash string, err error) {
+	return generate(DeveloperKeyPrefix)
+}
+
+func generate(keyPrefix string) (plaintext, prefix, hash string, err error) {
 	prefix, err = randomHex(3) // 6 hex chars
 	if err != nil {
 		return "", "", "", err
@@ -46,10 +68,7 @@ func GenerateKey(admin bool) (plaintext, prefix, hash string, err error) {
 	if err != nil {
 		return "", "", "", err
 	}
-	if admin {
-		return AdminKeyPrefix + prefix + "_" + secret, prefix, hash, nil
-	}
-	return SearchKeyPrefix + prefix + "_" + secret, prefix, hash, nil
+	return keyPrefix + prefix + "_" + secret, prefix, hash, nil
 }
 
 // ParseKey splits a key into its kind, prefix and secret.
@@ -57,10 +76,13 @@ func ParseKey(token string) (kind, prefix, secret string, ok bool) {
 	token = strings.TrimSpace(token)
 	switch {
 	case strings.HasPrefix(token, AdminKeyPrefix):
-		kind = "admin"
+		kind = KindAdmin
 		token = strings.TrimPrefix(token, AdminKeyPrefix)
+	case strings.HasPrefix(token, DeveloperKeyPrefix):
+		kind = KindDeveloper
+		token = strings.TrimPrefix(token, DeveloperKeyPrefix)
 	case strings.HasPrefix(token, SearchKeyPrefix):
-		kind = "search"
+		kind = KindSearch
 		token = strings.TrimPrefix(token, SearchKeyPrefix)
 	default:
 		return "", "", "", false

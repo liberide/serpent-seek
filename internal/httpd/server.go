@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
+	"github.com/liberide/serpent-seek/api"
 	"github.com/liberide/serpent-seek/internal/auth"
 	"github.com/liberide/serpent-seek/internal/config"
 	"github.com/liberide/serpent-seek/internal/engine"
@@ -122,12 +123,13 @@ func (s *Server) Routes() http.Handler {
 	r.Get("/livez", s.handleLivez)
 	r.Get("/readyz", s.handleReadyz)
 	r.Get("/version", s.handleVersion)
+	r.Get("/openapi.yaml", s.handleOpenAPI)
 	r.Get("/metrics", s.handleMetrics)
 	// pprof is mounted but gated by the DEBUG setting (see debugGuard).
 	r.Mount("/debug/pprof", s.debugGuard(http.DefaultServeMux))
-	r.With(s.mw.Authenticate, s.mw.RequireScope("search"), s.searchGuard).Post("/search", s.handleSearch)
+	r.With(s.authenticate, s.mw.RequireScope("search"), s.searchGuard).Post("/search", s.handleSearch)
 	// MCP (Model Context Protocol) HTTP JSON-RPC 2.0 endpoint exposing the search tool.
-	r.With(s.mw.Authenticate, s.mw.RequireScope("search"), s.searchGuard).Handle("/mcp", http.HandlerFunc(s.handleMCP))
+	r.With(s.authenticate, s.mw.RequireScope("search"), s.searchGuard).Handle("/mcp", http.HandlerFunc(s.handleMCP))
 
 	// API.
 	r.Route("/api", func(r chi.Router) {
@@ -138,7 +140,7 @@ func (s *Server) Routes() http.Handler {
 		r.With(s.rateLimit).Post("/auth/passkey/assert/finish", s.handlePasskeyAssertFinish)
 
 		r.Group(func(r chi.Router) {
-			r.Use(s.mw.Authenticate)
+			r.Use(s.authenticate)
 			r.Get("/me", s.handleMe)
 			r.Post("/auth/logout", s.handleLogout)
 			r.With(s.mw.RequireScope("read")).Post("/auth/passkey/register/begin", s.handlePasskeyRegisterBegin)
@@ -222,6 +224,15 @@ func (s *Server) Routes() http.Handler {
 					r.Post("/bulk", s.handleBulkKeys)
 					r.Patch("/{id}", s.handleUpdateKey)
 					r.Delete("/{id}", s.handleRevokeKey)
+				})
+				// Developer mode: dedicated integration tokens with full admin scope.
+				r.Route("/developer", func(r chi.Router) {
+					r.Get("/", s.handleDeveloperStatus)
+					r.Put("/mode", s.handleDeveloperMode)
+					r.Get("/endpoints", s.handleDeveloperEndpoints)
+					r.Post("/tokens", s.handleCreateDeveloperToken)
+					r.Patch("/tokens/{id}", s.handleUpdateDeveloperToken)
+					r.Delete("/tokens/{id}", s.handleDeleteDeveloperToken)
 				})
 				r.Delete("/passkeys/{id}", s.handleDeletePasskey)
 			})
@@ -325,6 +336,19 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 	// The footer only needs the version; commit/build metadata is served by
 	// /api/info and rendered on the Settings → Info page.
 	_, _ = w.Write([]byte(version.Version + "\n"))
+}
+
+// handleOpenAPI serves the embedded OpenAPI 3.1 specification. It is public
+// (documentation only) and CORS-enabled so external tools such as the Swagger
+// Editor can import it by URL. The Developer section links to it.
+//
+// It is never cached: the spec is embedded at build time, so a browser cache
+// must not outlive a binary upgrade.
+func (s *Server) handleOpenAPI(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/yaml; charset=utf-8")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(api.OpenAPISpec)
 }
 
 // handleMetrics serves Prometheus text-format metrics. It is intentionally

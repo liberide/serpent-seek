@@ -83,11 +83,14 @@ type APIKey struct {
 	// ChainID optionally binds this token to a chain. Empty means the token
 	// uses the globally active chain. The reference is cleared (set to NULL)
 	// when the chain is deleted, so the token never breaks.
-	ChainID    string `json:"chain_id"`
-	LastUsedAt string `json:"last_used_at"`
-	ExpiresAt  string `json:"expires_at"`
-	RevokedAt  string `json:"revoked_at"`
-	CreatedAt  string `json:"created_at"`
+	ChainID string `json:"chain_id"`
+	// Permissions is a JSON array of endpoint ids ("METHOD /path") a developer
+	// token may call. Empty means "all endpoints"; non-developer keys ignore it.
+	Permissions string `json:"-"`
+	LastUsedAt  string `json:"last_used_at"`
+	ExpiresAt   string `json:"expires_at"`
+	RevokedAt   string `json:"revoked_at"`
+	CreatedAt   string `json:"created_at"`
 	// UsedToday is the number of search requests made with this key today
 	// (UTC). It is computed by the HTTP layer and never persisted with the key.
 	UsedToday int `json:"used_today"`
@@ -475,13 +478,13 @@ type AnalyticsProvider struct {
 // the per-user analytics leaderboard. UserID is a real user id or
 // AnonymousUserID for requests made without a user.
 type UserStat struct {
-	UserID     string  `json:"user_id"`
-	Requests   int     `json:"requests"`
-	OK         int     `json:"ok"`
-	Empty      int     `json:"empty"`
-	Fail      int     `json:"fail"`
-	AvgMS      int     `json:"avg_ms"`
-	LastActive string  `json:"last_active,omitempty"`
+	UserID     string `json:"user_id"`
+	Requests   int    `json:"requests"`
+	OK         int    `json:"ok"`
+	Empty      int    `json:"empty"`
+	Fail       int    `json:"fail"`
+	AvgMS      int    `json:"avg_ms"`
+	LastActive string `json:"last_active,omitempty"`
 	// Cost is the summed per-request cost of the owner's executed attempts
 	// (0 when no provider has a cost configured).
 	Cost float64 `json:"cost,omitempty"`

@@ -37,6 +37,7 @@ func TestMigrationsApplyAndAreIdempotent(t *testing.T) {
 	// Columns introduced by the latest migrations must exist.
 	for _, q := range []string{
 		`SELECT chain_id FROM api_keys LIMIT 1`,
+		`SELECT permissions FROM api_keys LIMIT 1`,
 		`SELECT subject, day, count FROM usage_daily LIMIT 1`,
 		`SELECT action, target, details FROM audit_log LIMIT 1`,
 	} {

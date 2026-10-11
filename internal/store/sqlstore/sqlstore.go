@@ -208,16 +208,16 @@ func (s *Store) CountAdmins(ctx context.Context) (int, error) {
 // CreateAPIKey inserts a hashed key.
 func (s *Store) CreateAPIKey(ctx context.Context, k *store.APIKey) error {
 	_, err := s.exec(ctx,
-		`INSERT INTO api_keys (id, user_id, name, prefix, hash, scopes, chain_id, last_used_at, expires_at, revoked_at, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		k.ID, k.UserID, k.Name, k.Prefix, k.Hash, k.Scopes, nullStr(k.ChainID), k.LastUsedAt, k.ExpiresAt, k.RevokedAt, k.CreatedAt)
+		`INSERT INTO api_keys (id, user_id, name, prefix, hash, scopes, chain_id, permissions, last_used_at, expires_at, revoked_at, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		k.ID, k.UserID, k.Name, k.Prefix, k.Hash, k.Scopes, nullStr(k.ChainID), nullStr(k.Permissions), k.LastUsedAt, k.ExpiresAt, k.RevokedAt, k.CreatedAt)
 	return err
 }
 
 func scanAPIKey(row interface{ Scan(...any) error }) (*store.APIKey, error) {
 	var k store.APIKey
 	err := row.Scan(&k.ID, &k.UserID, &k.Name, &k.Prefix, &k.Hash, &k.Scopes, &k.ChainID,
-		&k.LastUsedAt, &k.ExpiresAt, &k.RevokedAt, &k.CreatedAt)
+		&k.Permissions, &k.LastUsedAt, &k.ExpiresAt, &k.RevokedAt, &k.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +225,7 @@ func scanAPIKey(row interface{ Scan(...any) error }) (*store.APIKey, error) {
 }
 
 const apiKeyCols = `id, user_id, name, prefix, hash, scopes, COALESCE(chain_id, ''),
-	COALESCE(last_used_at, ''), COALESCE(expires_at, ''), COALESCE(revoked_at, ''), created_at`
+	COALESCE(permissions, ''), COALESCE(last_used_at, ''), COALESCE(expires_at, ''), COALESCE(revoked_at, ''), created_at`
 
 // GetAPIKey returns one key by id.
 func (s *Store) GetAPIKey(ctx context.Context, id string) (*store.APIKey, error) {
@@ -270,10 +270,10 @@ func (s *Store) ListAPIKeys(ctx context.Context, userID string) ([]*store.APIKey
 	return out, rows.Err()
 }
 
-// UpdateAPIKey updates name, scopes, chain binding and lifecycle fields.
+// UpdateAPIKey updates name, scopes, chain binding, permissions and lifecycle fields.
 func (s *Store) UpdateAPIKey(ctx context.Context, k *store.APIKey) error {
-	_, err := s.exec(ctx, `UPDATE api_keys SET name = ?, scopes = ?, chain_id = ?, last_used_at = ?, expires_at = ?, revoked_at = ? WHERE id = ?`,
-		k.Name, k.Scopes, nullStr(k.ChainID), k.LastUsedAt, k.ExpiresAt, k.RevokedAt, k.ID)
+	_, err := s.exec(ctx, `UPDATE api_keys SET name = ?, scopes = ?, chain_id = ?, permissions = ?, last_used_at = ?, expires_at = ?, revoked_at = ? WHERE id = ?`,
+		k.Name, k.Scopes, nullStr(k.ChainID), nullStr(k.Permissions), k.LastUsedAt, k.ExpiresAt, k.RevokedAt, k.ID)
 	return err
 }
 

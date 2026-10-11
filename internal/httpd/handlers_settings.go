@@ -14,9 +14,14 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	values, env := s.settings.Snapshot(ctx)
 	descriptors := s.cfg.Descriptors()
+	visible := make([]config.SettingDef, 0, len(descriptors))
 	out := map[string]string{}
 	secretSet := map[string]bool{}
 	for _, d := range descriptors {
+		if d.Hidden {
+			continue
+		}
+		visible = append(visible, d)
 		v := values[d.Key]
 		if d.Secret {
 			if v != "" {
@@ -31,7 +36,7 @@ func (s *Server) handleGetSettings(w http.ResponseWriter, r *http.Request) {
 		"values":      out,
 		"env":         env,
 		"secret_set":  secretSet,
-		"descriptors": descriptors,
+		"descriptors": visible,
 		"storage": map[string]any{
 			"driver":      s.store.Driver(),
 			"sqlite_path": s.cfg.SQLitePath,
@@ -53,17 +58,20 @@ func (s *Server) handlePutSettings(w http.ResponseWriter, r *http.Request) {
 	var rejected, applied []string
 	for key, value := range body {
 		d, ok := descriptors[key]
-		if !ok {
-			continue
-		}
-		if d.EnvOnly {
-			// Environment-managed settings (e.g. the update feed URL) are never
-			// editable through the API.
-			rejected = append(rejected, key)
+		if !ok || d.Hidden {
 			continue
 		}
 		if d.Secret && value == "" {
 			continue // blank secret keeps the stored value
+		}
+		// Environment-managed settings are read-only: an unchanged value echoed
+		// back by a full-snapshot PUT is ignored, a changed one is rejected.
+		if d.EnvOnly || s.cfg.IsEnv(key) {
+			if value == s.settings.GetString(ctx, key) {
+				continue
+			}
+			rejected = append(rejected, key)
+			continue
 		}
 		if err := s.settings.Set(ctx, key, value); err != nil {
 			rejected = append(rejected, key)

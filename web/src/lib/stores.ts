@@ -7,6 +7,9 @@ export type Session = {
 	admin: boolean;
 	scopes: Record<string, boolean>;
 	passkeys_enabled: boolean;
+	// developer_mode is true while the instance-level developer mode is on; the
+	// sidebar only shows the Developer section when it is enabled.
+	developer_mode?: boolean;
 	user?: { id: string; name: string; role: string };
 };
 
