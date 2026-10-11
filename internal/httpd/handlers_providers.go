@@ -184,6 +184,7 @@ func (s *Server) handleCreateProvider(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
 		return
 	}
+	s.audit(ctx, r, "provider.create", p.ID, map[string]string{"code": p.Code, "name": p.Name})
 	writeJSON(w, http.StatusCreated, toProviderView(p))
 }
 
@@ -247,6 +248,7 @@ func (s *Server) handleUpdateProvider(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
 		return
 	}
+	s.audit(ctx, r, "provider.update", existing.ID, map[string]string{"code": existing.Code, "name": existing.Name})
 	writeJSON(w, http.StatusOK, toProviderView(existing))
 }
 
@@ -290,6 +292,11 @@ func (s *Server) handlePatchProvider(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	p, _ := s.store.GetProvider(ctx, id)
+	details := map[string]string{}
+	if p != nil {
+		details["name"] = p.Name
+	}
+	s.audit(ctx, r, "provider.patch", id, details)
 	writeJSON(w, http.StatusOK, toProviderView(p))
 }
 
@@ -307,6 +314,7 @@ func (s *Server) handleDeleteProvider(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
 		return
 	}
+	s.audit(ctx, r, "provider.delete", id, nil)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

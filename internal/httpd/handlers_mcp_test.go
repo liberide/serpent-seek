@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -104,6 +105,63 @@ func TestMCPEndpoint(t *testing.T) {
 	}
 }
 
+// syncRecorder is a concurrency-safe http.ResponseWriter for the streaming MCP
+// test: the handler runs in a goroutine while the test polls headers and body.
+// httptest.ResponseRecorder is not safe for that pattern.
+type syncRecorder struct {
+	mu        sync.Mutex
+	header    http.Header
+	body      bytes.Buffer
+	status    int
+	readyOnce sync.Once
+	ready     chan struct{}
+}
+
+func newSyncRecorder() *syncRecorder {
+	return &syncRecorder{header: http.Header{}, ready: make(chan struct{})}
+}
+
+func (r *syncRecorder) Header() http.Header { return r.header }
+
+func (r *syncRecorder) WriteHeader(status int) {
+	r.mu.Lock()
+	if r.status == 0 {
+		r.status = status
+	}
+	r.mu.Unlock()
+	r.readyOnce.Do(func() { close(r.ready) })
+}
+
+func (r *syncRecorder) Write(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+	return r.body.Write(p)
+}
+
+func (r *syncRecorder) Flush() {}
+
+// waitHeader blocks until the handler has flushed its response headers (or the
+// timeout elapses) and returns the requested header value.
+func (r *syncRecorder) waitHeader(key string, timeout time.Duration) string {
+	select {
+	case <-r.ready:
+	case <-time.After(timeout):
+		return ""
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.header.Get(key)
+}
+
+func (r *syncRecorder) BodyString() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.body.String()
+}
+
 // TestMCPStreamableHTTP exercises the SSE side of the streamable HTTP transport:
 // GET /mcp returns a session id, POST /mcp with that session id delivers the
 // response over the SSE stream, and DELETE /mcp terminates the session.
@@ -114,22 +172,14 @@ func TestMCPStreamableHTTP(t *testing.T) {
 	getReq := httptest.NewRequest(http.MethodGet, "/mcp", nil)
 	getReq.Header.Set("Authorization", "Bearer "+ts.key)
 	getReq.Header.Set("Accept", "text/event-stream")
-	getRec := httptest.NewRecorder()
+	getRec := newSyncRecorder()
 	done := make(chan struct{})
 	go func() {
 		ts.server.Routes().ServeHTTP(getRec, getReq)
 		close(done)
 	}()
 
-	// Wait until the SSE headers/session id are available.
-	var sid string
-	for i := 0; i < 20; i++ {
-		time.Sleep(50 * time.Millisecond)
-		sid = getRec.Header().Get("Mcp-Session-Id")
-		if sid != "" {
-			break
-		}
-	}
+	sid := getRec.waitHeader("Mcp-Session-Id", 2*time.Second)
 	if sid == "" {
 		t.Fatalf("GET /mcp must return Mcp-Session-Id")
 	}
@@ -152,7 +202,7 @@ loop:
 		select {
 		case <-done:
 			// Stream closed; check if we already got the response.
-			body := getRec.Body.String()
+			body := getRec.BodyString()
 			if strings.Contains(body, `"id":7`) && strings.Contains(body, `"name":"search"`) {
 				gotResponse = true
 			}
@@ -160,7 +210,7 @@ loop:
 		case <-deadline:
 			t.Fatalf("timeout waiting for SSE response")
 		case <-time.After(50 * time.Millisecond):
-			body := getRec.Body.String()
+			body := getRec.BodyString()
 			if strings.Contains(body, `"id":7`) && strings.Contains(body, `"name":"search"`) {
 				gotResponse = true
 				break loop
@@ -168,7 +218,7 @@ loop:
 		}
 	}
 	if !gotResponse {
-		t.Fatalf("did not receive tools/list response over SSE: %s", getRec.Body.String())
+		t.Fatalf("did not receive tools/list response over SSE: %s", getRec.BodyString())
 	}
 
 	// 4) DELETE terminates the session.

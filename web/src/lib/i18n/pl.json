@@ -20,7 +20,8 @@
 		"active": "aktywna",
 		"unknown": "nieznany",
 		"copy": "Kopiuj",
-		"copied": "Skopiowano"
+		"copied": "Skopiowano",
+		"dismiss": "Ukryj"
 	},
 	"nav": {
 		"dashboard": "Pulpit",
@@ -31,6 +32,7 @@
 		"playground": "Piaskownica",
 		"mcp": "MCP",
 		"logs": "Logi",
+		"audit": "Audyt",
 		"users": "Użytkownicy",
 		"settings": "Ustawienia"
 	},
@@ -68,7 +70,8 @@
 		"create": "Utwórz administratora",
 		"created": "Administrator utworzony",
 		"saveKey": "Zapisz klucz — jest pokazywany tylko raz:",
-		"goLogin": "Przejdź do logowania"
+		"goLogin": "Przejdź do logowania",
+		"tokenPlaceholder": "np. ff1089a6"
 	},
 	"dashboard": {
 		"title": "Pulpit",
@@ -116,7 +119,9 @@
 			"emptyCount": "bez wyników: {n}",
 			"activeDays": "Aktywne dni",
 			"busiest": "szczyt {date}: {n}",
-			"noBusiest": "brak danych"
+			"noBusiest": "brak danych",
+			"cost": "Szacowany koszt",
+			"costHint": "suma skonfigurowanych kosztów providerów"
 		},
 		"chart": {
 			"volume": "Wolumen",
@@ -146,6 +151,7 @@
 			"skip": "Pominięte",
 			"success": "Skuteczność",
 			"avg": "Śr. czas",
+			"cost": "Koszt",
 			"legacy": "starszy",
 			"noData": "Brak danych dostawców dla wybranego okresu"
 		},
@@ -199,7 +205,11 @@
 		"deleteConfirm": "Usunąć wybrany łańcuch?",
 		"activated": "Łańcuch aktywowany",
 		"copied": "Łańcuch skopiowany",
-		"deleted": "Łańcuch usunięty"
+		"deleted": "Łańcuch usunięty",
+		"boundKeys": "{count} kluczy",
+		"deleteBound": "Ten łańcuch jest używany przez {count} aktywnych tokenów. Po usunięciu zostaną przeniesione do domyślnego (aktywnego) łańcucha. Usunąć?",
+		"defaultHint": "Domyślny łańcuch: używany przez tokeny bez powiązania",
+		"boundHint": "Tokeny powiązane z tym łańcuchem"
 	},
 	"chain": {
 		"backChains": "← Łańcuchy",
@@ -253,7 +263,9 @@
 		"proxyBadge": "proxy",
 		"proxy": "Proxy",
 		"proxyNone": "Bezpośrednio (bez proxy)",
-		"proxyHint": "Kieruj żądania tego dostawcy przez wybrane proxy. Proxys konfigurujesz w Ustawienia → Proxy."
+		"proxyHint": "Kieruj żądania tego dostawcy przez wybrane proxy. Proxys konfigurujesz w Ustawienia → Proxy.",
+		"costPerRequest": "Koszt zapytania",
+		"costPerRequestHint": "Opcjonalny koszt jednego wywołania providera w dowolnej jednostce (USD, kredyty…). Puste — nie liczyć."
 	},
 	"deadReason": {
 		"providerDisabled": "Dostawca jest wyłączony",
@@ -298,8 +310,17 @@
 			"providers": "Dostawcy (kody błędów)",
 			"retention": "Przechowywanie i retencja",
 			"storage": "Baza danych",
+			"config": "Konfiguracja",
+			"info": "O projekcie",
 			"maintenance": "Konserwacja",
 			"danger": "Strefa zagrożenia"
+		},
+		"config": {
+			"hint": "Wyeksportuj snapshot bez sekretów (providerzy, łańcuchy, nie-tajne ustawienia) lub zaimportuj go. Poświadczenia nigdy nie są eksportowane — wpisz je ponownie.",
+			"export": "Eksport",
+			"import": "Import",
+			"overwrite": "Nadpisz istniejące",
+			"imported": "Zaimportowano providerów: {providers}, łańcuchów: {chains}; pominięto: {skipped}."
 		},
 		"proxy": {
 			"add": "Dodaj proxy",
@@ -329,11 +350,43 @@
 			"missingHost": "Podaj host proxy.",
 			"usedBy": "Używane przez: {providers}"
 		},
+		"info": {
+			"version": "Wersja",
+			"commit": "Commit",
+			"buildDate": "Data kompilacji",
+			"go": "Środowisko Go",
+			"uptime": "Czas działania",
+			"started": "Uruchomiono",
+			"source": "Kod źródłowy",
+			"update": "Aktualizacja",
+			"updateAvailable": "Dostępna jest wersja {version}",
+			"upToDate": "Aktualna wersja",
+			"updateDisabled": "Sprawdzanie aktualizacji jest wyłączone",
+			"updateError": "Sprawdzanie nie powiodło się: {error}",
+			"updateNotChecked": "Jeszcze nie sprawdzano",
+			"lastChecked": "Ostatnie sprawdzenie",
+			"checkNow": "Sprawdź teraz",
+			"releaseNotes": "Informacje o wydaniu",
+			"checked": "Sprawdzanie zakończone",
+			"unofficial": "Nieoficjalne",
+			"unofficialHint": "Aktualizacje sprawdzane są w nieoficjalnym źródle."
+		},
+		"about": {
+			"tagline": "Samodzielnie hostowana brama wyszukiwania dla Open WebUI, MCP i 40+ API",
+			"build": "Kompilacja",
+			"runtime": "System",
+			"updates": "Aktualizacje",
+			"links": "Linki",
+			"docs": "Dokumentacja",
+			"license": "Licencja"
+		},
 		"fields": {
 			"auth_enabled": "Włącz uwierzytelnianie",
 			"hide_auth_off_notice": "Ukryj powiadomienie „uwierzytelnianie wyłączone”",
 			"history_retention_days": "Przechowywanie historii (dni)",
 			"logs_retention_days": "Przechowywanie logów (dni)",
+			"usage_retention_days": "Retencja liczników (dni)",
+			"audit_retention_days": "Retencja audytu (dni)",
 			"max_concurrency": "Maks. współbieżność",
 			"max_attempts": "Maks. prób",
 			"user_agent": "User-Agent",
@@ -347,13 +400,25 @@
 			"database_url": "URL bazy danych",
 			"treat_empty_as_fail": "Pusty wynik jako błąd",
 			"ignore_request_count": "Ignoruj liczbę wyników",
-			"allow_sparse_sources": "Dołącz źródła częściowe"
+			"allow_sparse_sources": "Dołącz źródła częściowe",
+			"search_rate_limit_per_minute": "Limit wyszukiwania (/min)",
+			"search_daily_quota": "Dzienny limit wyszukiwań",
+			"chain_timeout_seconds": "Limit czasu łańcucha (s)",
+			"provider_failure_threshold": "Próg awarii providera",
+			"provider_cooldown_seconds": "Cooldown providera (s)",
+			"debug": "Punkty debug",
+			"update_check_enabled": "Sprawdzaj aktualizacje",
+			"update_check_url": "URL kanału wydań",
+			"update_check_interval_hours": "Interwał sprawdzania (godz.)",
+			"webhook_url": "URL webhooka"
 		},
 		"fieldHints": {
 			"auth_enabled": "Wymagaj klucza API lub klucza dostępu (passkey) do panelu i API.",
 			"hide_auth_off_notice": "Ukryj ostrzeżenie na pasku bocznym, gdy uwierzytelnianie jest wyłączone.",
 			"history_retention_days": "Ile dni przechowywana jest historia zapytań przed czyszczeniem.",
 			"logs_retention_days": "Ile dni przechowywane są logi przed czyszczeniem.",
+			"usage_retention_days": "Jak długo przechowywać dzienne liczniki limitów.",
+			"audit_retention_days": "Jak długo przechowywać dziennik audytu.",
 			"max_concurrency": "Maksymalna liczba jednocześnie wykonywanych zapytań do dostawców.",
 			"max_attempts": "Maksymalna liczba prób na dostawcę przed rezygnacją.",
 			"user_agent": "Nagłówek User-Agent wysyłany do dostawców.",
@@ -367,7 +432,17 @@
 			"database_url": "Ciąg połączenia z bazą danych (dla postgres).",
 			"treat_empty_as_fail": "Traktuj pusty wynik jako nieudaną próbę.",
 			"ignore_request_count": "Ignoruj żądaną liczbę wyników i zwróć wszystko znalezione.",
-			"allow_sparse_sources": "Źródła węzłów odpowiedzi (link+tytuł, często bez snippetu) są dodawane do wyniku Row."
+			"allow_sparse_sources": "Źródła węzłów odpowiedzi (link+tytuł, często bez snippetu) są dodawane do wyniku Row.",
+			"search_rate_limit_per_minute": "Liczba wyszukiwań na minutę i klucz dla /search i /mcp (0 = bez limitu).",
+			"search_daily_quota": "Liczba wyszukiwań na klucz i dzień UTC (0 = bez limitu).",
+			"chain_timeout_seconds": "Twardy limit czasu jednego wyszukiwania we wszystkich providerach (0 = wyłączone).",
+			"provider_failure_threshold": "Liczba kolejnych awarii przed cooldownem (0 = wyłączone).",
+			"provider_cooldown_seconds": "Jak długo pomijać niesprawny provider.",
+			"debug": "Udostępnij profilowanie Go pprof pod /debug/pprof.",
+			"update_check_enabled": "Pobierać publiczny kanał wydań i pokazywać powiadomienie o nowszej wersji.",
+			"update_check_url": "Endpoint wydań (domyślnie GitHub „latest release”). Wyczyść, aby wyłączyć.",
+			"update_check_interval_hours": "Ile godzin między automatycznymi sprawdzeniami.",
+			"webhook_url": "Wysyła ładunek JSON na ten URL przy zadziałaniu bezpiecznika dostawcy i przekroczeniu dziennego limitu. Puste wyłącza powiadomienia."
 		}
 	},
 	"logs": {
@@ -379,6 +454,17 @@
 		"empty": "Brak logów",
 		"deleted": "Usunięto: {n}",
 		"clearConfirm": "Usunąć wszystkie wpisy logów?"
+	},
+	"audit": {
+		"title": "Dziennik audytu",
+		"action": "Akcja",
+		"actor": "Użytkownik",
+		"via": "Przez",
+		"target": "Obiekt",
+		"details": "Szczegóły",
+		"ip": "IP",
+		"search": "Szukaj",
+		"empty": "Brak wpisów"
 	},
 	"users": {
 		"title": "Użytkownicy i klucze",
@@ -409,7 +495,16 @@
 		"created": "Użytkownik utworzony",
 		"deleted": "Użytkownik usunięty",
 		"keyRevoked": "Klucz odwołany",
-		"passkeyAdded": "Passkey dodany"
+		"passkeyAdded": "Passkey dodany",
+		"chain": "Łańcuch",
+		"activeChain": "Aktywny łańcuch",
+		"unknownChain": "Nieznany łańcuch",
+		"chainUpdated": "Powiązanie łańcucha zaktualizowane",
+		"bindTitle": "Łańcuch dla tokena",
+		"bindHint": "Token zawsze używa wybranego łańcucha. Pozostaw «Domyślny», aby podążać za aktywnym łańcuchem.",
+		"chainMissing": "Powiązany łańcuch już nie istnieje; token używa domyślnego łańcucha.",
+		"changeChain": "Zmień łańcuch",
+		"usedToday": "Dziś"
 	},
 	"playground": {
 		"title": "Piaskownica",
@@ -507,7 +602,6 @@
 		"selectHint": "Wybierz węzeł lub strzałkę do edycji.",
 		"paramKey": "Parametr (klucz)",
 		"keyboardHint": "Delete — usuń wybrane · prawy klik na bloku — duplikuj/usuń",
-		"start": "Start",
 		"startOn": "Blok startowy (początek łańcucha)",
 		"startTaken": "Blok startowy jest już przypisany do {name}; najpierw go tam wyłącz",
 		"startReassigned": "Blok startowy przepisany na {name}",

@@ -20,7 +20,8 @@
 		"active": "活动",
 		"unknown": "未知",
 		"copy": "复制",
-		"copied": "已复制"
+		"copied": "已复制",
+		"dismiss": "忽略"
 	},
 	"nav": {
 		"dashboard": "仪表盘",
@@ -31,6 +32,7 @@
 		"playground": "沙盒",
 		"mcp": "MCP",
 		"logs": "日志",
+		"audit": "审计",
 		"users": "用户",
 		"settings": "设置"
 	},
@@ -68,7 +70,8 @@
 		"create": "创建管理员",
 		"created": "管理员已创建",
 		"saveKey": "请保存密钥——它只显示一次：",
-		"goLogin": "前往登录"
+		"goLogin": "前往登录",
+		"tokenPlaceholder": "例如 ff1089a6"
 	},
 	"dashboard": {
 		"title": "仪表盘",
@@ -116,7 +119,9 @@
 			"emptyCount": "无结果：{n}",
 			"activeDays": "活跃天数",
 			"busiest": "峰值 {date}：{n}",
-			"noBusiest": "暂无数据"
+			"noBusiest": "暂无数据",
+			"cost": "预估成本",
+			"costHint": "已配置的提供方成本之和"
 		},
 		"chart": {
 			"volume": "总量",
@@ -146,6 +151,7 @@
 			"skip": "已跳过",
 			"success": "成功率",
 			"avg": "平均耗时",
+			"cost": "成本",
 			"legacy": "旧版",
 			"noData": "所选时段暂无提供商数据"
 		},
@@ -199,7 +205,11 @@
 		"deleteConfirm": "删除所选链路？",
 		"activated": "链路已激活",
 		"copied": "链路已复制",
-		"deleted": "链路已删除"
+		"deleted": "链路已删除",
+		"boundKeys": "{count} 个密钥",
+		"deleteBound": "该链路正被 {count} 个活动令牌使用。删除后它们将移至默认（活动）链路。删除？",
+		"defaultHint": "默认链路：供未绑定链路的令牌使用",
+		"boundHint": "绑定到此链路的令牌"
 	},
 	"chain": {
 		"backChains": "← 链路",
@@ -253,7 +263,9 @@
 		"proxyBadge": "代理",
 		"proxy": "代理",
 		"proxyNone": "直连（不使用代理）",
-		"proxyHint": "通过所选代理发送此提供商的请求。可在“设置 → 代理”中管理代理。"
+		"proxyHint": "通过所选代理发送此提供商的请求。可在“设置 → 代理”中管理代理。",
+		"costPerRequest": "每次请求成本",
+		"costPerRequestHint": "调用该提供方的可选成本，单位自定（美元、额度等）。留空则不统计。"
 	},
 	"deadReason": {
 		"providerDisabled": "提供商已禁用",
@@ -298,8 +310,17 @@
 			"providers": "提供商（错误码）",
 			"retention": "存储与保留",
 			"storage": "数据库",
+			"config": "配置",
+			"info": "关于",
 			"maintenance": "维护",
 			"danger": "危险区域"
+		},
+		"config": {
+			"hint": "导出不含密钥的快照（提供方、链路、非密钥设置）或从其他实例导入。凭据不会被导出，需要重新输入。",
+			"export": "导出",
+			"import": "导入",
+			"overwrite": "覆盖现有",
+			"imported": "已导入提供方 {providers} 个、链路 {chains} 个；跳过 {skipped} 个。"
 		},
 		"proxy": {
 			"add": "添加代理",
@@ -329,11 +350,43 @@
 			"missingHost": "请输入代理主机。",
 			"usedBy": "使用者：{providers}"
 		},
+		"info": {
+			"version": "版本",
+			"commit": "提交",
+			"buildDate": "构建日期",
+			"go": "Go 运行时",
+			"uptime": "运行时长",
+			"started": "启动时间",
+			"source": "源代码",
+			"update": "更新",
+			"updateAvailable": "有新版本 {version}",
+			"upToDate": "已是最新版本",
+			"updateDisabled": "更新检查已禁用",
+			"updateError": "检查失败：{error}",
+			"updateNotChecked": "尚未检查",
+			"lastChecked": "上次检查",
+			"checkNow": "立即检查",
+			"releaseNotes": "发行说明",
+			"checked": "更新检查完成",
+			"unofficial": "非官方",
+			"unofficialHint": "更新来自自定义（非官方）的发行源。"
+		},
+		"about": {
+			"tagline": "面向 Open WebUI、MCP 和 40+ 搜索 API 的自托管搜索网关",
+			"build": "构建",
+			"runtime": "系统",
+			"updates": "更新",
+			"links": "链接",
+			"docs": "文档",
+			"license": "许可证"
+		},
 		"fields": {
 			"auth_enabled": "启用身份验证",
 			"hide_auth_off_notice": "隐藏“身份验证已关闭”提示",
 			"history_retention_days": "历史保留天数",
 			"logs_retention_days": "日志保留天数",
+			"usage_retention_days": "用量计数保留（天）",
+			"audit_retention_days": "审计保留（天）",
 			"max_concurrency": "最大并发数",
 			"max_attempts": "最大尝试次数",
 			"user_agent": "User-Agent",
@@ -347,13 +400,25 @@
 			"database_url": "数据库 URL",
 			"treat_empty_as_fail": "空结果视为失败",
 			"ignore_request_count": "忽略结果数量",
-			"allow_sparse_sources": "合并稀疏来源"
+			"allow_sparse_sources": "合并稀疏来源",
+			"search_rate_limit_per_minute": "搜索速率限制（次/分钟）",
+			"search_daily_quota": "每日搜索配额",
+			"chain_timeout_seconds": "链路超时（秒）",
+			"provider_failure_threshold": "提供方失败阈值",
+			"provider_cooldown_seconds": "提供方冷却（秒）",
+			"debug": "调试端点",
+			"update_check_enabled": "检查更新",
+			"update_check_url": "发行版信息地址",
+			"update_check_interval_hours": "检查间隔（小时）",
+			"webhook_url": "Webhook URL"
 		},
 		"fieldHints": {
 			"auth_enabled": "访问仪表板和 API 需要 API 密钥或通行密钥。",
 			"hide_auth_off_notice": "在身份验证关闭期间隐藏侧边栏警告。",
 			"history_retention_days": "清理前保留请求历史的天数。",
 			"logs_retention_days": "清理前保留日志的天数。",
+			"usage_retention_days": "每日搜索配额计数保留的天数。",
+			"audit_retention_days": "管理员审计记录保留的天数。",
 			"max_concurrency": "同时运行的最大提供商请求数。",
 			"max_attempts": "放弃前每个提供商的最大尝试次数。",
 			"user_agent": "发送给提供商的 HTTP User-Agent 头。",
@@ -367,7 +432,17 @@
 			"database_url": "数据库连接字符串（用于 postgres）。",
 			"treat_empty_as_fail": "将空结果计为一次失败的尝试。",
 			"ignore_request_count": "忽略请求的结果数量并返回所有找到的内容。",
-			"allow_sparse_sources": "将回答节点的来源（链接+标题，通常无摘要）加入 Row 结果。"
+			"allow_sparse_sources": "将回答节点的来源（链接+标题，通常无摘要）加入 Row 结果。",
+			"search_rate_limit_per_minute": "每个密钥每分钟允许在 /search 和 /mcp 上发起的搜索请求数（0 表示不限）。",
+			"search_daily_quota": "每个密钥每个 UTC 日允许的搜索请求数（0 表示不限）。",
+			"chain_timeout_seconds": "一次搜索在所有提供方上的硬性时间上限（0 表示禁用）。",
+			"provider_failure_threshold": "连续失败多少次后进入冷却（0 表示禁用）。",
+			"provider_cooldown_seconds": "跳过故障提供方的时长（熔断）。",
+			"debug": "在 /debug/pprof 暴露 Go pprof 性能分析。",
+			"update_check_enabled": "拉取公开的发行版信息，并在有新版本时显示提示。",
+			"update_check_url": "发行版 API 地址（默认 GitHub latest release）。清空即禁用。",
+			"update_check_interval_hours": "自动检查之间的间隔小时数。",
+			"webhook_url": "当提供商熔断器触发或每日配额耗尽时，向此 URL 发送 JSON。留空则禁用通知。"
 		}
 	},
 	"logs": {
@@ -379,6 +454,17 @@
 		"empty": "暂无日志",
 		"deleted": "已删除：{n}",
 		"clearConfirm": "删除所有日志条目？"
+	},
+	"audit": {
+		"title": "审计日志",
+		"action": "操作",
+		"actor": "用户",
+		"via": "方式",
+		"target": "对象",
+		"details": "详情",
+		"ip": "IP",
+		"search": "搜索",
+		"empty": "暂无记录"
 	},
 	"users": {
 		"title": "用户与密钥",
@@ -409,7 +495,16 @@
 		"created": "用户已创建",
 		"deleted": "用户已删除",
 		"keyRevoked": "密钥已撤销",
-		"passkeyAdded": "Passkey 已添加"
+		"passkeyAdded": "Passkey 已添加",
+		"chain": "链路",
+		"activeChain": "活动链路",
+		"unknownChain": "未知链路",
+		"chainUpdated": "链路绑定已更新",
+		"bindTitle": "令牌的链路",
+		"bindHint": "令牌始终使用所选链路。保持“默认”以跟随活动链路。",
+		"chainMissing": "绑定的链路已不存在；令牌将使用默认链路。",
+		"changeChain": "更改链路",
+		"usedToday": "今日"
 	},
 	"playground": {
 		"title": "沙盒",
@@ -507,7 +602,6 @@
 		"selectHint": "选择节点或箭头进行编辑。",
 		"paramKey": "参数（键）",
 		"keyboardHint": "Delete — 删除所选 · 右键点击区块 — 复制/删除",
-		"start": "开始",
 		"startOn": "起始区块（链路入口）",
 		"startTaken": "起始区块已分配给 {name}；请先在那里关闭",
 		"startReassigned": "起始区块已重新分配给 {name}",

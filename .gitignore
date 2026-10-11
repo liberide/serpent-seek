@@ -16,6 +16,11 @@ coverage.out
 *.test
 *.prof
 
+# Playwright
+web/test-results/
+web/playwright-report/
+web/blob-report/
+
 # OS / editor noise
 .idea/
 .DS_Store

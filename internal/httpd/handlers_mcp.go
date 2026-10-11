@@ -410,7 +410,7 @@ func (s *Server) mcpToolCall(r *http.Request, req *rpcRequest) (any, *rpcError) 
 	if id := s.identity(r); id != nil && id.User != nil {
 		client = id.User.Name
 	}
-	out, err := s.engine.Execute(r.Context(), engine.Input{Query: query, Count: count, Client: client, UserID: s.identityUserID(r)})
+	out, err := s.engine.Execute(r.Context(), engine.Input{Query: query, Count: count, Client: client, UserID: s.identityUserID(r), ChainID: s.identityChainID(r)})
 	if err != nil {
 		s.log.Error("", "", "mcp search failed: "+err.Error())
 		return map[string]any{

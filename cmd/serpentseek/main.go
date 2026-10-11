@@ -23,6 +23,7 @@ import (
 	"github.com/liberide/serpent-seek/internal/store/postgres"
 	"github.com/liberide/serpent-seek/internal/store/sqlite"
 	"github.com/liberide/serpent-seek/internal/store/sqlstore"
+	"github.com/liberide/serpent-seek/internal/telemetry"
 	"github.com/liberide/serpent-seek/internal/version"
 )
 
@@ -49,6 +50,14 @@ func run() error {
 		cfg.DefaultYandexAPIKey, cfg.DefaultGoogleAPIKey, cfg.DefaultGoogleCX, cfg.EncryptionKey, cfg.DatabaseURL)
 
 	ctx := context.Background()
+
+	tracingShutdown, tracingOn, terr := telemetry.Setup(ctx, "serpentseek", version.Version)
+	if terr != nil {
+		log.Warn("", "", "tracing setup failed: "+terr.Error())
+	} else if tracingOn {
+		log.Info("", "", "OpenTelemetry tracing enabled (OTLP)")
+	}
+	defer func() { _ = tracingShutdown(context.Background()) }()
 
 	var storeImpl *sqlstore.Store
 	switch cfg.StorageDriver {

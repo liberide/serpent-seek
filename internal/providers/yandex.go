@@ -16,9 +16,6 @@ import (
 // `rawData` = base64-encoded XML (the only web-search format); it is parsed
 // with stdlib encoding/xml. Reference:
 // https://yandex.cloud/en/docs/search-api/ (WebSearch.Search, FORMAT_XML).
-//
-// Verification status: mock-only (httptest fixtures built from the documented
-// response shape) until a live api_key + folder_id run confirms it.
 type yandexProvider struct {
 	http *HTTPClient
 }
@@ -138,9 +135,7 @@ func (p yandexProvider) Search(ctx context.Context, q Query, c Credentials, para
 		if containsInt(emptyCodes, xerr.Code) {
 			return Result{OK: true, Kind: KindEmpty, Rows: nil, Provider: p.Code(), HTTPStatus: resp.StatusCode}
 		}
-		// Error-code classification is configurable because the exact transient
-		// Yandex XML codes (quota/overload) still need a live-key verification:
-		// anything not listed in xml_retry_codes is treated as permanent.
+		// Codes not listed in xml_retry_codes are treated as permanent.
 		retryCodes := parseIntCSV(params["xml_retry_codes"], nil)
 		return Result{Kind: KindAPI, Permanent: !containsInt(retryCodes, xerr.Code), Provider: p.Code(), HTTPStatus: resp.StatusCode,
 			Error: "yandex: XML error code=" + strconv.Itoa(xerr.Code) + " " + p.http.Redact(xerr.Text)}
@@ -199,11 +194,9 @@ func yandexSearchBody(q Query, params Params, folder string) map[string]any {
 
 // yandexGenProvider calls POST /v2/gen/search (AI Studio generative search =
 // REST GenSearch.Search). The response is a generative.result.
-// GenerativeSearchResult (text + sources). `getPartialResults` (JSON Lines
-// streaming) is not wired up.
-// The result is a generated answer; cited sources are mapped to (sparse) Rows
-// when present. The answer text itself is kept in Result.Answer and never
-// mixed into Row.Snippet (full `mode: answer` node support is a separate task).
+// GenerativeSearchResult (text + sources). The result is a generated answer;
+// cited sources are mapped to (sparse) Rows when present. The answer text
+// itself is kept in Result.Answer and never mixed into Row.Snippet.
 type yandexGenProvider struct {
 	http *HTTPClient
 }

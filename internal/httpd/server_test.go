@@ -271,8 +271,8 @@ func TestChainsCRUDAndValidation(t *testing.T) {
 	cycle := map[string]any{
 		"name": "cycle",
 		"nodes": []map[string]any{
-			{"key": "a", "provider": "stub_ok", "timeout_ms": 1000, "retries": 0, "retry_delay_ms": 0, "delay_policy": "none", "on_success": "stop", "on_empty": "next", "on_fail": "next", "is_start": true},
-			{"key": "b", "provider": "stub_ok", "timeout_ms": 1000, "retries": 0, "retry_delay_ms": 0, "delay_policy": "none", "on_success": "stop", "on_empty": "next", "on_fail": "next"},
+			{"key": "a", "provider_id": "stub_ok", "timeout_ms": 1000, "retries": 0, "retry_delay_ms": 0, "delay_policy": "none", "on_success": "stop", "on_empty": "next", "on_fail": "next", "is_start": true},
+			{"key": "b", "provider_id": "stub_ok", "timeout_ms": 1000, "retries": 0, "retry_delay_ms": 0, "delay_policy": "none", "on_success": "stop", "on_empty": "next", "on_fail": "next"},
 		},
 		"edges": []map[string]any{
 			{"from_key": "a", "to_key": "b", "condition": "fail"},

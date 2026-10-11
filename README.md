@@ -1,6 +1,6 @@
 # 🐍 SerpentSeek — self-hosted search gateway for Open WebUI, MCP & 40+ search APIs
 
-**English** | [Русский](README.ru.md "README по-русски") | [Deutsch](README.de.md "Auf Deutsch lesen") | [Français](README.fr.md "Lire en français") | [中文](README.zh.md "阅读中文版")
+**English** | [Русский](README.ru.md "README по-русски") | [Polski](README.pl.md "Czytaj po polsku") | [Deutsch](README.de.md "Auf Deutsch lesen") | [Français](README.fr.md "Lire en français") | [日本語](README.ja.md "日本語で読む") | [中文](README.zh.md "阅读中文版")
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE "Project license — GNU GPL v3.0")
 [![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod "Backend written in Go")
@@ -42,18 +42,32 @@ liable for such charges or any other material damage (GPLv3 §§15–16, details
   block fans out to several providers, a logical **Join** block merges the
   branches and removes duplicate URLs, and fallback/retry policies steer the
   rest; multiple named instances per driver
+* 🔗 **Per-token chain routing** — bind each API key to its own chain,
+  independent of the active one (unbound tokens follow the default/active
+  chain); deleting a chain safely moves bound tokens back to it
 * 🔌 **Open WebUI ready** — drop-in `/search` endpoint: always HTTP 200,
   `[{"link","title","snippet"}]`
 * 🤖 **MCP server** — `search` tool over streamable HTTP for Claude, Cursor, VS
   Code and any other MCP client; plain JSON-RPC 2.0 is accepted too
 * 🔭 **Live request tracing** — per-step timeline over SSE plus `X-Serpent-Rid`
   / `X-Serpent-Api` diagnostics headers and a History page
+* 📊 **Prometheus metrics** — `GET /metrics` exposes search outcomes, provider
+  attempts/durations, in-flight requests and SSE clients in the text exposition
+  format
+* 🔔 **Update notifications** — optional check for a newer release; a badge in
+  the sidebar and full details on the **Settings → Info** page
 * 🔐 **Security first** — argon2id-hashed API keys, WebAuthn passkeys,
   SameSite=Strict sessions with CSRF, write-only secrets, optional AES-GCM
   encryption at rest
+* 📋 **Audit log** — every admin mutation (settings, providers, chains, keys,
+  users) is recorded with actor, IP and non-secret details
+* 💱 **Provider cost tracking** — optional per-instance `cost_per_request`,
+  summed per provider in Analytics (hidden entirely when not configured)
+* 📦 **Config export/import** — secret-free snapshots of providers, chains and
+  non-secret settings for migrating between instances
 * 💾 **SQLite ⟷ PostgreSQL** — WAL-mode SQLite by default; the `extdb` compose
   profile brings PostgreSQL for multi-replica setups
-* 🌍 **Multilingual UI** — English, Русский, Polski, Deutsch, Français, 中文
+* 🌍 **Multilingual UI** — English, Русский, Polski, Deutsch, Français, 日本語, 中文
 * 🐳 **Single Docker container** — Go backend with the embedded SvelteKit SPA
 
 ## Contents
@@ -70,9 +84,9 @@ liable for such charges or any other material damage (GPLv3 §§15–16, details
 * [Authentication](#authentication)
 * [Background jobs](#background-jobs)
 * [Development](#development)
+* [Operations](docs/operations.md) — backup, restore, upgrades, diagnostics
 * [Dependencies and licenses](#dependencies-and-licenses)
 * [Risks and caveats](#risks-and-caveats)
-* [Screenshots](#screenshots)
 * [Structure](#structure)
 
 ## Quick start
@@ -83,7 +97,8 @@ cp .env.example .env
 docker compose up --build
 ```
 
-UI: <http://localhost:8080>. Health check: `curl http://localhost:8080/healthz`.
+UI: <http://localhost:8080>. Health check: `curl http://localhost:8080/healthz`
+(or `/readyz` for a DB-aware readiness probe; `/livez` is pure liveness).
 
 Prebuilt official image from Docker Hub instead of building from source:
 
@@ -94,7 +109,8 @@ docker run -d --name serpentseek -p 8080:8080 \
   sallend/serpent-seek:latest
 ```
 
-More deployment options — see [DEPLOY.md](DEPLOY.md).
+More deployment options — see [DEPLOY.md](DEPLOY.md). Backup, restore,
+upgrades and diagnostics — see [docs/operations.md](docs/operations.md).
 
 On first start a one-time token is printed to the logs:
 
@@ -113,9 +129,11 @@ In Open WebUI → *Settings → Web Search* select **External** (or SearXNG) and
 * API key: your `seek_ak_...` key
 
 The `POST /search` endpoint is Open WebUI-compatible: body `{"query":"...","count":5}`,
-response is always HTTP 200 with an array `[{"link","title","snippet"}]` (empty
-`[]` on failure/empty results). Diagnostics — via the `X-Serpent-Rid` and
-`X-Serpent-Api` headers and the History page.
+response is HTTP 200 with an array `[{"link","title","snippet"}]` (empty
+`[]` on failure/empty results). The only exception is throttling: when a caller
+exceeds `SEARCH_RATE_LIMIT_PER_MINUTE` or `SEARCH_DAILY_QUOTA` the endpoint
+returns HTTP 429 with `Retry-After` (see [Settings](#settings)). Diagnostics —
+via the `X-Serpent-Rid` and `X-Serpent-Api` headers and the History page.
 
 ```bash
 curl -s http://localhost:8080/search \
@@ -230,6 +248,9 @@ to the request's answer panel, and sources become sparse rows (link+title).
 Each provider's `base_url` is editable in the UI (not a secret). Secrets are
 write-only: the value is never returned, only a "set" marker. The "Test" button
 runs a probe query `q=test` and shows `http/kind/ms` plus the first links.
+Set the optional param `cost_per_request` (a positive decimal, any unit) to have
+the instance's estimated cost recorded per attempt and summed in Analytics; leave
+it unset to exclude the provider from cost reporting.
 
 **Providers are instances.** On the Providers page you can add any number of
 providers, including **several of the same type (driver) with different names
@@ -308,6 +329,24 @@ did);
 The new parallel fan-out, Join merging and `on_success` continuation only apply
 to chains that actually contain a Start block.
 
+### Per-token chain binding
+
+Every API key can be bound to a specific chain, independently of which chain is
+active. The binding is set by an administrator on the **Users & keys** page and
+takes effect from the next request — no key rotation needed:
+
+* a bound token always runs its own chain, even an inactive one; several tokens
+  can share the same chain;
+* an unbound token falls back to the **default** chain, which is the single
+  `active` chain (there is no separate "default chain" entity);
+* if a bound chain disappears, the binding is cleared and the token safely falls
+  back to the active chain; a deliberately bound but missing chain fails closed
+  instead of silently running another one;
+* the Chains page shows how many tokens use a chain (`🔑 N`, including the
+  active ones) and warns before deleting a chain that active tokens are bound
+  to — after confirmation those tokens move to the default chain. The active
+  chain itself cannot be deleted.
+
 ## PostgreSQL (profile `extdb`)
 
 ```bash
@@ -340,8 +379,12 @@ params and are edited on the Providers page.
 
 Key variables: `PORT`, `HOST`, `DATA_DIR`/`SQLITE_PATH`, `STORAGE_DRIVER`,
 `DATABASE_URL`, `AUTH_ENABLED`, `PUBLIC_ORIGIN`, `RP_ID`, `RP_NAME`,
-`HISTORY_RETENTION_DAYS`, `LOGS_RETENTION_DAYS`, `MAX_CONCURRENCY`, `MAX_ATTEMPTS`,
-`USER_AGENT`, `LOG_LEVEL`, `LOG_FORMAT`, `TREAT_EMPTY_AS_FAIL`.
+`HISTORY_RETENTION_DAYS`, `LOGS_RETENTION_DAYS`, `USAGE_RETENTION_DAYS`,
+`AUDIT_RETENTION_DAYS`, `MAX_CONCURRENCY`, `MAX_ATTEMPTS`,
+`USER_AGENT`, `LOG_LEVEL`, `LOG_FORMAT`, `TREAT_EMPTY_AS_FAIL`,
+`SEARCH_RATE_LIMIT_PER_MINUTE`, `SEARCH_DAILY_QUOTA`, `CHAIN_TIMEOUT`,
+`PROVIDER_FAILURE_THRESHOLD`, `PROVIDER_COOLDOWN_SECONDS`, `DEBUG`,
+`UPDATE_CHECK_ENABLED`, `UPDATE_CHECK_URL`, `UPDATE_CHECK_INTERVAL_HOURS`.
 
 `IGNORE_REQUEST_COUNT=true` makes the gateway ignore the request's `count` and
 pass `num=0` to providers — return everything found without a limit. The same
@@ -350,7 +393,7 @@ page (a hint appears when hovering over the field).
 
 ## Interface and localization
 
-The UI is translated into 6 languages:
+The UI is translated into 7 languages:
 
 | Code | Language |
 | --- | --- |
@@ -359,6 +402,7 @@ The UI is translated into 6 languages:
 | `pl` | Polski |
 | `de` | Deutsch |
 | `fr` | Français |
+| `ja` | 日本語 |
 | `zh` | 中文 |
 
 The language switcher is in the top right corner, next to the "Quick search"
@@ -387,8 +431,9 @@ To add a new language: drop a dictionary into `web/src/lib/i18n/<code>.json`
 ## Background jobs
 
 * `cleanup` (`HISTORY_CLEANUP_CRON`, default `0 4 * * *`) — deletes history and
-  logs older than the retention period, expired sessions, and recomputes daily
-  aggregates.
+  logs older than the retention period, expired sessions, prunes search-quota
+  counters (`usage_daily`, 90 days) and audit records (180 days), and recomputes
+  daily aggregates.
 * `vacuum` (`VACUUM_CRON`, default `0 3 * * 0`) — SQLite only.
 
 Both can be triggered manually from Settings → Maintenance (or via
@@ -465,29 +510,36 @@ License) and external `searxng/searxng` (not part of this repository; **AGPLv3**
 * **Provider credentials** are write-only and masked in the API and logs;
   `base_url` is not a secret. Optional `ENCRYPTION_KEY` enables AES-256-GCM
   at-rest encryption.
+* **Search throttling is opt-in.** `SEARCH_RATE_LIMIT_PER_MINUTE` and
+  `SEARCH_DAILY_QUOTA` (both `0` = disabled/unlimited) cap requests per API key
+  (or per user/IP without a key) across `/search`, `/mcp` and the playground.
+  Counters live in the database (`usage_daily`) and are pruned after 90 days.
+* **Update checks are opt-in.** With `UPDATE_CHECK_ENABLED=true` the server
+  fetches the public GitHub release feed about once a day (no telemetry) and the
+  UI shows a notice when a newer version exists; set it to `false` for
+  air-gapped setups. `UPDATE_CHECK_URL` can only be changed via the environment
+  (not the UI); pointing it at a custom feed marks the instance as
+  **unofficial** in the sidebar.
+* **Reliability knobs.** `CHAIN_TIMEOUT` caps one search end to end;
+  `PROVIDER_FAILURE_THRESHOLD` + `PROVIDER_COOLDOWN_SECONDS` trip a per-provider
+  circuit breaker (all `0` = disabled except the cooldown default of 60s).
 * `TRUSTED_PROXIES` lists proxies whose forwarded headers are honored;
   `BLOCK_PRIVATE_NETWORKS=true` restricts outbound connections to public
   addresses.
-
-## Screenshots
-
-After startup you get the following screens: Dashboard, Analytics (request charts,
-filters and per-provider success/failure), History (with a colored chain graph
-and a step timeline), Chains (visual editor), Providers, Playground,
-MCP, Logs, Users, Settings. Add your screenshots to `docs/screenshots/` (they are
-not included in the repository to avoid bloating the image).
 
 ## Structure
 
 ```
 cmd/serpentseek/      # wiring and seed
 internal/
-  config logging store providers engine sse auth httpd jobs version
+  config logging store providers engine sse auth httpd jobs metrics version
 api/openapi.yaml      # OpenAPI 3.1
 web/                  # SvelteKit SPA (build is embedded into the binary)
 deploy/
   searxng/settings.yml
   caddy.example
+docs/
+  operations.md       # backup, restore, upgrades, diagnostics
 ```
 
 ---

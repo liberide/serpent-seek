@@ -306,6 +306,11 @@
 										>{t('providers.proxyBadge')}: {proxyName[provider.proxy_id] ?? provider.proxy_id}</span
 									>
 								{/if}
+								{#if provider.params?.cost_per_request}
+									<span class="badge bg-teal-500/15 text-teal-300"
+										>{t('analytics.provider.cost')}: {provider.params.cost_per_request}</span
+									>
+								{/if}
 							</div>
 							<p class="mt-1 truncate font-mono text-xs text-slate-400">{provider.base_url || '—'}</p>
 						</div>
@@ -439,6 +444,17 @@
 					{/each}
 				</select>
 				<p class="mt-1 text-xs text-slate-500">{t('providers.proxyHint')}</p>
+			</div>
+
+			<div>
+				<span class="label">{t('providers.costPerRequest')}</span>
+				<input
+					class="input"
+					value={paramValues['cost_per_request'] ?? ''}
+					placeholder="0.002"
+					oninput={(e) => onParamChange('cost_per_request', (e.currentTarget as HTMLInputElement).value)}
+				/>
+				<p class="mt-1 text-xs text-slate-500">{t('providers.costPerRequestHint')}</p>
 			</div>
 
 			{#each selectedSchema?.credentials ?? [] as field (field.key)}

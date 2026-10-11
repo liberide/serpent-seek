@@ -35,6 +35,18 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 	}
 }
 
+// writeJSONIndent serializes v with a 2-space indent. It is used for
+// downloadable payloads such as the config export.
+func writeJSONIndent(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	if v != nil {
+		enc := json.NewEncoder(w)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(v)
+	}
+}
+
 // writeError writes the canonical error envelope.
 func writeError(w http.ResponseWriter, r *http.Request, status int, code, message string) {
 	writeJSON(w, status, errorBody{Error: errorDetail{Code: code, Message: message}})
@@ -90,6 +102,15 @@ func (s *Server) identity(r *http.Request) *auth.Identity {
 func (s *Server) identityUserID(r *http.Request) string {
 	if id := s.identity(r); id != nil && id.User != nil {
 		return id.User.ID
+	}
+	return ""
+}
+
+// identityChainID returns the chain bound to the authenticating API key, or
+// "" when the request uses a session or an unbound key (active chain).
+func (s *Server) identityChainID(r *http.Request) string {
+	if id := s.identity(r); id != nil {
+		return id.ChainID
 	}
 	return ""
 }

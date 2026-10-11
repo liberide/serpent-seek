@@ -99,6 +99,20 @@
 				}
 			})();
 		</script>
+		<script>
+			// After a redeploy the hashed chunks this tab references may be gone and a
+			// dynamic import fails ("Importing a module script failed"). Vite emits
+			// `vite:preloadError` in that case: reload once so the tab picks up the
+			// new build (guarded against reload loops).
+			window.addEventListener('vite:preloadError', function (event) {
+				event.preventDefault();
+				var last = Number(sessionStorage.getItem('serpentseek-preload-reload') || 0);
+				if (Date.now() - last > 10000) {
+					sessionStorage.setItem('serpentseek-preload-reload', String(Date.now()));
+					location.reload();
+				}
+			});
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover" class="bg-slate-950 text-slate-100">

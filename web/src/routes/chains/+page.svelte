@@ -14,10 +14,14 @@
 		version: number;
 		nodes: any[];
 		edges: any[];
+		bound_keys?: number;
+		active_bound_keys?: number;
 	};
 	let chains = $state<Chain[]>([]);
 	let loading = $state(true);
 	let deleteId = $state<string | null>(null);
+	// The chain targeted for deletion; drives the confirmation copy.
+	let deletingChain = $derived(chains.find((c) => c.id === deleteId));
 	let newChainMode = $state<string>('first_success');
 
 	async function load() {
@@ -104,6 +108,8 @@
 	async function remove() {
 		if (!deleteId) return;
 		try {
+			// The confirmation dialog already ran; bound tokens fall back to the
+			// default (active) chain automatically.
 			await del(`/api/chains/${deleteId}`);
 			notify(t('chains.deleted'), 'success');
 			deleteId = null;
@@ -154,13 +160,16 @@
 							{t('chains.summary', { nodes: chain.nodes?.length ?? 0, edges: chain.edges?.length ?? 0, version: chain.version })}
 						</p>
 					</div>
-					{#if chain.active}<span class="badge bg-emerald-500/15 text-emerald-300">{t('common.active')}</span>{/if}
+					{#if chain.active}<span class="badge bg-emerald-500/15 text-emerald-300" title={t('chains.defaultHint')}>{t('common.active')}</span>{/if}
+					{#if chain.bound_keys}<span class="badge ml-1 bg-sky-500/15 text-sky-300" title={t('chains.boundHint')}>{t('chains.boundKeys', { count: chain.bound_keys })}</span>{/if}
 				</div>
 				<div class="mt-3 flex flex-wrap gap-2">
 					<a class="btn text-xs" href="/chains/{chain.id}">{t('common.edit')}</a>
 					{#if !chain.active}<button class="btn text-xs" onclick={() => activate(chain.id)}>{t('chains.makeActive')}</button>{/if}
 					<button class="btn text-xs" onclick={() => duplicate(chain.id)}>{t('chains.duplicate')}</button>
-					<button class="btn btn-danger text-xs" onclick={() => (deleteId = chain.id)}>{t('common.delete')}</button>
+					{#if !chain.active}
+						<button class="btn btn-danger text-xs" onclick={() => (deleteId = chain.id)}>{t('common.delete')}</button>
+					{/if}
 				</div>
 			</div>
 		{/each}
@@ -172,7 +181,9 @@
 
 <Confirm
 	open={deleteId !== null}
-	message={t('chains.deleteConfirm')}
+	message={deletingChain && (deletingChain.active_bound_keys ?? 0) > 0
+		? t('chains.deleteBound', { count: deletingChain.active_bound_keys ?? 0 })
+		: t('chains.deleteConfirm')}
 	confirmLabel={t('common.delete')}
 	onconfirm={remove}
 	oncancel={() => (deleteId = null)}

@@ -14,6 +14,7 @@ concurrency:
 jobs:
   go:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -31,10 +32,94 @@ jobs:
         run: go vet ./...
 
       - name: Test
-        run: go test ./... -cover
+        run: go test ./... -race -coverprofile=coverage.out -covermode=atomic
+
+      - name: Coverage threshold
+        run: |
+          total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | tr -d '%')
+          echo "total coverage: ${total}%"
+          awk -v t="$total" 'BEGIN { if (t+0 < 50) { print "coverage " t "% is below the 50% threshold"; exit 1 } }'
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          # v2.x is required: the v1 line is built with a Go toolchain older
+          # than the one in go.mod. Keep this in sync with .golangci.yml.
+          version: v2.14.0
+          args: --timeout=5m
+
+  vuln:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run govulncheck
+        uses: golang/govulncheck-action@v1.1.0
+        with:
+          go-version-file: go.mod
+          go-package: ./...
+
+  # Integration tests against a real PostgreSQL instance (the extdb driver).
+  postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: serpentseek_test
+          POSTGRES_USER: serpent
+          POSTGRES_PASSWORD: secret
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U serpent"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://serpent:secret@localhost:5432/serpentseek_test?sslmode=disable
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: PostgreSQL integration tests
+        run: go test ./internal/store/postgres/ -v
+
+  # The smoke test builds the binary, runs it against a throwaway SQLite file
+  # and exercises setup → search → history → SSE → playground → auth toggle.
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run end-to-end smoke test
+        run: ./scripts/e2e.sh
 
   web:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: web
@@ -52,8 +137,17 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Test
+        run: npm run test
+
       - name: Check
         run: npm run check
 
       - name: Build
         run: npm run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: E2E (Playwright)
+        run: npm run test:e2e

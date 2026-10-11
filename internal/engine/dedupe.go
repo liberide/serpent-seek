@@ -26,9 +26,7 @@ func normalizeLink(raw string) string {
 	}
 	u.Scheme = strings.ToLower(u.Scheme)
 	host := strings.ToLower(u.Host)
-	if strings.HasPrefix(host, "www.") {
-		host = strings.TrimPrefix(host, "www.")
-	}
+	host = strings.TrimPrefix(host, "www.")
 	u.Host = host
 	u.Fragment = ""
 	u.RawFragment = ""

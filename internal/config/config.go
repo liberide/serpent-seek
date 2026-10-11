@@ -17,6 +17,10 @@ import (
 // HTTP 403 "error code: 1010".
 const DefaultUserAgent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 
+// DefaultUpdateCheckURL is the official release feed. Any other value means the
+// instance checks a custom (unofficial) source and the UI marks it as such.
+const DefaultUpdateCheckURL = "https://api.github.com/repos/liberide/serpent-seek/releases/latest"
+
 // KV is the subset of the storage layer used to persist settings.
 type KV interface {
 	GetSetting(ctx context.Context, key string) (string, error)
@@ -59,6 +63,8 @@ type Config struct {
 	DefaultAuthEnabled         bool
 	DefaultHistoryRetention    int
 	DefaultLogsRetention       int
+	DefaultUsageRetention      int
+	DefaultAuditRetention      int
 	DefaultRetryHTTPCodes      []int
 	DefaultAPRetryCodes        []string
 	DefaultAPISerpentAPIKey    string
@@ -76,6 +82,16 @@ type Config struct {
 	DefaultHistoryCleanupRuns  bool
 	DefaultProviderTimeoutMs   int
 	DefaultTreatEmptyAsFailure bool
+	DefaultUpdateCheck         bool
+	DefaultUpdateCheckURL      string
+	DefaultUpdateCheckInterval int
+	DefaultWebhookURL          string
+	DefaultSearchRateLimit     int
+	DefaultSearchDailyQuota    int
+	DefaultChainTimeout        int
+	DefaultProviderFailures    int
+	DefaultProviderCooldown    int
+	DefaultDebug               bool
 
 	// envSet records which keys came from the environment.
 	envSet map[string]bool
@@ -86,9 +102,13 @@ const (
 	KeyAuthEnabled = "auth_enabled"
 	// KeyHideAuthOffNotice hides the sidebar warning shown while
 	// authentication is disabled.
-	KeyHideAuthOffNotice  = "hide_auth_off_notice"
-	KeyHistoryRetention   = "history_retention_days"
-	KeyLogsRetention      = "logs_retention_days"
+	KeyHideAuthOffNotice = "hide_auth_off_notice"
+	KeyHistoryRetention  = "history_retention_days"
+	KeyLogsRetention     = "logs_retention_days"
+	// KeyUsageRetention controls how long daily search-quota counters are kept.
+	KeyUsageRetention = "usage_retention_days"
+	// KeyAuditRetention controls how long the administrative audit trail is kept.
+	KeyAuditRetention     = "audit_retention_days"
 	KeyMaxConcurrency     = "max_concurrency"
 	KeyMaxAttempts        = "max_attempts"
 	KeyUserAgent          = "user_agent"
@@ -114,6 +134,32 @@ const (
 	// KeyAllowSparseSources lets answer-node sources (link+title, often no
 	// snippet) be mixed into the Row result as sparse rows.
 	KeyAllowSparseSources = "allow_sparse_sources"
+	// KeySearchRateLimit caps search requests per minute per API key (or per
+	// user/IP when no key is used). 0 disables the limit.
+	KeySearchRateLimit = "search_rate_limit_per_minute"
+	// KeySearchDailyQuota caps search requests per UTC day per API key (or per
+	// user/IP). 0 means unlimited.
+	KeySearchDailyQuota = "search_daily_quota"
+	// KeyChainTimeout caps the total wall-clock time of one search (0 disables).
+	KeyChainTimeout = "chain_timeout_seconds"
+	// KeyProviderFailures is how many consecutive provider failures trip the
+	// circuit breaker (0 disables it).
+	KeyProviderFailures = "provider_failure_threshold"
+	// KeyProviderCooldown is how many seconds a tripped provider is skipped.
+	KeyProviderCooldown = "provider_cooldown_seconds"
+	// KeyDebug enables the pprof debug endpoints under /debug/pprof.
+	KeyDebug = "debug"
+	// KeyUpdateCheck enables the outbound "newer release available" check.
+	KeyUpdateCheck = "update_check_enabled"
+	// KeyUpdateCheckURL is the release API endpoint (GitHub "latest release" by
+	// default); point it elsewhere or clear it to disable.
+	KeyUpdateCheckURL = "update_check_url"
+	// KeyUpdateCheckInterval is how many hours between automatic checks.
+	KeyUpdateCheckInterval = "update_check_interval_hours"
+	// KeyWebhookURL is an optional endpoint that receives a JSON POST for
+	// operational events (provider circuit-breaker trips, quota exhaustion).
+	// Empty disables outbound notifications.
+	KeyWebhookURL = "webhook_url"
 	// KeySetupToken persists the one-time first-run setup token across restarts
 	// so a restart never invalidates the token shown in the logs. It is not a
 	// UI-editable setting.
@@ -138,6 +184,8 @@ var envBindings = []SettingDef{
 	{Key: KeyHideAuthOffNotice, Env: "HIDE_AUTH_OFF_NOTICE", Type: "bool", Default: "false", Group: "auth"},
 	{Key: KeyHistoryRetention, Env: "HISTORY_RETENTION_DAYS", Type: "int", Default: "30", Group: "retention"},
 	{Key: KeyLogsRetention, Env: "LOGS_RETENTION_DAYS", Type: "int", Default: "14", Group: "retention"},
+	{Key: KeyUsageRetention, Env: "USAGE_RETENTION_DAYS", Type: "int", Default: "90", Group: "retention"},
+	{Key: KeyAuditRetention, Env: "AUDIT_RETENTION_DAYS", Type: "int", Default: "180", Group: "retention"},
 	{Key: KeyMaxConcurrency, Env: "MAX_CONCURRENCY", Type: "int", Default: "32", Group: "network"},
 	{Key: KeyMaxAttempts, Env: "MAX_ATTEMPTS", Type: "int", Default: "10", Group: "network"},
 	{Key: KeyUserAgent, Env: "USER_AGENT", Type: "string", Default: DefaultUserAgent, Group: "network"},
@@ -152,6 +200,16 @@ var envBindings = []SettingDef{
 	{Key: KeyTreatEmptyAsFail, Env: "TREAT_EMPTY_AS_FAIL", Type: "bool", Default: "true", Group: "network"},
 	{Key: KeyIgnoreRequestCount, Env: "IGNORE_REQUEST_COUNT", Type: "bool", Default: "false", Group: "network"},
 	{Key: KeyAllowSparseSources, Env: "ALLOW_SPARSE_SOURCES", Type: "bool", Default: "false", Group: "network"},
+	{Key: KeySearchRateLimit, Env: "SEARCH_RATE_LIMIT_PER_MINUTE", Type: "int", Default: "0", Group: "network"},
+	{Key: KeySearchDailyQuota, Env: "SEARCH_DAILY_QUOTA", Type: "int", Default: "0", Group: "network"},
+	{Key: KeyChainTimeout, Env: "CHAIN_TIMEOUT", Type: "int", Default: "0", Group: "network"},
+	{Key: KeyProviderFailures, Env: "PROVIDER_FAILURE_THRESHOLD", Type: "int", Default: "0", Group: "network"},
+	{Key: KeyProviderCooldown, Env: "PROVIDER_COOLDOWN_SECONDS", Type: "int", Default: "60", Group: "network"},
+	{Key: KeyDebug, Env: "DEBUG", Type: "bool", Default: "false", Group: "general"},
+	{Key: KeyUpdateCheck, Env: "UPDATE_CHECK_ENABLED", Type: "bool", Default: "true", Group: "general"},
+	{Key: KeyUpdateCheckURL, Env: "UPDATE_CHECK_URL", Type: "string", Default: DefaultUpdateCheckURL, Group: "general", EnvOnly: true},
+	{Key: KeyUpdateCheckInterval, Env: "UPDATE_CHECK_INTERVAL_HOURS", Type: "int", Default: "24", Group: "general"},
+	{Key: KeyWebhookURL, Env: "WEBHOOK_URL", Type: "string", Default: "", Group: "general"},
 }
 
 // Load reads the process configuration from the environment.
@@ -197,6 +255,8 @@ func Load() (*Config, error) {
 	c.DefaultAuthEnabled = envBool("AUTH_ENABLED", true)
 	c.DefaultHistoryRetention = envInt("HISTORY_RETENTION_DAYS", 30)
 	c.DefaultLogsRetention = envInt("LOGS_RETENTION_DAYS", 14)
+	c.DefaultUsageRetention = envInt("USAGE_RETENTION_DAYS", 90)
+	c.DefaultAuditRetention = envInt("AUDIT_RETENTION_DAYS", 180)
 	c.DefaultRetryHTTPCodes = envIntList("RETRY_HTTP_CODES", []int{429, 500, 502, 503, 504})
 	c.DefaultAPRetryCodes = envStrList("AP_RETRY_CODES")
 	c.DefaultAPISerpentAPIKey = envStr("APISERPENT_API_KEY", envStr("SERPENT_API_KEY", ""))
@@ -213,6 +273,16 @@ func Load() (*Config, error) {
 	c.DefaultGoogleCX = envStr("GOOGLE_CX", "")
 	c.DefaultGoogleDriver = strings.ToLower(envStr("GOOGLE_DRIVER", "vertex"))
 	c.DefaultTreatEmptyAsFailure = envBool("TREAT_EMPTY_AS_FAIL", true)
+	c.DefaultSearchRateLimit = envInt("SEARCH_RATE_LIMIT_PER_MINUTE", 0)
+	c.DefaultSearchDailyQuota = envInt("SEARCH_DAILY_QUOTA", 0)
+	c.DefaultChainTimeout = envInt("CHAIN_TIMEOUT", 0)
+	c.DefaultProviderFailures = envInt("PROVIDER_FAILURE_THRESHOLD", 0)
+	c.DefaultProviderCooldown = envInt("PROVIDER_COOLDOWN_SECONDS", 60)
+	c.DefaultDebug = envBool("DEBUG", false)
+	c.DefaultUpdateCheck = envBool("UPDATE_CHECK_ENABLED", true)
+	c.DefaultUpdateCheckURL = envStr("UPDATE_CHECK_URL", DefaultUpdateCheckURL)
+	c.DefaultUpdateCheckInterval = envInt("UPDATE_CHECK_INTERVAL_HOURS", 24)
+	c.DefaultWebhookURL = envStr("WEBHOOK_URL", "")
 
 	// Record which settings are provided by the environment.
 	for _, b := range envBindings {
@@ -319,6 +389,10 @@ func defaultResolved(cfg *Config, key string) string {
 		return strconv.Itoa(cfg.DefaultHistoryRetention)
 	case KeyLogsRetention:
 		return strconv.Itoa(cfg.DefaultLogsRetention)
+	case KeyUsageRetention:
+		return strconv.Itoa(cfg.DefaultUsageRetention)
+	case KeyAuditRetention:
+		return strconv.Itoa(cfg.DefaultAuditRetention)
 	case KeyMaxConcurrency:
 		return strconv.Itoa(cfg.MaxConcurrency)
 	case KeyMaxAttempts:
@@ -327,6 +401,26 @@ func defaultResolved(cfg *Config, key string) string {
 		return joinIntCSV(cfg.DefaultRetryHTTPCodes)
 	case KeyAPRetryCodes:
 		return strings.Join(cfg.DefaultAPRetryCodes, ",")
+	case KeySearchRateLimit:
+		return strconv.Itoa(cfg.DefaultSearchRateLimit)
+	case KeySearchDailyQuota:
+		return strconv.Itoa(cfg.DefaultSearchDailyQuota)
+	case KeyChainTimeout:
+		return strconv.Itoa(cfg.DefaultChainTimeout)
+	case KeyProviderFailures:
+		return strconv.Itoa(cfg.DefaultProviderFailures)
+	case KeyProviderCooldown:
+		return strconv.Itoa(cfg.DefaultProviderCooldown)
+	case KeyDebug:
+		return strconv.FormatBool(cfg.DefaultDebug)
+	case KeyUpdateCheck:
+		return strconv.FormatBool(cfg.DefaultUpdateCheck)
+	case KeyUpdateCheckURL:
+		return cfg.DefaultUpdateCheckURL
+	case KeyUpdateCheckInterval:
+		return strconv.Itoa(cfg.DefaultUpdateCheckInterval)
+	case KeyWebhookURL:
+		return cfg.DefaultWebhookURL
 	}
 	for _, b := range envBindings {
 		if b.Key == key {

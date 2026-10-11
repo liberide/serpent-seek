@@ -14,25 +14,95 @@
 		name: string;
 		prefix: string;
 		scopes: string;
+		chain_id: string;
 		last_used_at: string;
 		revoked_at: string;
+		used_today: number;
 	};
+	type Chain = { id: string; name: string; active: boolean };
 	type Passkey = { id: string; name: string; created_at: string; last_used_at: string };
 
 	let users = $state<User[]>([]);
 	let keys = $state<Key[]>([]);
+	let chains = $state<Chain[]>([]);
 	let passkeys = $state<Passkey[]>([]);
 	let newUser = $state({ name: '', role: 'viewer' });
 	let keyModal = $state(false);
-	let keyForm = $state({ user_id: '', name: '', scope: 'search' });
+	let keyForm = $state({ user_id: '', name: '', scope: 'search', chain_id: '' });
 	let createdKey = $state('');
 	let passkeyName = $state('passkey');
+	// Chain binding dialog (explicit Save/Cancel; never commits on selection).
+	let chainModal = $state(false);
+	let chainTarget = $state<Key | null>(null);
+	let chainDraft = $state('');
+	let chainSaving = $state(false);
+	let chainError = $state('');
 
 	async function load() {
 		users = await get<User[]>('/api/users');
 		keys = await get<Key[]>('/api/keys');
+		await refreshChains();
 		if ($session?.user?.id) {
 			passkeys = await get<Passkey[]>(`/api/users/${$session.user.id}/passkeys`).catch(() => []);
+		}
+	}
+
+	async function refreshChains() {
+		chains = await get<Chain[]>('/api/chains').catch(() => []);
+	}
+
+	// chainName renders the token's effective chain (default when unbound).
+	function chainName(id: string): string {
+		if (!id) return t('users.activeChain');
+		return chains.find((c) => c.id === id)?.name ?? t('users.unknownChain');
+	}
+
+	// chainMissing reports a binding whose chain no longer exists (FK clears it
+	// server-side, so this is only a transient/foreign-data state).
+	function chainMissing(key: Key): boolean {
+		return !!key.chain_id && !chains.some((c) => c.id === key.chain_id);
+	}
+
+	async function openKeyModal() {
+		createdKey = '';
+		keyForm = { ...keyForm, chain_id: '' };
+		keyModal = true;
+		await refreshChains();
+	}
+
+	async function openChainModal(key: Key) {
+		chainTarget = key;
+		chainDraft = key.chain_id ?? '';
+		chainError = '';
+		chainModal = true;
+		// Re-read the chain list so a chain created in another tab is selectable
+		// and a concurrently deleted one is flagged before saving.
+		await refreshChains();
+	}
+
+	function closeChainModal() {
+		if (chainSaving) return;
+		chainModal = false;
+		chainTarget = null;
+	}
+
+	async function saveChain() {
+		if (!chainTarget) return;
+		chainSaving = true;
+		chainError = '';
+		try {
+			await patch(`/api/keys/${chainTarget.id}`, { chain_id: chainDraft });
+			notify(t('users.chainUpdated'), 'success');
+			chainModal = false;
+			chainTarget = null;
+			await load();
+		} catch (error) {
+			// Keep the dialog open; the server is the source of truth, so refresh
+			// the chain list in case the target chain was removed meanwhile.
+			chainError = (error as Error).message;
+			await refreshChains();
+		} finally {
+			chainSaving = false;
 		}
 	}
 
@@ -156,17 +226,33 @@
 		<div class="card">
 			<div class="mb-3 flex items-center justify-between">
 				<h2 class="text-sm font-semibold uppercase tracking-wide text-slate-400">{t('users.apiKeys')}</h2>
-				<button class="btn text-xs" onclick={() => { keyModal = true; createdKey = ''; }}>{t('users.addKey')}</button>
+				<button class="btn text-xs" onclick={openKeyModal}>{t('users.addKey')}</button>
 			</div>
 			<table class="table">
-				<thead><tr><th>{t('users.prefix')}</th><th>{t('common.name')}</th><th>{t('users.scopes')}</th><th>{t('users.used')}</th><th></th></tr></thead>
+				<thead><tr><th>{t('users.prefix')}</th><th>{t('common.name')}</th><th>{t('users.scopes')}</th><th>{t('users.chain')}</th><th>{t('users.used')}</th><th>{t('users.usedToday')}</th><th></th></tr></thead>
 				<tbody>
 					{#each keys as key (key.id)}
 						<tr class={key.revoked_at ? 'opacity-40' : ''}>
 							<td class="font-mono text-xs">{key.prefix}</td>
 							<td class="text-xs">{key.name}</td>
 							<td class="text-xs">{key.scopes}</td>
+							<td class="text-xs">
+								{#if key.revoked_at}
+									<span class="text-slate-500">{chainName(key.chain_id)}</span>
+								{:else}
+									<button
+										class="badge border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700"
+										title={chainMissing(key) ? t('users.chainMissing') : t('users.changeChain')}
+										onclick={() => openChainModal(key)}
+									>
+										{#if chainMissing(key)}⚠ {t('users.unknownChain')}
+										{:else if key.chain_id}🔗 {chainName(key.chain_id)}
+										{:else}<span class="text-slate-400">{t('users.activeChain')}</span>{/if}
+									</button>
+								{/if}
+							</td>
 							<td class="text-xs">{key.last_used_at ? dateTime(key.last_used_at) : '—'}</td>
+							<td class="text-xs">{key.used_today ?? 0}</td>
 							<td>
 								{#if !key.revoked_at}
 									<button class="btn btn-danger px-2 py-0.5 text-xs" onclick={() => revoke(key)}>{t('users.revoke')}</button>
@@ -227,6 +313,13 @@
 					<option value="admin">admin</option>
 				</select>
 			</div>
+			<div>
+				<span class="label">{t('users.chain')}</span>
+				<select class="input" bind:value={keyForm.chain_id}>
+					<option value="">{t('users.activeChain')}</option>
+					{#each chains as chain (chain.id)}<option value={chain.id}>{chain.name}{chain.active ? ` (${t('common.active')})` : ''}</option>{/each}
+				</select>
+			</div>
 			<button class="btn btn-primary w-full" onclick={createKey} disabled={!keyForm.user_id}>{t('users.create')}</button>
 		</div>
 	{:else}
@@ -237,4 +330,32 @@
 		</div>
 		<button class="btn btn-primary mt-3 w-full" onclick={() => (keyModal = false)}>{t('users.done')}</button>
 	{/if}
+</Modal>
+
+<Modal open={chainModal} title={t('users.bindTitle')} onclose={closeChainModal}>
+	{#if chainTarget}
+		<p class="mb-3 text-xs text-slate-400">
+			<span class="font-mono text-slate-300">{chainTarget.prefix}</span> · {chainTarget.name}
+		</p>
+		<label class="label" for="token-chain">{t('users.chain')}</label>
+		<select id="token-chain" class="input" bind:value={chainDraft}>
+			<option value="">{t('users.activeChain')}</option>
+			{#each chains as chain (chain.id)}
+				<option value={chain.id}>{chain.name}{chain.active ? ` (${t('common.active')})` : ''}</option>
+			{/each}
+		</select>
+		<p class="mt-2 text-xs text-slate-500">{t('users.bindHint')}</p>
+		{#if chainDraft && !chains.some((c) => c.id === chainDraft)}
+			<p class="mt-2 text-xs text-amber-300">{t('users.chainMissing')}</p>
+		{/if}
+		{#if chainError}<p class="mt-2 text-xs text-rose-300">{chainError}</p>{/if}
+	{/if}
+	{#snippet footer()}
+		<div class="flex justify-end gap-2">
+			<button class="btn" onclick={closeChainModal} disabled={chainSaving}>{t('common.cancel')}</button>
+			<button class="btn btn-primary" onclick={saveChain} disabled={chainSaving}>
+				{chainSaving ? t('common.saving') : t('common.save')}
+			</button>
+		</div>
+	{/snippet}
 </Modal>

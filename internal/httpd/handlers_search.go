@@ -28,7 +28,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	if id := s.identity(r); id != nil && id.User != nil {
 		client = id.User.Name
 	}
-	out, err := s.engine.Execute(r.Context(), engine.Input{Query: body.Query, Count: body.Count, Client: client, UserID: s.identityUserID(r)})
+	out, err := s.engine.Execute(r.Context(), engine.Input{Query: body.Query, Count: body.Count, Client: client, UserID: s.identityUserID(r), ChainID: s.identityChainID(r)})
 	if err != nil {
 		s.log.Error("", "", "search failed: "+err.Error())
 		w.Header().Set("X-Serpent-Api", "-")
@@ -64,7 +64,7 @@ func (s *Server) handleSearchUI(w http.ResponseWriter, r *http.Request) {
 	if id := s.identity(r); id != nil && id.User != nil {
 		client = id.User.Name
 	}
-	req, err := s.engine.Start(r.Context(), engine.Input{Query: body.Query, Count: body.Count, Client: client, UserID: s.identityUserID(r)})
+	req, err := s.engine.Start(r.Context(), engine.Input{Query: body.Query, Count: body.Count, Client: client, UserID: s.identityUserID(r), ChainID: s.identityChainID(r)})
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "search_start_failed", err.Error())
 		return

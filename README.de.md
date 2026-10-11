@@ -1,6 +1,6 @@
 # 🐍 SerpentSeek — Self-hosted Search-Gateway für Open WebUI, MCP & 40+ Such-APIs
 
-[English](README.md "Read in English") | [Русский](README.ru.md "README по-русски") | **Deutsch** | [Français](README.fr.md "Lire en français") | [中文](README.zh.md "阅读中文版")
+[English](README.md "Read in English") | [Русский](README.ru.md "README по-русски") | **Deutsch** | [Français](README.fr.md "Lire en français") | [日本語](README.ja.md "日本語で読む") | [中文](README.zh.md "阅读中文版")
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE "Projektlizenz — GNU GPL v3.0")
 [![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod "Backend in Go geschrieben")
@@ -44,6 +44,10 @@ Details in `NOTICE`).
   logischer **Start**-Block fächert auf mehrere Anbieter auf, ein logischer
   **Verbinder** führt die Zweige zusammen und entfernt doppelte URLs, der Rest
   folgt Fallback-/Retry-Richtlinien; mehrere benannte Instanzen pro Treiber
+* 🔗 **Chain-Bindung pro Token** — jeden API-Schlüssel an eine eigene Kette
+  binden (unabhängig von der aktiven); ungebundene Token folgen der
+  Standard-/aktiven Kette, und beim Löschen einer Kette fallen gebundene Token
+  sicher auf sie zurück
 * 🔌 **Bereit für Open WebUI** — fertiger `/search`-Endpunkt: immer HTTP 200,
   `[{"link","title","snippet"}]`
 * 🤖 **MCP-Server** — `search`-Tool über streamable HTTP für Claude, Cursor, VS
@@ -54,7 +58,7 @@ Details in `NOTICE`).
   SameSite=Strict-Sessions mit CSRF, Write-only-Secrets, optional AES-GCM
 * 💾 **SQLite ⟷ PostgreSQL** — SQLite im WAL-Modus standardmäßig; das Profil
   `extdb` bringt PostgreSQL für Multi-Replika-Setups
-* 🌍 **Mehrsprachige UI** — English, Русский, Polski, Deutsch, Français, 中文
+* 🌍 **Mehrsprachige UI** — English, Русский, Polski, Deutsch, Français, 日本語, 中文
 * 🐳 **Ein Docker-Container** — Go-Backend mit eingebetteter SvelteKit-SPA
 
 ## Inhalt
@@ -73,7 +77,6 @@ Details in `NOTICE`).
 * [Entwicklung](#entwicklung)
 * [Abhängigkeiten und Lizenzen](#abhängigkeiten-und-lizenzen)
 * [Risiken und Vorbehalte](#risiken-und-vorbehalte)
-* [Screenshots](#screenshots)
 * [Struktur](#struktur)
 
 ## Schnellstart
@@ -329,6 +332,25 @@ genau wie zuvor ausführt:
 Paralleles Auffächern, Join-Zusammenführung und `on_success`-Fortsetzung gelten
 nur für Ketten, die tatsächlich einen Start-Block enthalten.
 
+### Chain-Bindung pro Token
+
+Jeder API-Schlüssel kann an eine bestimmte Kette gebunden werden, unabhängig
+davon, welche Kette aktiv ist. Die Bindung wird von einem Administrator auf der
+Seite **Benutzer & Schlüssel** gesetzt und gilt ab der nächsten Anfrage — ohne
+Schlüsselrotation:
+
+* ein gebundener Token führt immer seine Kette aus, auch eine inaktive; mehrere
+  Token können dieselbe Kette teilen;
+* ein ungebundener Token fällt auf die **Standardkette** zurück — das ist die
+  einzige `active`-Kette (eine separate „Default-Chain“ gibt es nicht);
+* verschwindet die gebundene Kette, wird die Bindung gelöscht und der Token
+  fällt sicher auf die aktive Kette zurück; eine bewusst gebundene, aber
+  fehlende Kette ist fail-closed;
+* die Ketten-Seite zeigt, wie viele Token eine Kette nutzen (`🔑 N` inkl. der
+  aktiven) und warnt vor dem Löschen einer Kette mit aktiven Token — nach
+  Bestätigung werden sie auf die Standardkette verschoben. Die aktive Kette
+  selbst kann nicht gelöscht werden.
+
 ## PostgreSQL (Profil `extdb`)
 
 ```bash
@@ -374,7 +396,7 @@ Feldes).
 
 ## Oberfläche und Lokalisierung
 
-Die UI ist in 6 Sprachen übersetzt:
+Die UI ist in 7 Sprachen übersetzt:
 
 | Code | Sprache |
 | --- | --- |
@@ -383,6 +405,7 @@ Die UI ist in 6 Sprachen übersetzt:
 | `pl` | Polski |
 | `de` | Deutsch |
 | `fr` | Français |
+| `ja` | 日本語 |
 | `zh` | 中文 |
 
 Der Sprachumschalter befindet sich oben rechts, neben der Schaltfläche
@@ -496,15 +519,6 @@ Repositories; **AGPLv3** — ein separater Dienst, keine Code-Abhängigkeit).
 * `TRUSTED_PROXIES` listet Proxys, deren Forwarded-Header akzeptiert werden;
   `BLOCK_PRIVATE_NETWORKS=true` beschränkt ausgehende Verbindungen auf öffentliche
   Adressen.
-
-## Screenshots
-
-Nach dem Start stehen folgende Ansichten zur Verfügung: Dashboard, Analytics
-(Anfrage-Diagramme, Filter und Erfolg/Fehler je Anbieter), History (mit
-farbiger Chain-Grafik und Schritt-Timeline), Chains (visueller Editor),
-Providers, Playground, MCP, Logs, Users, Settings. Lege eigene Screenshots unter
-`docs/screenshots/` ab (sie sind nicht im Repository enthalten, um das Image
-nicht aufzublähen).
 
 ## Struktur
 

@@ -15,8 +15,21 @@
 	let ready = $state(false);
 	let authDisabled = $state(false);
 	let version = $state('');
+	let update = $state<any>(null);
+	let updateDismissed = $state('');
 	const publicRoutes = ['/login', '/setup'];
 	const isPublic = $derived(publicRoutes.includes(page.url.pathname));
+
+	const showUpdate = $derived(
+		!!update?.update_available && !!update?.latest && update.latest !== updateDismissed
+	);
+
+	function dismissUpdate() {
+		updateDismissed = update?.latest ?? 'dismissed';
+		if (typeof localStorage !== 'undefined') {
+			localStorage.setItem('seek_update_dismissed', updateDismissed);
+		}
+	}
 
 	const nav = [
 		{ href: '/', labelKey: 'nav.dashboard', icon: '📊' },
@@ -27,15 +40,24 @@
 		{ href: '/playground', labelKey: 'nav.playground', icon: '🔎' },
 		{ href: '/mcp', labelKey: 'nav.mcp', icon: '🤖' },
 		{ href: '/logs', labelKey: 'nav.logs', icon: '📝' },
+		{ href: '/audit', labelKey: 'nav.audit', icon: '📋' },
 		{ href: '/users', labelKey: 'nav.users', icon: '👤' },
 		{ href: '/settings', labelKey: 'nav.settings', icon: '⚙️' }
 	];
 
 	onMount(async () => {
 		// Public endpoint, non-fatal: the sidebar shows the build version.
+		if (typeof localStorage !== 'undefined') {
+			updateDismissed = localStorage.getItem('seek_update_dismissed') ?? '';
+		}
 		api<string | { version?: string }>('/version', { noAuthRedirect: true })
 			.then((value) => {
 				version = (typeof value === 'string' ? value : (value?.version ?? '')).trim();
+			})
+			.catch(() => {});
+		api<any>('/api/update', { noAuthRedirect: true })
+			.then((value) => {
+				update = value;
 			})
 			.catch(() => {});
 
@@ -77,7 +99,7 @@
 				href="https://github.com/liberide/serpent-seek"
 				target="_blank"
 				rel="noopener noreferrer"
-				class="font-mono text-xs text-slate-500 transition hover:text-emerald-300"
+				class="block font-mono text-xs text-slate-500 transition hover:text-emerald-300"
 			>
 				{#if version}<span>v{version}</span><span class="mx-1">·</span>{/if}<span>Liberide 2026</span>
 			</a>
@@ -112,6 +134,35 @@
 				</div>
 			{/if}
 			<div class="mt-auto px-2 pt-4">
+				{#if showUpdate}
+					<div class="mb-1 flex items-center gap-1 text-xs">
+						<a
+							class="text-amber-300 transition hover:text-amber-200"
+							href={update.url || 'https://github.com/liberide/serpent-seek/releases'}
+							target="_blank"
+							rel="noopener noreferrer"
+							title={t('settings.info.updateAvailable', { version: update.latest })}
+						>
+							↑ {t('settings.info.updateAvailable', { version: update.latest })}
+						</a>
+						<button
+							class="text-slate-500 transition hover:text-slate-300"
+							title={t('common.dismiss')}
+							aria-label={t('common.dismiss')}
+							onclick={dismissUpdate}
+						>
+							×
+						</button>
+					</div>
+				{/if}
+				{#if update?.unofficial}
+					<div
+						class="mb-1 text-[10px] font-semibold uppercase tracking-wide text-amber-400"
+						title={t('settings.info.unofficialHint')}
+					>
+						{t('settings.info.unofficial')}
+					</div>
+				{/if}
 				<a
 					href="https://github.com/liberide/serpent-seek"
 					target="_blank"

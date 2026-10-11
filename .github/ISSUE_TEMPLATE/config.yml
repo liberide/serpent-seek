@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/liberide/serpent-seek/blob/main/SECURITY.md
+    about: Please report vulnerabilities privately, not as a public issue.
+  - name: Questions and deployment help
+    url: https://github.com/liberide/serpent-seek/blob/main/DEPLOY.md
+    about: Check the deployment guide before asking a question.

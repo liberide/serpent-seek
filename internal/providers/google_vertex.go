@@ -116,7 +116,7 @@ func (p googleProvider) searchEnterprise(ctx context.Context, q Query, c Credent
 	if merged["engine_id"] == "" {
 		merged["engine_id"] = c["engine_id"]
 	}
-	res := vertexSearchProvider{http: p.http}.Search(ctx, q, c, merged)
+	res := vertexSearchProvider(p).Search(ctx, q, c, merged)
 	res.Provider = p.Code()
 	return res
 }

@@ -12,6 +12,8 @@ type CleanupReport struct {
 	Requests int64 `json:"requests"`
 	Logs     int64 `json:"logs"`
 	Sessions int64 `json:"sessions"`
+	Usage    int64 `json:"usage"`
+	Audit    int64 `json:"audit"`
 	MS       int64 `json:"ms"`
 }
 
@@ -47,6 +49,27 @@ func (m *Manager) Cleanup(ctx context.Context) (*CleanupReport, error) {
 	}
 	report.Sessions = n
 
+	// Search quota counters only matter for the current day; keep a bounded,
+	// configurable window so the table cannot grow forever (0 disables pruning).
+	if usageDays := m.settings.GetInt(ctx, config.KeyUsageRetention); usageDays > 0 {
+		usageCutoff := time.Now().UTC().AddDate(0, 0, -usageDays).Format("2006-01-02")
+		n, err = m.store.DeleteOldUsage(ctx, usageCutoff)
+		if err != nil {
+			return nil, err
+		}
+		report.Usage = n
+	}
+
+	// Audit entries outlive logs; keep a longer configurable window.
+	if auditDays := m.settings.GetInt(ctx, config.KeyAuditRetention); auditDays > 0 {
+		auditCutoff := time.Now().UTC().AddDate(0, 0, -auditDays).Format(time.RFC3339Nano)
+		n, err = m.store.DeleteOldAudit(ctx, auditCutoff)
+		if err != nil {
+			return nil, err
+		}
+		report.Audit = n
+	}
+
 	// Refresh today's and yesterday's rollups.
 	today := time.Now().UTC()
 	_ = m.store.RecomputeDailyStats(ctx, today.Format("2006-01-02"))
@@ -54,7 +77,7 @@ func (m *Manager) Cleanup(ctx context.Context) (*CleanupReport, error) {
 
 	report.MS = time.Since(start).Milliseconds()
 	m.log.Info("", "", "cleanup removed requests="+itoa(report.Requests)+" logs="+itoa(report.Logs)+
-		" sessions="+itoa(report.Sessions)+" took="+itoa(report.MS)+"ms")
+		" sessions="+itoa(report.Sessions)+" usage="+itoa(report.Usage)+" audit="+itoa(report.Audit)+" took="+itoa(report.MS)+"ms")
 	return report, nil
 }
 

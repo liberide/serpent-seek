@@ -3,6 +3,7 @@ package httpd
 import (
 	"context"
 	"net/http"
+	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
@@ -20,6 +21,18 @@ func (s *Server) validateDraft(ctx context.Context, chain *store.Chain) engine.V
 	return engine.ValidateChain(chain, s.knownProviders(ctx), maxAttempts)
 }
 
+// fillChainKeyCounts annotates a chain with how many API tokens are bound to
+// it and how many of those are still active (not revoked). These values are
+// derived, not stored on the chain row.
+func (s *Server) fillChainKeyCounts(ctx context.Context, chain *store.Chain) {
+	if n, err := s.store.CountKeysByChain(ctx, chain.ID); err == nil {
+		chain.BoundKeys = n
+	}
+	if n, err := s.store.CountActiveKeysByChain(ctx, chain.ID); err == nil {
+		chain.ActiveBoundKeys = n
+	}
+}
+
 func (s *Server) handleListChains(w http.ResponseWriter, r *http.Request) {
 	chains, err := s.store.ListChains(r.Context())
 	if err != nil {
@@ -29,6 +42,9 @@ func (s *Server) handleListChains(w http.ResponseWriter, r *http.Request) {
 	if chains == nil {
 		chains = []*store.Chain{}
 	}
+	for _, c := range chains {
+		s.fillChainKeyCounts(r.Context(), c)
+	}
 	writeJSON(w, http.StatusOK, chains)
 }
 
@@ -37,6 +53,12 @@ func (s *Server) handleGetChain(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, r, http.StatusNotFound, "not_found", "chain not found")
 		return
+	}
+	if n, err := s.store.CountKeysByChain(r.Context(), chain.ID); err == nil {
+		chain.BoundKeys = n
+	}
+	if n, err := s.store.CountActiveKeysByChain(r.Context(), chain.ID); err == nil {
+		chain.ActiveBoundKeys = n
 	}
 	writeJSON(w, http.StatusOK, chain)
 }
@@ -59,6 +81,7 @@ func (s *Server) handleCreateChain(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
 		return
 	}
+	s.audit(ctx, r, "chain.create", chain.ID, map[string]string{"name": chain.Name})
 	writeJSON(w, http.StatusCreated, chain)
 }
 
@@ -88,15 +111,48 @@ func (s *Server) handleUpdateChain(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
 		return
 	}
+	s.audit(ctx, r, "chain.update", chain.ID, map[string]string{
+		"name": chain.Name, "version": strconv.Itoa(chain.Version),
+	})
+	if n, err := s.store.CountKeysByChain(ctx, chain.ID); err == nil {
+		chain.BoundKeys = n
+	}
+	if n, err := s.store.CountActiveKeysByChain(ctx, chain.ID); err == nil {
+		chain.ActiveBoundKeys = n
+	}
 	writeJSON(w, http.StatusOK, chain)
 }
 
 func (s *Server) handleDeleteChain(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteChain(r.Context(), chi.URLParam(r, "id")); err != nil {
+	ctx := r.Context()
+	id := chi.URLParam(r, "id")
+	chain, err := s.store.GetChain(ctx, id)
+	if err != nil {
+		writeError(w, r, http.StatusNotFound, "not_found", "chain not found")
+		return
+	}
+	// The active chain is the fallback for every unbound token; deleting it
+	// would leave those tokens without a runnable chain.
+	if chain.Active {
+		writeError(w, r, http.StatusConflict, "chain_active", "the active chain cannot be deleted; activate another chain first")
+		return
+	}
+	// Bound tokens (including active ones) are simply unbound and fall back to
+	// the default (active) chain, so deleting a chain never breaks a token.
+	active, _ := s.store.CountActiveKeysByChain(ctx, id)
+	unbound, err := s.store.ClearKeyChainRefs(ctx, id)
+	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	if err := s.store.DeleteChain(ctx, id); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
+		return
+	}
+	s.audit(ctx, r, "chain.delete", id, map[string]string{
+		"name": chain.Name, "unbound_keys": strconv.FormatInt(unbound, 10),
+	})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "unbound_keys": unbound, "moved_to_default": active})
 }
 
 // handleActivateChain makes a chain active. A chain with graph errors
@@ -122,6 +178,7 @@ func (s *Server) handleActivateChain(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
 		return
 	}
+	s.audit(ctx, r, "chain.activate", chain.ID, map[string]string{"name": chain.Name})
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
@@ -155,6 +212,7 @@ func (s *Server) handleDuplicateChain(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
 		return
 	}
+	s.audit(ctx, r, "chain.duplicate", copyChain.ID, map[string]string{"source": src.ID, "name": copyChain.Name})
 	writeJSON(w, http.StatusCreated, copyChain)
 }
 

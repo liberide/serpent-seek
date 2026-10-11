@@ -2,7 +2,6 @@ package providers
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -119,10 +118,4 @@ func extractAPISerpentRows(data map[string]any) Rows {
 		// Some deployments return organic[] at the top level.
 		return collectRows(data["organic"], []string{"url", "link"}, "title", []string{"snippet", "description", "content"})
 	}
-}
-
-// readAllLimited is a small helper kept for provider tests.
-func readAllLimited(r io.Reader, limit int64) []byte {
-	b, _ := io.ReadAll(io.LimitReader(r, limit))
-	return b
 }

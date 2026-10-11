@@ -3,10 +3,11 @@ import en from './i18n/en.json';
 import pl from './i18n/pl.json';
 import de from './i18n/de.json';
 import fr from './i18n/fr.json';
+import ja from './i18n/ja.json';
 import zh from './i18n/zh.json';
 import languages from './i18n/languages.json';
 
-export type Locale = 'ru' | 'en' | 'pl' | 'de' | 'fr' | 'zh';
+export type Locale = 'ru' | 'en' | 'pl' | 'de' | 'fr' | 'ja' | 'zh';
 
 function flatten(
 	obj: Record<string, unknown>,
@@ -30,6 +31,7 @@ const dictionaries: Record<Locale, Record<string, string>> = {
 	pl: flatten(pl),
 	de: flatten(de),
 	fr: flatten(fr),
+	ja: flatten(ja),
 	zh: flatten(zh)
 };
 

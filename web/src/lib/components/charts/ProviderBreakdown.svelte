@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { formatInt, formatPct, ms } from '$lib/format';
+	import { formatCost, formatInt, formatPct, ms } from '$lib/format';
 	import { t } from '$lib/i18n.svelte';
 
 	type ProviderStat = {
@@ -14,6 +14,8 @@
 		skip: number;
 		avg_ms: number;
 		success_rate: number;
+		cost?: number;
+		cost_configured?: boolean;
 	};
 
 	let { providers = [] }: { providers?: ProviderStat[] } = $props();
@@ -124,6 +126,11 @@
 					<span class="text-slate-500" title={t('analytics.provider.avg')}>
 						{ms(provider.avg_ms)}
 					</span>
+					{#if provider.cost_configured}
+						<span class="text-teal-300" title={t('analytics.provider.cost')}>
+							{t('analytics.provider.cost')}: {formatCost(provider.cost ?? 0)}
+						</span>
+					{/if}
 				</div>
 			</div>
 		{/each}

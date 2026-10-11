@@ -21,6 +21,9 @@ type Identity struct {
 	Scopes map[string]bool
 	Via    string // session|key|disabled
 	KeyID  string
+	// ChainID is the chain bound to the API key this request was authenticated
+	// with (empty for sessions or unbound keys, meaning "use the active chain").
+	ChainID string
 }
 
 // HasScope reports whether the identity carries a scope.
@@ -137,7 +140,7 @@ func (a *Authenticator) resolveKey(ctx context.Context, token string) (*Identity
 	scopes["search"] = true
 	key.LastUsedAt = store.Now()
 	_ = a.Store.UpdateAPIKey(ctx, key)
-	return &Identity{User: user, Scopes: scopes, Via: "key", KeyID: key.ID}, nil
+	return &Identity{User: user, Scopes: scopes, Via: "key", KeyID: key.ID, ChainID: key.ChainID}, nil
 }
 
 // LoginWithKey validates an API key for the login endpoint, regardless of the

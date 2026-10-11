@@ -1,6 +1,13 @@
 services:
   serpentseek:
-    build: .
+    build:
+      context: .
+      # App version/commit/date baked into the binary. `make up` fills these; a
+      # plain `docker compose up --build` falls back to the 1.1.0 default.
+      args:
+        TAG: ${APP_VERSION:-1.1.0}
+        COMMIT: ${APP_COMMIT:-dev}
+        BUILD_DATE: ${APP_BUILD_DATE:-unknown}
     container_name: serpentseek
     ports: ["8080:8080"]
     env_file: [.env]
@@ -8,6 +15,23 @@ services:
     restart: unless-stopped
     security_opt: [no-new-privileges:true]
     pids_limit: 512
+    # Hardening: immutable root filesystem (the data volume stays writable),
+    # bounded memory/CPU and rotated container logs.
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 512m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Start only after PostgreSQL is healthy when the extdb profile is active;
+    # optional so the default SQLite stack does not depend on it.
+    depends_on:
+      postgres:
+        condition: service_healthy
+        required: false
     networks: [backend]
 
   postgres:
@@ -23,6 +47,18 @@ services:
     volumes: [serpentseek_pg:/var/lib/postgresql/data]
     restart: unless-stopped
     security_opt: [no-new-privileges:true]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U serpent -d serpentseek"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    mem_limit: 512m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks: [backend]
 
 # SearXNG is NOT part of this stack: SerpentSeek connects to an externally

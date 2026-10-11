@@ -1,33 +1,55 @@
+version: "2"
+
 run:
-  timeout: 5m
   tests: true
 
 linters:
+  # Default (standard) set: errcheck, govet, ineffassign, staticcheck, unused.
+  # contextcheck is deliberately NOT enabled: it flags every logger call that
+  # does not thread a context through the logging package, which is by design
+  # (see internal/logging). Enabling it produces ~30 false positives.
   enable:
-    - govet
-    - errcheck
-    - staticcheck
-    - ineffassign
-    - unused
-    - gofmt
-    - goimports
-    - misspell
     - bodyclose
-    - contextcheck
+    - misspell
     - noctx
     - rowserrcheck
     - sqlclosecheck
     - unconvert
     - wastedassign
-
-linters-settings:
-  goimports:
-    local-prefixes: github.com/liberide/serpent-seek
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    rules:
+      # Tests may build requests without a context.
+      - linters: [noctx]
+        path: _test\.go
+      # Unchecked errors are common in test setup.
+      - linters: [errcheck]
+        path: _test\.go
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
 
 issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
   max-issues-per-linter: 0
   max-same-issues: 0
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/liberide/serpent-seek
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

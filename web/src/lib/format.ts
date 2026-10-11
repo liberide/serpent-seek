@@ -16,6 +16,7 @@ const intlLocales: Record<Locale, string> = {
 	pl: 'pl-PL',
 	de: 'de-DE',
 	fr: 'fr-FR',
+	ja: 'ja-JP',
 	zh: 'zh-CN'
 };
 
@@ -35,6 +36,30 @@ function numberFormatter(locale: Locale, options: Intl.NumberFormatOptions): Int
 export function formatInt(value: number | undefined | null): string {
 	if (value === undefined || value === null || Number.isNaN(value)) return '—';
 	return numberFormatter(getLocale(), { maximumFractionDigits: 0 }).format(value);
+}
+
+/** Formats an estimated cost with up to 6 fraction digits (no fixed padding). */
+export function formatCost(value: number | undefined | null): string {
+	if (value === undefined || value === null || Number.isNaN(value)) return '—';
+	return numberFormatter(getLocale(), { minimumFractionDigits: 0, maximumFractionDigits: 6 }).format(value);
+}
+
+/** Formats an uptime in seconds as e.g. "3d 4h 5m", "5m 3s" or "12s". */
+export function formatUptime(seconds: number | undefined | null): string {
+	if (seconds === undefined || seconds === null || Number.isNaN(seconds)) return '—';
+	let s = Math.max(0, Math.floor(seconds));
+	const days = Math.floor(s / 86400);
+	s %= 86400;
+	const hours = Math.floor(s / 3600);
+	s %= 3600;
+	const minutes = Math.floor(s / 60);
+	s %= 60;
+	const parts: string[] = [];
+	if (days) parts.push(`${days}d`);
+	if (hours) parts.push(`${hours}h`);
+	if (minutes) parts.push(`${minutes}m`);
+	if (s || parts.length === 0) parts.push(`${s}s`);
+	return parts.join(' ');
 }
 
 /** Formats a percentage with the given number of fraction digits. */

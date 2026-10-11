@@ -33,6 +33,7 @@
 		version: number;
 		nodes: ChainNode[];
 		edges: any[];
+		bound_keys?: number;
 	};
 
 	const id = $derived(page.params.id);
@@ -122,6 +123,7 @@
 				<input class="input max-w-xs" bind:value={draft.name} oninput={() => { dirty = true; }} />
 			{/if}
 			{#if chain?.active}<StatusBadge status="ok" label={t('common.active')} />{/if}
+			{#if chain?.bound_keys}<span class="badge bg-sky-500/15 text-sky-300" title={t('chains.boundHint')}>🔑 {t('chains.boundKeys', { count: chain.bound_keys })}</span>{/if}
 		</div>
 		<div class="flex gap-2">
 			<button class="btn" onclick={validate}>{t('chain.validate')}</button>
