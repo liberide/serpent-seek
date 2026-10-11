@@ -1514,6 +1514,9 @@ func (s *Store) Analytics(ctx context.Context, f store.AnalyticsFilter) (*store.
 		where = append(where, "id IN (SELECT request_id FROM request_steps WHERE provider = ?)")
 		args = append(args, f.Provider)
 	}
+	// Owner filtering for the per-user analytics view. The anonymous bucket
+	// covers requests without a user (auth disabled or an anonymous caller).
+	where, args = appendUserFilter(where, args, f.UserID, "user_id")
 	clause := strings.Join(where, " AND ")
 
 	out := &store.AnalyticsReport{}
@@ -1624,9 +1627,12 @@ func (s *Store) Analytics(ctx context.Context, f store.AnalyticsFilter) (*store.
 		return nil, err
 	}
 
-	// Per-provider outcomes from executed steps. Deliberately uses only the
-	// date range so the comparison panel stays complete and the provider filter
-	// selector keeps offering every provider.
+	// Per-provider outcomes from executed steps. Uses only the date range (plus
+	// the owner filter) so the comparison panel stays complete and the provider
+	// filter selector keeps offering every provider.
+	provWhere := []string{"r.created_at >= ?", "r.created_at < ?"}
+	provArgs := []any{fromTS, toTS}
+	provWhere, provArgs = appendUserFilter(provWhere, provArgs, f.UserID, "r.user_id")
 	provRows, err := s.query(ctx,
 		`SELECT COALESCE(s.provider, ''),
 		        COUNT(*),
@@ -1637,8 +1643,8 @@ func (s *Store) Analytics(ctx context.Context, f store.AnalyticsFilter) (*store.
 		        COALESCE(AVG(CASE WHEN s.status IN ('ok', 'empty', 'fail') THEN s.took_ms ELSE NULL END), 0),
 		        COALESCE(SUM(s.cost), 0)
 		 FROM request_steps s JOIN requests r ON r.id = s.request_id
-		 WHERE r.created_at >= ? AND r.created_at < ?
-		 GROUP BY COALESCE(s.provider, '') ORDER BY COUNT(*) DESC`, fromTS, toTS)
+		 WHERE `+strings.Join(provWhere, " AND ")+`
+		 GROUP BY COALESCE(s.provider, '') ORDER BY COUNT(*) DESC`, provArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -1672,6 +1678,7 @@ func (s *Store) Analytics(ctx context.Context, f store.AnalyticsFilter) (*store.
 		costWhere = append(costWhere, "r.id IN (SELECT request_id FROM request_steps WHERE provider = ?)")
 		costArgs = append(costArgs, f.Provider)
 	}
+	costWhere, costArgs = appendUserFilter(costWhere, costArgs, f.UserID, "r.user_id")
 	if err := s.queryRow(ctx,
 		`SELECT COALESCE(SUM(s.cost), 0) FROM request_steps s JOIN requests r ON r.id = s.request_id WHERE `+
 			strings.Join(costWhere, " AND "), costArgs...).Scan(&out.CostTotal); err != nil {
@@ -1715,6 +1722,94 @@ func (s *Store) percentileMS(ctx context.Context, clause string, args []any, cou
 		return 0
 	}
 	return value
+}
+
+// appendUserFilter adds the owner condition for userID to a WHERE clause
+// builder. col is the (optionally table-qualified) user_id column. The special
+// store.AnonymousUserID matches rows without an owner; an empty userID adds no
+// condition (no filtering). It returns the extended clause and args.
+func appendUserFilter(where []string, args []any, userID, col string) ([]string, []any) {
+	switch {
+	case userID == "":
+		return where, args
+	case userID == store.AnonymousUserID:
+		return append(where, "("+col+" IS NULL OR "+col+" = '')"), args
+	default:
+		return append(where, col+" = ?"), append(args, userID)
+	}
+}
+
+// UsersOverview returns per-owner request aggregates for an inclusive UTC
+// date range, ordered by volume. Owners without a user (auth disabled or an
+// anonymous caller) are reported under store.AnonymousUserID.
+func (s *Store) UsersOverview(ctx context.Context, from, to string) ([]store.UserStat, error) {
+	if from == "" {
+		from = dateOnlyMinus(29)
+	}
+	if to == "" {
+		to = dateOnlyMinus(0)
+	}
+	fromTS := dateStartUTC(from)
+	toTS := dateEndExclusiveUTC(to)
+	if fromTS == "" || toTS == "" {
+		return nil, fmt.Errorf("store: invalid users overview date range %q..%q", from, to)
+	}
+
+	out := []store.UserStat{}
+	byUser := make(map[string]int) // owner id -> index in out
+	if err := s.forEachRow(ctx,
+		`SELECT COALESCE(user_id, ''),
+		        COUNT(*),
+		        COALESCE(SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END), 0),
+		        COALESCE(SUM(CASE WHEN status = 'empty' THEN 1 ELSE 0 END), 0),
+		        COALESCE(SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END), 0),
+		        COALESCE(AVG(total_ms), 0),
+		        MAX(created_at)
+		 FROM requests
+		 WHERE created_at >= ? AND created_at < ?
+		 GROUP BY COALESCE(user_id, '')
+		 ORDER BY COUNT(*) DESC, COALESCE(user_id, '')`, []any{fromTS, toTS},
+		func(rows *sql.Rows) error {
+			var u store.UserStat
+			var avg float64
+			if err := rows.Scan(&u.UserID, &u.Requests, &u.OK, &u.Empty, &u.Fail, &avg, &u.LastActive); err != nil {
+				return err
+			}
+			u.AvgMS = int(avg)
+			if u.UserID == "" {
+				u.UserID = store.AnonymousUserID
+			}
+			byUser[u.UserID] = len(out)
+			out = append(out, u)
+			return nil
+		}); err != nil {
+		return nil, err
+	}
+	// Attach the summed step cost per owner (0 when no provider has a cost
+	// configured). A separate pass keeps the request aggregates a simple
+	// single-table GROUP BY.
+	if err := s.forEachRow(ctx,
+		`SELECT COALESCE(r.user_id, ''), COALESCE(SUM(s.cost), 0)
+		 FROM request_steps s JOIN requests r ON r.id = s.request_id
+		 WHERE r.created_at >= ? AND r.created_at < ?
+		 GROUP BY COALESCE(r.user_id, '')`, []any{fromTS, toTS},
+		func(rows *sql.Rows) error {
+			var id string
+			var cost float64
+			if err := rows.Scan(&id, &cost); err != nil {
+				return err
+			}
+			if id == "" {
+				id = store.AnonymousUserID
+			}
+			if i, ok := byUser[id]; ok {
+				out[i].Cost = cost
+			}
+			return nil
+		}); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // RecomputeDailyStats recalculates the rollup row for one date (YYYY-MM-DD).

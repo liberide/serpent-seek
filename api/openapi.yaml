@@ -1433,12 +1433,40 @@ paths:
         - { name: to, in: query, schema: { type: string, format: date }, description: Inclusive end date (UTC). Defaults to today. }
         - { name: provider, in: query, schema: { type: string }, description: Only include requests that attempted this provider (successful, failed or skipped), matched via executed steps. }
         - { name: status, in: query, schema: { type: string, enum: [ok, empty, fail, running] }, description: Only count requests with this final status. }
+        - name: user_id
+          in: query
+          required: false
+          schema: { type: string }
+          description: >
+            Narrow the report to one owner: a user id, or the literal `anonymous`
+            for requests made without a user (auth disabled or an anonymous
+            caller). Omitted = all owners. Non-admin callers may only pass their
+            own user id (403 otherwise).
       responses:
         "200":
           description: Analytics bundle
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AnalyticsResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/stats/users:
+    get:
+      tags: [stats]
+      summary: Per-user analytics leaderboard for a date range (administrators only)
+      description: >
+        Request aggregates for every owner (users plus the `anonymous` bucket),
+        merged with account data, active key counts and the runtime quota
+        status. Users without traffic in the period are returned zero-filled.
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date }, description: Inclusive start date (UTC). Defaults to the first day of the current month. }
+        - { name: to, in: query, schema: { type: string, format: date }, description: Inclusive end date (UTC). Defaults to today. }
+      responses:
+        "200":
+          description: Leaderboard bundle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UsersAnalyticsResponse" }
 
   # ---------------- playground ----------------
   /api/search/ui:
@@ -1539,6 +1567,12 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
           example: { error: { code: not_found, message: "entity not found", rid: "0008-1c77" } }
+    Forbidden:
+      description: Insufficient permissions (e.g. a non-admin reading another owner's data)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example: { error: { code: forbidden, message: "admin scope required", rid: "0008-1c77" } }
     Conflict:
       description: State conflict (unique violation, rule violation, etc.)
       content:
@@ -2215,6 +2249,51 @@ components:
         empty: { type: integer }
         fail: { type: integer }
         avg_ms: { type: integer }
+
+    UsersAnalyticsResponse:
+      type: object
+      properties:
+        range:
+          type: object
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/UserStatRow" }
+        totals:
+          type: object
+          properties:
+            requests: { type: integer }
+            ok: { type: integer }
+            empty: { type: integer }
+            fail: { type: integer }
+            active_users: { type: integer, description: Owners with at least one request in the period (anonymous excluded) }
+            cost: { type: number, description: Summed cost of executed attempts across all owners }
+            cost_configured: { type: boolean, description: false = no cost configured, so the UI shows a dash instead of 0 }
+
+    UserStatRow:
+      type: object
+      properties:
+        user_id:
+          type: string
+          description: User id, or the literal `anonymous` for requests made without a user
+        name: { type: string, description: Account name (empty for the anonymous bucket and deleted users) }
+        role: { type: string, enum: [admin, viewer] }
+        disabled: { type: boolean }
+        created_at: { type: string, format: date-time }
+        exists: { type: boolean, description: false = the user account was deleted but its traffic remains in history }
+        requests: { type: integer }
+        ok: { type: integer }
+        empty: { type: integer }
+        fail: { type: integer }
+        avg_ms: { type: integer }
+        last_active: { type: string, format: date-time, description: Latest request timestamp in the period (absent when no traffic) }
+        cost: { type: number, description: Summed cost of the owner's executed attempts (absent when 0) }
+        keys_count: { type: integer, description: Active (non-revoked) API keys owned by the user }
+        quota:
+          $ref: "#/components/schemas/UserQuotaStatus"
+          description: Runtime per-user quota view; absent when the user is unlimited.
 
     # ---------- auth ----------
     User:

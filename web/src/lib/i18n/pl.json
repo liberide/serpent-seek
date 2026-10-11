@@ -89,6 +89,10 @@
 	"analytics": {
 		"title": "Statystyki i analityka",
 		"subtitle": "Obciążenie, skuteczność i aktywność dostawców",
+		"nav": {
+			"overview": "Ogólne",
+			"users": "Per użytkownik"
+		},
 		"from": "Od",
 		"to": "Do",
 		"allProviders": "Wszyscy dostawcy",
@@ -165,6 +169,23 @@
 			"empty": "Bez wyników",
 			"fail": "Błędy",
 			"running": "W trakcie"
+		},
+		"users": {
+			"subtitle": "Obciążenie, skuteczność i limity per użytkownik",
+			"anonymous": "Anonimowy",
+			"anonymousHint": "Zapytania bez użytkownika (wyłączona autoryzacja lub nieuwierzytelnieni klienci)",
+			"deleted": "użytkownik usunięty",
+			"back": "Wróć do wszystkich użytkowników",
+			"lastActive": "Ostatnia aktywność",
+			"never": "nigdy",
+			"keys": "Klucze API",
+			"share": "Udział wśród wszystkich zapytań",
+			"activeUsers": "Aktywni użytkownicy",
+			"activeUsersHint": "co najmniej jedno zapytanie ({n} łącznie)",
+			"registered": "Utworzono:",
+			"selectHint": "Otwórz analizę użytkownika",
+			"providerHint": "Dostawcy próbowani przez zapytania tego użytkownika w wybranym okresie.",
+			"detailHint": "Zapytania użytkownika {name} za {from} — {to}"
 		}
 	},
 	"history": {

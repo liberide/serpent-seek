@@ -89,6 +89,10 @@
 	"analytics": {
 		"title": "Statistiques et analytique",
 		"subtitle": "Charge, réussite et activité des fournisseurs",
+		"nav": {
+			"overview": "Général",
+			"users": "Par utilisateur"
+		},
 		"from": "Du",
 		"to": "Au",
 		"allProviders": "Tous les fournisseurs",
@@ -165,6 +169,23 @@
 			"empty": "Sans résultat",
 			"fail": "Échecs",
 			"running": "En cours"
+		},
+		"users": {
+			"subtitle": "Charge, réussite et quotas par utilisateur",
+			"anonymous": "Anonyme",
+			"anonymousHint": "Requêtes sans utilisateur (authentification désactivée ou appelants non authentifiés)",
+			"deleted": "utilisateur supprimé",
+			"back": "Retour à tous les utilisateurs",
+			"lastActive": "Dernière activité",
+			"never": "jamais",
+			"keys": "Clés API",
+			"share": "Part de toutes les requêtes",
+			"activeUsers": "Utilisateurs actifs",
+			"activeUsersHint": "au moins une requête ({n} au total)",
+			"registered": "Créé :",
+			"selectHint": "Ouvrir l'analyse par utilisateur",
+			"providerHint": "Fournisseurs tentés par les requêtes de cet utilisateur sur la période sélectionnée.",
+			"detailHint": "Requêtes de {name} pour {from} — {to}"
 		}
 	},
 	"history": {

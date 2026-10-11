@@ -168,6 +168,9 @@ type Storage interface {
 	Summary(ctx context.Context, days int) (*StatsSummary, error)
 	SummaryForUser(ctx context.Context, days int, userID string) (*StatsSummary, error)
 	Analytics(ctx context.Context, f AnalyticsFilter) (*AnalyticsReport, error)
+	// UsersOverview returns per-owner aggregates (users plus the anonymous
+	// bucket) over an inclusive UTC date range for the leaderboard.
+	UsersOverview(ctx context.Context, from, to string) ([]UserStat, error)
 	RecomputeDailyStats(ctx context.Context, date string) error
 
 	// Maintenance

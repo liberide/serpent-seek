@@ -375,14 +375,21 @@ type StatsSummary struct {
 	Recent        []*Request  `json:"recent"`
 }
 
+// AnonymousUserID is the pseudo identifier used by the analytics API for
+// requests that were made without a user (auth disabled, or an anonymous
+// caller). It never matches a real user id (those are UUIDs).
+const AnonymousUserID = "anonymous"
+
 // AnalyticsFilter narrows an analytics report. From and To are inclusive
 // calendar dates (YYYY-MM-DD) interpreted in UTC; empty values fall back to the
-// last 30 days.
+// last 30 days. UserID narrows the report to one owner: a user id, or
+// AnonymousUserID for requests without a user; empty means no filtering.
 type AnalyticsFilter struct {
 	From     string
 	To       string
 	Provider string
 	Status   string
+	UserID   string
 }
 
 // ProviderStat aggregates request outcomes for one provider over a period.
@@ -462,4 +469,20 @@ type AnalyticsProvider struct {
 	// CostConfigured reports whether this provider has a cost configured (or
 	// recorded), so the UI can show "—" instead of a misleading 0.
 	CostConfigured bool `json:"cost_configured"`
+}
+
+// UserStat aggregates request outcomes for one owner over a period; it backs
+// the per-user analytics leaderboard. UserID is a real user id or
+// AnonymousUserID for requests made without a user.
+type UserStat struct {
+	UserID     string  `json:"user_id"`
+	Requests   int     `json:"requests"`
+	OK         int     `json:"ok"`
+	Empty      int     `json:"empty"`
+	Fail      int     `json:"fail"`
+	AvgMS      int     `json:"avg_ms"`
+	LastActive string  `json:"last_active,omitempty"`
+	// Cost is the summed per-request cost of the owner's executed attempts
+	// (0 when no provider has a cost configured).
+	Cost float64 `json:"cost,omitempty"`
 }

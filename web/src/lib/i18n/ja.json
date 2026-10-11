@@ -89,6 +89,10 @@
 	"analytics": {
 		"title": "統計と分析",
 		"subtitle": "負荷、成功率、プロバイダーの活動",
+		"nav": {
+			"overview": "全体",
+			"users": "ユーザー別"
+		},
 		"from": "開始",
 		"to": "終了",
 		"allProviders": "すべてのプロバイダー",
@@ -165,6 +169,23 @@
 			"empty": "結果なし",
 			"fail": "失敗",
 			"running": "実行中"
+		},
+		"users": {
+			"subtitle": "ユーザーごとの負荷・成功率・上限",
+			"anonymous": "匿名",
+			"anonymousHint": "ユーザーなしのリクエスト（認証無効または未認証の呼び出し）",
+			"deleted": "削除済みユーザー",
+			"back": "ユーザー一覧に戻る",
+			"lastActive": "最終アクティビティ",
+			"never": "なし",
+			"keys": "APIキー",
+			"share": "全リクエストに占める割合",
+			"activeUsers": "アクティブユーザー",
+			"activeUsersHint": "1件以上のリクエスト（合計 {n}）",
+			"registered": "登録:",
+			"selectHint": "ユーザー別分析を開く",
+			"providerHint": "選択した期間にこのユーザーのリクエストが試みたプロバイダー。",
+			"detailHint": "{name} のリクエスト（{from} — {to}）"
 		}
 	},
 	"history": {

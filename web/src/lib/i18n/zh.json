@@ -89,6 +89,10 @@
 	"analytics": {
 		"title": "统计与分析",
 		"subtitle": "负载、成功率与提供商活动",
+		"nav": {
+			"overview": "总览",
+			"users": "按用户"
+		},
 		"from": "从",
 		"to": "至",
 		"allProviders": "全部提供商",
@@ -165,6 +169,23 @@
 			"empty": "无结果",
 			"fail": "错误",
 			"running": "进行中"
+		},
+		"users": {
+			"subtitle": "按用户的负载、成功率和限额",
+			"anonymous": "匿名",
+			"anonymousHint": "无用户的请求（身份验证已禁用或未经身份验证的调用方）",
+			"deleted": "用户已删除",
+			"back": "返回所有用户",
+			"lastActive": "最后活动",
+			"never": "从未",
+			"keys": "API 密钥",
+			"share": "占所有请求的比例",
+			"activeUsers": "活跃用户",
+			"activeUsersHint": "至少一次请求（共 {n} 次）",
+			"registered": "注册于：",
+			"selectHint": "打开用户分析",
+			"providerHint": "所选时间内该用户的请求尝试的提供商。",
+			"detailHint": "{name} 在 {from} — {to} 的请求"
 		}
 	},
 	"history": {

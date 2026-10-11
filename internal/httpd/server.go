@@ -164,6 +164,7 @@ func (s *Server) Routes() http.Handler {
 
 			r.Group(func(r chi.Router) {
 				r.Use(s.mw.RequireAdmin)
+				r.Get("/stats/users", s.handleStatsUsers)
 				r.Put("/settings", s.handlePutSettings)
 				r.Post("/settings/storage/test", s.handleStorageTest)
 				r.Get("/maintenance/status", s.handleMaintenanceStatus)

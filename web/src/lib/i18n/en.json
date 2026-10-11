@@ -89,6 +89,10 @@
 	"analytics": {
 		"title": "Statistics & analytics",
 		"subtitle": "Load, success and provider activity",
+		"nav": {
+			"overview": "Overview",
+			"users": "By users"
+		},
 		"from": "From",
 		"to": "To",
 		"allProviders": "All providers",
@@ -165,6 +169,23 @@
 			"empty": "No results",
 			"fail": "Fail",
 			"running": "Running"
+		},
+		"users": {
+			"subtitle": "Load, success and quotas per user",
+			"anonymous": "Anonymous",
+			"anonymousHint": "Requests made without a user (auth disabled or unauthenticated callers)",
+			"deleted": "user deleted",
+			"back": "Back to all users",
+			"lastActive": "Last active",
+			"never": "never",
+			"keys": "API keys",
+			"share": "Share of all requests",
+			"activeUsers": "Active users",
+			"activeUsersHint": "with at least one request ({n} in total)",
+			"registered": "Registered:",
+			"selectHint": "Open per-user analytics",
+			"providerHint": "Providers attempted by this user's requests in the selected period.",
+			"detailHint": "Requests of {name} for {from} — {to}"
 		}
 	},
 	"history": {

@@ -89,6 +89,10 @@
 	"analytics": {
 		"title": "Statistiken & Analyse",
 		"subtitle": "Last, Erfolgsquote und Anbieteraktivität",
+		"nav": {
+			"overview": "Übersicht",
+			"users": "Pro Benutzer"
+		},
 		"from": "Von",
 		"to": "Bis",
 		"allProviders": "Alle Anbieter",
@@ -165,6 +169,23 @@
 			"empty": "Ohne Ergebnis",
 			"fail": "Fehler",
 			"running": "Läuft"
+		},
+		"users": {
+			"subtitle": "Last, Erfolg und Limits pro Benutzer",
+			"anonymous": "Anonym",
+			"anonymousHint": "Anfragen ohne Benutzer (Authentifizierung deaktiviert oder nicht authentifizierte Aufrufe)",
+			"deleted": "Benutzer gelöscht",
+			"back": "Zurück zu allen Benutzern",
+			"lastActive": "Zuletzt aktiv",
+			"never": "nie",
+			"keys": "API-Schlüssel",
+			"share": "Anteil an allen Anfragen",
+			"activeUsers": "Aktive Benutzer",
+			"activeUsersHint": "mit mindestens einer Anfrage ({n} insgesamt)",
+			"registered": "Registriert:",
+			"selectHint": "Benutzer-Analyse öffnen",
+			"providerHint": "Anbieter, die von den Anfragen dieses Benutzers im gewählten Zeitraum versucht wurden.",
+			"detailHint": "Anfragen von {name} für {from} — {to}"
 		}
 	},
 	"history": {

@@ -31,9 +31,27 @@
 		}
 	}
 
-	const nav = [
+	type NavChild = { href: string; labelKey: string; adminOnly?: boolean };
+	type NavItem = {
+		href: string;
+		labelKey: string;
+		icon: string;
+		// Optional expandable sub-sections rendered under the item (selected
+		// from the sidebar instead of in-page tabs).
+		children?: NavChild[];
+	};
+
+	const nav: NavItem[] = [
 		{ href: '/', labelKey: 'nav.dashboard', icon: '📊' },
-		{ href: '/analytics', labelKey: 'nav.analytics', icon: '📈' },
+		{
+			href: '/analytics',
+			labelKey: 'nav.analytics',
+			icon: '📈',
+			children: [
+				{ href: '/analytics', labelKey: 'analytics.nav.overview' },
+				{ href: '/analytics/users', labelKey: 'analytics.nav.users', adminOnly: true }
+			]
+		},
 		{ href: '/history', labelKey: 'nav.history', icon: '🕘' },
 		{ href: '/chains', labelKey: 'nav.chains', icon: '🔗' },
 		{ href: '/providers', labelKey: 'nav.providers', icon: '🧩' },
@@ -44,6 +62,33 @@
 		{ href: '/users', labelKey: 'nav.users', icon: '👤' },
 		{ href: '/settings', labelKey: 'nav.settings', icon: '⚙️' }
 	];
+
+	// Which sidebar groups are expanded, keyed by the parent href. A group
+	// auto-opens whenever the current route is inside it, so the active
+	// section is always visible; manual collapses persist until navigation.
+	let groupOpen = $state<Record<string, boolean>>({});
+	function inGroup(item: NavItem): boolean {
+		return (
+			page.url.pathname === item.href || page.url.pathname.startsWith(item.href + '/')
+		);
+	}
+	$effect(() => {
+		for (const item of nav) {
+			if (item.children && inGroup(item)) groupOpen[item.href] = true;
+		}
+	});
+	// Auto-open on first render too (the effect only re-runs on navigation).
+	for (const item of nav) {
+		if (item.children && inGroup(item)) groupOpen[item.href] = true;
+	}
+
+	// Only sections available to the current identity are listed.
+	const visibleChildren = (item: NavItem): NavChild[] =>
+		(item.children ?? []).filter((child) => !child.adminOnly || $session?.admin);
+
+	// Exact match for children: '/analytics' must not highlight on
+	// '/analytics/users'. Query parameters are not part of pathname.
+	const childActive = (href: string): boolean => page.url.pathname === href;
 
 	onMount(async () => {
 		// Public endpoint, non-fatal: the sidebar shows the build version.
@@ -118,14 +163,69 @@
 			</div>
 			<nav class="space-y-1">
 				{#each nav as item (item.href)}
-					<a
-						href={item.href}
-						class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition hover:bg-slate-800 {page.url.pathname === item.href
-							? 'bg-slate-800 text-emerald-300'
-							: 'text-slate-300'}"
-					>
-						<span>{item.icon}</span>{t(item.labelKey)}
-					</a>
+					{#if item.children}
+						{@const active = inGroup(item)}
+						<div>
+							<div
+								class="flex items-center rounded-lg transition hover:bg-slate-800 {active
+									? 'bg-slate-800 text-emerald-300'
+									: 'text-slate-300'}"
+							>
+								<a
+									href={item.href}
+									class="flex flex-1 items-center gap-2 px-3 py-2 text-sm"
+									title={t(item.labelKey)}
+								>
+									<span>{item.icon}</span>{t(item.labelKey)}
+								</a>
+								<button
+									type="button"
+									class="mr-1 rounded-md p-1.5 text-slate-500 transition hover:bg-slate-700 hover:text-slate-200"
+									aria-expanded={groupOpen[item.href] ?? false}
+									aria-label={t(item.labelKey)}
+									onclick={() => (groupOpen[item.href] = !groupOpen[item.href])}
+								>
+									<svg
+										class="h-3 w-3 transition-transform {groupOpen[item.href] ? 'rotate-90' : ''}"
+										viewBox="0 0 16 16"
+										fill="none"
+										aria-hidden="true"
+									>
+										<path
+											d="M6 4l4 4-4 4"
+											stroke="currentColor"
+											stroke-width="1.5"
+											stroke-linecap="round"
+											stroke-linejoin="round"
+										/>
+									</svg>
+								</button>
+							</div>
+							{#if groupOpen[item.href]}
+								<div class="mt-1 ml-6 space-y-0.5 border-l border-slate-800 pl-2">
+									{#each visibleChildren(item) as child (child.href)}
+										<a
+											href={child.href}
+											class="block rounded-md px-3 py-1.5 text-sm transition {childActive(child.href)
+												? 'bg-slate-800 text-emerald-300'
+												: 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}"
+										>
+											{t(child.labelKey)}
+										</a>
+									{/each}
+								</div>
+							{/if}
+						</div>
+					{:else}
+						<a
+							href={item.href}
+							class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition hover:bg-slate-800 {page.url.pathname === item.href
+								? 'bg-slate-800 text-emerald-300'
+								: 'text-slate-300'}"
+						>
+							<span>{item.icon}</span>{t(item.labelKey)}
+						</a>
+					{/if}
 				{/each}
 			</nav>
 			{#if authDisabled && !$authOffNoticeHidden}
