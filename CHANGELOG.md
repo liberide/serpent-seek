@@ -4,9 +4,25 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.1.1] - 2026-10-11
 
 ### Added
+- **Per-user analytics**: the Analytics sidebar group now offers two pages —
+  **Overview** (the previous report) and **By users** (admins only; the
+  sections are selected from the sidebar like the other pages). The By-users
+  page lists every
+  owner as a leaderboard for the selected period: request volume with its share
+  of all traffic, success rate, average time, errors, last activity, active
+  API-key count and the live quota status (🚦 remaining/limit, tying into the
+  per-user quota feature; dormant users are listed too). Clicking a row opens a
+  per-user report — KPIs, daily trend, hourly activity, status donut, top
+  queries and a per-user provider comparison — plus a quota usage card with a
+  progress bar. Requests made without a user are aggregated under an
+  **Anonymous** bucket and are inspectable too. Served by the admin-only
+  `GET /api/stats/users` and by `GET /api/stats/analytics?user_id=…`
+  (`anonymous` selects the no-user bucket; non-admins may only query their own
+  id). The selected user is mirrored in the URL
+  (`/analytics/users?user=…`) so views are shareable.
 - **Per-user search quotas**: admins can assign each user a request allowance
   with a daily / weekly / monthly / rolling reset cadence, from the Users page
   (🚦 badge) or via `GET`/`PUT`/`DELETE /api/users/{id}/quota`. The quota is

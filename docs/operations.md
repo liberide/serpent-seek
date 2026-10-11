@@ -119,6 +119,31 @@ in `usage_daily` under `"<start-date>#<period>"` keys, rolling-window hits in
 `usage_rolling`. Both are pruned by the cleanup job after
 `USAGE_RETENTION_DAYS` (default 90).
 
+## Per-user analytics
+
+The Analytics sidebar group has two sections: **Overview** (the previous
+global report, `/analytics`) and **By users** (admins only,
+`/analytics/users`). The By-users page is a per-owner leaderboard for the
+selected date range: request volume with its share of all traffic, success
+rate, average time, errors, last activity, active API-key count and the live
+quota status; users without traffic in the period are listed zero-filled.
+Clicking a row opens a per-user report (KPIs, daily trend, hourly activity,
+status donut, top queries, provider comparison) plus a quota usage card.
+Requests made without a user (auth disabled or unauthenticated callers) are
+aggregated under an **Anonymous** bucket.
+
+API (both honour `from`/`to`, defaulting to the current month):
+
+```
+GET /api/stats/users                     -> leaderboard rows + totals (admin only)
+GET /api/stats/analytics?user_id=<id>    -> full analytics report for one owner
+GET /api/stats/analytics?user_id=anonymous -> requests made without a user
+```
+
+Non-admin callers may only pass their own `user_id` to the analytics endpoint
+(HTTP 403 otherwise); the leaderboard is admin-only. Traffic of deleted users
+keeps showing up (marked as deleted) because requests outlive their user rows.
+
 ## API versioning
 
 * The HTTP API is served under `/api` and documented in
