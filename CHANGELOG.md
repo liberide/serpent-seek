@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Per-user search quotas**: admins can assign each user a request allowance
+  with a daily / weekly / monthly / rolling reset cadence, from the Users page
+  (🚦 badge) or via `GET`/`PUT`/`DELETE /api/users/{id}/quota`. The quota is
+  enforced on `/search`, `/mcp` and the playground across all of the user's
+  API keys and sessions; exhausted quotas return HTTP 429 with `Retry-After`
+  and `X-Serpent-Quota-Reset-At`. Fully opt-in: users without a quota keep the
+  global `SEARCH_RATE_LIMIT_PER_MINUTE` / `SEARCH_DAILY_QUOTA` behaviour.
+  Rejections are exported as `serpentseek_quota_rejected_total{period}` and
+  fire the `quota_exceeded` webhook.
+
 ## [1.1.0] - 2026-10-09
 
 ### Added

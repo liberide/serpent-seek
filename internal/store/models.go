@@ -16,6 +16,59 @@ type User struct {
 	Role      string `json:"role"` // admin|viewer
 	Disabled  bool   `json:"disabled"`
 	CreatedAt string `json:"created_at"`
+	// Quota is the runtime view of the user's per-user search allowance,
+	// computed by the HTTP layer and never persisted with the user row.
+	// Nil means the user is unlimited (no quota row or requests = 0).
+	Quota *UserQuotaStatus `json:"quota,omitempty"`
+}
+
+// UserQuotaStatus is the runtime view of a user's quota: the configured
+// allowance plus current usage. It is computed by the HTTP layer; only the
+// UserQuota row is persisted.
+type UserQuotaStatus struct {
+	Requests    int    `json:"requests"` // 0 = unlimited
+	Period      string `json:"period"`
+	WindowHours int    `json:"window_hours"`
+	TzOffset    int    `json:"tz_offset"`
+	Used        int    `json:"used"`
+	Remaining   int    `json:"remaining"`
+	// ResetAt is the RFC3339 UTC moment the current period ends; empty for
+	// rolling quotas (a sliding window has no fixed reset).
+	ResetAt   string `json:"reset_at,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
+// Quota reset periods for UserQuota.
+const (
+	// QuotaPeriodDaily resets the allowance at local midnight (tz_offset).
+	QuotaPeriodDaily = "daily"
+	// QuotaPeriodWeekly resets the allowance on Monday 00:00 (tz_offset).
+	QuotaPeriodWeekly = "weekly"
+	// QuotaPeriodMonthly resets the allowance on the 1st of the month 00:00.
+	QuotaPeriodMonthly = "monthly"
+	// QuotaPeriodRolling is a sliding window of WindowHours; the allowance
+	// is "requests per trailing window" counted from usage_rolling hits.
+	QuotaPeriodRolling = "rolling"
+)
+
+// UserQuota is the per-user search allowance enforced by the HTTP guard.
+// A user without a row (or with Requests == 0) is unlimited and falls back
+// to the global search_daily_quota / search_rate_limit_per_minute settings.
+type UserQuota struct {
+	UserID string `json:"user_id"`
+	// Requests is the maximum number of search requests per period.
+	// 0 means unlimited.
+	Requests int `json:"requests"`
+	// Period is one of the QuotaPeriod* constants.
+	Period string `json:"period"`
+	// WindowHours is the sliding-window length; only meaningful when
+	// Period == QuotaPeriodRolling.
+	WindowHours int `json:"window_hours"`
+	// TzOffset shifts calendar reset boundaries by this many minutes
+	// (-720..840). 0 = pure UTC. A fixed offset is used instead of an IANA
+	// name to avoid a tzdata dependency.
+	TzOffset  int    `json:"tz_offset"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 // APIKey is a hashed access token. The plaintext is never stored.

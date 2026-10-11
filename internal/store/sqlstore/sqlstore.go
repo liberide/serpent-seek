@@ -358,9 +358,104 @@ func (s *Store) UsageByDay(ctx context.Context, day string) (map[string]int, err
 	return out, rows.Err()
 }
 
-// DeleteOldUsage removes counters for days strictly before beforeDay (YYYY-MM-DD).
+// DeleteOldUsage removes counters whose period-start day is strictly before
+// beforeDay (YYYY-MM-DD). Per-user quota period keys are stored as
+// "<start-date>#<period>" (e.g. "2026-10-05#weekly"), so comparing the
+// 10-character date prefix prunes both plain days and quota period keys in
+// SQLite and PostgreSQL alike.
 func (s *Store) DeleteOldUsage(ctx context.Context, beforeDay string) (int64, error) {
-	res, err := s.exec(ctx, `DELETE FROM usage_daily WHERE day < ?`, beforeDay)
+	res, err := s.exec(ctx, `DELETE FROM usage_daily WHERE substr(day, 1, 10) < ?`, beforeDay)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// --- User quotas ---
+
+func scanUserQuota(row interface{ Scan(...any) error }) (*store.UserQuota, error) {
+	var q store.UserQuota
+	err := row.Scan(&q.UserID, &q.Requests, &q.Period, &q.WindowHours, &q.TzOffset, &q.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &q, nil
+}
+
+// GetUserQuota fetches the quota row for a user (ErrNotFound when absent).
+func (s *Store) GetUserQuota(ctx context.Context, userID string) (*store.UserQuota, error) {
+	q, err := scanUserQuota(s.queryRow(ctx,
+		`SELECT user_id, requests, period, window_hours, tz_offset, updated_at FROM user_quotas WHERE user_id = ?`, userID))
+	if err == sql.ErrNoRows {
+		return nil, store.ErrNotFound
+	}
+	return q, err
+}
+
+// SetUserQuota upserts the user's quota row.
+func (s *Store) SetUserQuota(ctx context.Context, q *store.UserQuota) error {
+	_, err := s.exec(ctx,
+		`INSERT INTO user_quotas (user_id, requests, period, window_hours, tz_offset, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?)
+		 ON CONFLICT (user_id) DO UPDATE SET
+		   requests = excluded.requests,
+		   period = excluded.period,
+		   window_hours = excluded.window_hours,
+		   tz_offset = excluded.tz_offset,
+		   updated_at = excluded.updated_at`,
+		q.UserID, q.Requests, q.Period, q.WindowHours, q.TzOffset, q.UpdatedAt)
+	return err
+}
+
+// DeleteUserQuota removes the user's quota row (the user becomes unlimited).
+func (s *Store) DeleteUserQuota(ctx context.Context, userID string) error {
+	_, err := s.exec(ctx, `DELETE FROM user_quotas WHERE user_id = ?`, userID)
+	return err
+}
+
+// ListUserQuotas returns every quota row keyed by user id.
+func (s *Store) ListUserQuotas(ctx context.Context) (map[string]*store.UserQuota, error) {
+	rows, err := s.query(ctx, `SELECT user_id, requests, period, window_hours, tz_offset, updated_at FROM user_quotas`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]*store.UserQuota{}
+	for rows.Next() {
+		q, err := scanUserQuota(rows)
+		if err != nil {
+			return nil, err
+		}
+		out[q.UserID] = q
+	}
+	return out, rows.Err()
+}
+
+// --- Rolling-window hits ---
+
+// AddRollingHit records one admitted request for a rolling quota subject.
+func (s *Store) AddRollingHit(ctx context.Context, subject, ts string) error {
+	_, err := s.exec(ctx,
+		`INSERT INTO usage_rolling (subject, ts) VALUES (?, ?)
+		 ON CONFLICT (subject, ts) DO NOTHING`,
+		subject, ts)
+	return err
+}
+
+// CountRollingHits counts hits for the subject at or after the inclusive
+// RFC3339Nano UTC lower bound.
+func (s *Store) CountRollingHits(ctx context.Context, subject, since string) (int, error) {
+	var n int
+	err := s.queryRow(ctx,
+		`SELECT COUNT(*) FROM usage_rolling WHERE subject = ? AND ts >= ?`,
+		subject, since).Scan(&n)
+	return n, err
+}
+
+// DeleteOldRollingHits removes hits strictly older than the RFC3339Nano UTC
+// cutoff timestamp.
+func (s *Store) DeleteOldRollingHits(ctx context.Context, before string) (int64, error) {
+	res, err := s.exec(ctx, `DELETE FROM usage_rolling WHERE ts < ?`, before)
 	if err != nil {
 		return 0, err
 	}

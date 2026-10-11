@@ -84,6 +84,41 @@ The **Audit** page records every admin mutation (actor, IP, action, target,
 non-secret details) and is kept for 180 days; search-quota counters
 (`usage_daily`) are pruned after 90 days.
 
+## Per-user search quotas
+
+On top of the global `SEARCH_RATE_LIMIT_PER_MINUTE` / `SEARCH_DAILY_QUOTA`
+settings, an admin can assign a **per-user** quota from the Users page
+(🚦 badge next to each user) or via the API:
+
+```
+PUT    /api/users/{id}/quota   {"requests": 500, "period": "daily", "tz_offset": 480}
+GET    /api/users/{id}/quota   -> usage, remaining, reset_at
+DELETE /api/users/{id}/quota   -> user becomes unlimited
+```
+
+* `requests` — allowance per period; `0` = unlimited (default when no quota
+  is set, fully backwards compatible).
+* `period` — reset cadence:
+  * `daily` — resets at midnight, shifted by `tz_offset` minutes
+  * `weekly` — resets Monday 00:00 (tz-shifted)
+  * `monthly` — resets on the 1st of the month 00:00 (tz-shifted)
+  * `rolling` — sliding window of `window_hours` (1–720)
+* `tz_offset` — fixed offset in minutes (-720..840); 0 = UTC. A fixed offset
+  is used instead of a timezone name, so DST is not observed.
+
+The quota applies to **all** of a user's API keys and sessions (counted on the
+`user:<id>` subject); the global limits still apply on top. When exhausted,
+search endpoints return HTTP 429 with `Retry-After` and
+`X-Serpent-Quota-Reset-At` (calendar periods) headers. Rejections are counted
+in the `serpentseek_quota_rejected_total{period}` metric and fire the
+`quota_exceeded` webhook event. Quota mutations are recorded in the audit log
+(`quota.set` / `quota.delete`).
+
+Storage: per-user rows live in `user_quotas`; calendar-period usage is counted
+in `usage_daily` under `"<start-date>#<period>"` keys, rolling-window hits in
+`usage_rolling`. Both are pruned by the cleanup job after
+`USAGE_RETENTION_DAYS` (default 90).
+
 ## API versioning
 
 * The HTTP API is served under `/api` and documented in

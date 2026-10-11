@@ -29,16 +29,18 @@ type agg struct {
 type Metrics struct {
 	active atomic.Int64
 
-	mu        sync.Mutex
-	search    map[string]*agg            // final status -> counter
-	providers map[string]map[string]*agg // provider display name -> status -> counter
+	mu            sync.Mutex
+	search        map[string]*agg            // final status -> counter
+	providers     map[string]map[string]*agg // provider display name -> status -> counter
+	quotaRejected map[string]*agg            // quota period -> rejection counter
 }
 
 // New builds an empty registry.
 func New() *Metrics {
 	return &Metrics{
-		search:    map[string]*agg{},
-		providers: map[string]map[string]*agg{},
+		search:        map[string]*agg{},
+		providers:     map[string]map[string]*agg{},
+		quotaRejected: map[string]*agg{},
 	}
 }
 
@@ -77,6 +79,30 @@ func (m *Metrics) RecordProvider(provider, status string, ms int) {
 	m.record(byStatus, status, ms)
 }
 
+// RecordQuotaRejected records one request rejected by a per-user quota.
+// period is the quota reset period (daily|weekly|monthly|rolling); the user
+// label is deliberately omitted to keep label cardinality bounded.
+func (m *Metrics) RecordQuotaRejected(period string) {
+	if period == "" {
+		period = "unknown"
+	}
+	m.mu.Lock()
+	a := m.quotaRejected[period]
+	if a == nil {
+		a = &agg{}
+		m.quotaRejected[period] = a
+	}
+	a.count++
+	m.mu.Unlock()
+}
+
+// QuotaRejected returns the number of quota rejections for a period (tests).
+func (m *Metrics) QuotaRejected(period string) int64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.quotaRejected[period].count
+}
+
 func (m *Metrics) record(byKey map[string]*agg, key string, ms int) {
 	m.mu.Lock()
 	a := byKey[key]
@@ -97,6 +123,7 @@ var searchStatuses = []string{"ok", "empty", "fail"}
 // (version 0.0.4). sseClients is the current SSE subscriber count.
 func (m *Metrics) Render(w io.Writer, sseClients int) error {
 	search, providers := m.snapshot()
+	quota := m.snapshotQuota()
 
 	bw := bufio.NewWriter(w)
 
@@ -131,6 +158,11 @@ func (m *Metrics) Render(w io.Writer, sseClients int) error {
 		}
 	}
 
+	header(bw, "serpentseek_quota_rejected_total", "Search requests rejected by a per-user quota, by reset period.", "counter")
+	for _, period := range sortedKeys(quota) {
+		fmt.Fprintf(bw, "serpentseek_quota_rejected_total{%s} %d\n", label("period", period), quota[period].count)
+	}
+
 	header(bw, "serpentseek_provider_duration_seconds", "Provider attempt execution time.", "summary")
 	for _, name := range providerNames {
 		var sum, count int64
@@ -143,6 +175,17 @@ func (m *Metrics) Render(w io.Writer, sseClients int) error {
 	}
 
 	return bw.Flush()
+}
+
+// snapshotQuota copies the quota rejection counters under the lock.
+func (m *Metrics) snapshotQuota() map[string]agg {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make(map[string]agg, len(m.quotaRejected))
+	for k, v := range m.quotaRejected {
+		out[k] = *v
+	}
+	return out
 }
 
 // snapshot copies the counters under the lock so rendering never blocks writers.

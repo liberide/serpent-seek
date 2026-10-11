@@ -43,8 +43,10 @@ type Server struct {
 	// searchLimiter throttles /search, /mcp and the playground per subject; its
 	// limit is read from settings on every request (see searchGuard).
 	searchLimiter *auth.RateLimiter
-	mcpSessions   *mcpSessionStore
-	updater       *updatecheck.Checker
+	// quotas caches per-user quota rows for the search guard (see quotas.go).
+	quotas      *quotaCache
+	mcpSessions *mcpSessionStore
+	updater     *updatecheck.Checker
 
 	setupMu    sync.Mutex
 	setupRun   sync.Mutex
@@ -100,6 +102,7 @@ func New(
 		jobs:          jobManager,
 		limiter:       auth.NewRateLimiter(10, time.Minute),
 		searchLimiter: auth.NewRateLimiter(0, time.Minute),
+		quotas:        newQuotaCache(st),
 		mcpSessions:   newMCPSessionStore(),
 		updater:       updatecheck.New(&http.Client{Timeout: updateCheckTimeout}, cfg.UserAgent),
 		setupToken:    setupToken,
@@ -208,6 +211,9 @@ func (s *Server) Routes() http.Handler {
 					r.Patch("/{id}", s.handleUpdateUser)
 					r.Delete("/{id}", s.handleDeleteUser)
 					r.Get("/{id}/passkeys", s.handleListPasskeys)
+					r.Get("/{id}/quota", s.handleGetUserQuota)
+					r.Put("/{id}/quota", s.handlePutUserQuota)
+					r.Delete("/{id}/quota", s.handleDeleteUserQuota)
 				})
 				r.Route("/keys", func(r chi.Router) {
 					r.Get("/", s.handleListKeys)

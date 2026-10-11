@@ -498,6 +498,57 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /api/users/{id}/quota:
+    get:
+      tags: [users]
+      summary: Read a user's search quota including current usage (admin)
+      description: >
+        Returns the quota status. A user without a quota row reports
+        requests = 0 (unlimited); the per-user quota is enforced on every
+        search endpoint for that user's API keys and sessions.
+      parameters: [ { $ref: "#/components/parameters/UserId" } ]
+      responses:
+        "200":
+          description: Quota status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserQuotaStatus" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [users]
+      summary: Set a user's search quota (admin)
+      description: >
+        Upserts the per-user allowance. Omitted fields keep their current
+        value; requests = 0 means unlimited. Changes apply to the next request.
+      parameters: [ { $ref: "#/components/parameters/UserId" } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserQuotaInput" }
+      responses:
+        "200":
+          description: Updated quota status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserQuotaStatus" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [users]
+      summary: Remove a user's search quota (admin) — the user becomes unlimited
+      parameters: [ { $ref: "#/components/parameters/UserId" } ]
+      responses:
+        "200":
+          description: Quota removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/keys:
     get:
       tags: [users]
@@ -2175,6 +2226,54 @@ components:
         role: { type: string, enum: [admin, viewer] }
         disabled: { type: boolean }
         created_at: { type: string, format: date-time }
+        quota:
+          $ref: "#/components/schemas/UserQuotaStatus"
+          description: Runtime per-user quota view; absent when the user is unlimited.
+
+    QuotaPeriod:
+      type: string
+      enum: [daily, weekly, monthly, rolling]
+      description: >
+        daily resets at midnight (shifted by tz_offset), weekly on Monday 00:00,
+        monthly on the 1st of the month 00:00, rolling is a sliding window of
+        window_hours.
+
+    UserQuotaInput:
+      type: object
+      properties:
+        requests:
+          type: integer
+          minimum: 0
+          description: Max search requests per period; 0 = unlimited.
+        period: { $ref: "#/components/schemas/QuotaPeriod" }
+        window_hours:
+          type: integer
+          minimum: 1
+          maximum: 720
+          default: 24
+          description: Sliding-window length; only used when period = rolling.
+        tz_offset:
+          type: integer
+          minimum: -720
+          maximum: 840
+          default: 0
+          description: Fixed offset in minutes applied to calendar reset boundaries (0 = UTC).
+
+    UserQuotaStatus:
+      type: object
+      properties:
+        user_id: { type: string, format: uuid }
+        requests: { type: integer, description: 0 = unlimited }
+        period: { $ref: "#/components/schemas/QuotaPeriod" }
+        window_hours: { type: integer }
+        tz_offset: { type: integer }
+        used: { type: integer, description: Requests counted in the current period }
+        remaining: { type: integer }
+        reset_at:
+          type: string
+          format: date-time
+          description: RFC3339 UTC moment the current period ends; absent for rolling quotas.
+        updated_at: { type: string, format: date-time }
 
     UserInput:
       type: object

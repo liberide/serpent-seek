@@ -514,6 +514,9 @@ License) and external `searxng/searxng` (not part of this repository; **AGPLv3**
   `SEARCH_DAILY_QUOTA` (both `0` = disabled/unlimited) cap requests per API key
   (or per user/IP without a key) across `/search`, `/mcp` and the playground.
   Counters live in the database (`usage_daily`) and are pruned after 90 days.
+  Admins can additionally assign a **per-user quota** (daily / weekly / monthly
+  / rolling reset) from the Users page or `PUT /api/users/{id}/quota`; see
+  [Operations](docs/operations.md#per-user-search-quotas).
 * **Update checks are opt-in.** With `UPDATE_CHECK_ENABLED=true` the server
   fetches the public GitHub release feed about once a day (no telemetry) and the
   UI shows a notice when a newer version exists; set it to `false` for
