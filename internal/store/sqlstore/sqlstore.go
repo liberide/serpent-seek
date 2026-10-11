@@ -1729,10 +1729,10 @@ func (s *Store) percentileMS(ctx context.Context, clause string, args []any, cou
 // store.AnonymousUserID matches rows without an owner; an empty userID adds no
 // condition (no filtering). It returns the extended clause and args.
 func appendUserFilter(where []string, args []any, userID, col string) ([]string, []any) {
-	switch {
-	case userID == "":
+	switch userID {
+	case "":
 		return where, args
-	case userID == store.AnonymousUserID:
+	case store.AnonymousUserID:
 		return append(where, "("+col+" IS NULL OR "+col+" = '')"), args
 	default:
 		return append(where, col+" = ?"), append(args, userID)

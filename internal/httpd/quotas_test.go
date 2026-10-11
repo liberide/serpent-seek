@@ -233,7 +233,7 @@ func TestSearchGuardUserQuotaRolling(t *testing.T) {
 // resurrect the old limit (no "chain" of limits behind a ticked checkbox).
 func TestSearchGuardUserQuotaUnlimitedToggle(t *testing.T) {
 	for _, tc := range []struct {
-		name string
+		name  string
 		clear func(t *testing.T, ts *testServer, userID string)
 	}{
 		{"put_zero", func(t *testing.T, ts *testServer, userID string) {
