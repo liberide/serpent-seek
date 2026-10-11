@@ -117,3 +117,5 @@ jobs:
           format: spdx-json
           output-file: sbom.spdx.json
           artifact-name: serpentseek-sbom
+          # Keep least privilege: publish the SBOM as a workflow artifact only.
+          upload-release-assets: false
