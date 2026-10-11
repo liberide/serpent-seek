@@ -1,6 +1,6 @@
 # 🐍 SerpentSeek — Self-hosted Search-Gateway für Open WebUI, MCP & 40+ Such-APIs
 
-[English](README.md "Read in English") | [Русский](README.ru.md "README по-русски") | **Deutsch** | [Français](README.fr.md "Lire en français") | [日本語](README.ja.md "日本語で読む") | [中文](README.zh.md "阅读中文版")
+[English](README.md "Read in English") | [Русский](README.ru.md "README по-русски") | [Polski](README.pl.md "Czytaj po polsku") | **Deutsch** | [Français](README.fr.md "Lire en français") | [日本語](README.ja.md "日本語で読む") | [中文](README.zh.md "阅读中文版")
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE "Projektlizenz — GNU GPL v3.0")
 [![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod "Backend in Go geschrieben")
@@ -52,10 +52,25 @@ Details in `NOTICE`).
   `[{"link","title","snippet"}]`
 * 🤖 **MCP-Server** — `search`-Tool über streamable HTTP für Claude, Cursor, VS
   Code und andere MCP-Clients; akzeptiert auch einfaches JSON-RPC 2.0
+* 🛠️ **Entwicklermodus & Token** — ein Admin kann den Entwicklermodus aktivieren
+  und dedizierte `seek_dev_…`-Token mit vollem Admin-Umfang erstellen, sodass ein
+  Drittsystem Anbieter, Ketten, Benutzer, Schlüssel und Einstellungen vollständig
+  über die API verwalten kann; beim Ausschalten des Modus werden alle
+  Entwickler-Token sofort abgelehnt
 * 🔭 **Live-Tracing** — Schritt-Timeline pro Anfrage über SSE, Diagnose-Header
   `X-Serpent-Rid` / `X-Serpent-Api` und Verlaufsseite
+* 📊 **Prometheus-Metriken** — `GET /metrics` liefert Suchresultate,
+  Anbieter-Versuche/-Dauern, laufende Anfragen und SSE-Clients im Textformat
+* 🔔 **Update-Benachrichtigungen** — optionale Prüfung auf eine neuere Version;
+  ein Badge in der Seitenleiste und Details auf **Einstellungen → Info**
 * 🔐 **Sicherheit** — argon2id-gehashte API-Schlüssel, Passkeys (WebAuthn),
   SameSite=Strict-Sessions mit CSRF, Write-only-Secrets, optional AES-GCM
+* 📋 **Audit-Log** — jede Admin-Änderung (Einstellungen, Anbieter, Ketten,
+  Schlüssel, Benutzer) wird mit Akteur, IP und nicht geheimen Details protokolliert
+* 💱 **Anbieter-Kostenverfolgung** — optionales `cost_per_request` pro Instanz,
+  in Analytics pro Anbieter summiert (komplett ausgeblendet, wenn nicht konfiguriert)
+* 📦 **Konfigurations-Export/-Import** — geheimnisfreie Snapshots von Anbietern,
+  Ketten und nicht geheimen Einstellungen zur Migration zwischen Instanzen
 * 💾 **SQLite ⟷ PostgreSQL** — SQLite im WAL-Modus standardmäßig; das Profil
   `extdb` bringt PostgreSQL für Multi-Replika-Setups
 * 🌍 **Mehrsprachige UI** — English, Русский, Polski, Deutsch, Français, 日本語, 中文
@@ -488,6 +503,7 @@ cd web && npx license-checker --production --excludePrivatePackages
 | @tailwindcss/vite | 4.3.3 | MIT |
 | @simplewebauthn/browser | 14.0.0 | MIT |
 | uqr | 0.1.3 | MIT |
+| swagger-ui-dist | 5.33.1 | Apache-2.0 |
 
 Satelliten-Container (keine Code-Abhängigkeiten): `postgres:17-alpine`
 (PostgreSQL License) und das externe `searxng/searxng` (nicht Teil dieses

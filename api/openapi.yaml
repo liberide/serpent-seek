@@ -29,7 +29,8 @@ info:
 
     **Errors.** All `4xx/5xx` responses: `{ "error": { "code", "message", "rid" } }`.
   license:
-    name: MIT
+    name: GPL-3.0-only
+    url: https://www.gnu.org/licenses/gpl-3.0.html
 
 servers:
   - url: http://localhost:8080

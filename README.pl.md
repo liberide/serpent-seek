@@ -1,6 +1,8 @@
 # 🐍 SerpentSeek — samodzielnie hostowana brama wyszukiwania dla Open WebUI, MCP i 40+ API
 
-[English](README.md "Read in English") | [Русский](README.ru.md) | [Deutsch](README.de.md) | [Français](README.fr.md) | [日本語](README.ja.md) | [中文](README.zh.md)
+[English](README.md "Read in English") | [Русский](README.ru.md "README по-русски") | **Polski** | [Deutsch](README.de.md "Auf Deutsch lesen") | [Français](README.fr.md "Lire en français") | [日本語](README.ja.md "日本語で読む") | [中文](README.zh.md "阅读中文版")
+
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE "Licencja projektu — GNU GPL v3.0")
 
 > To skrócona wersja polska. Pełny, aktualny opis funkcji, konfiguracji i
 > zastrzeżeń znajduje się w [README.md](README.md).
@@ -17,7 +19,7 @@ MCP `search`** (streamable HTTP) dla asystentów AI, endpoint `/search`
 kompatybilny z Open WebUI, magazyn SQLite ⟷ PostgreSQL oraz zadania
 porządkowe w tle. Wszystko w jednym kontenerze Docker.
 
-Licencja projektu — **GNU GPLv3** (`LICENSE`). Atrybucje: `NOTICE`/`AUTHORS`;
+Licencja projektu — **GPL-3.0-only** (`LICENSE`). Atrybucje: `NOTICE`/`AUTHORS`;
 licencje komponentów: `THIRD_PARTY_LICENSES.md`. Wersje: [CHANGELOG.md](CHANGELOG.md).
 
 ## Najważniejsze funkcje
@@ -32,12 +34,23 @@ licencje komponentów: `THIRD_PARTY_LICENSES.md`. Wersje: [CHANGELOG.md](CHANGEL
   `[{"link","title","snippet"}]`
 * 🤖 **Serwer MCP** — narzędzie `search` po streamable HTTP dla Claude, Cursor,
   VS Code i innych klientów MCP
+* 🛠️ **Tryb dewelopera i tokeny** — administrator może włączyć tryb dewelopera i
+  tworzyć dedykowane tokeny `seek_dev_…` z pełnym dostępem admina, dzięki czemu
+  system zewnętrzny może w pełni zarządzać providerami, łańcuchami,
+  użytkownikami, kluczami i ustawieniami przez API; wyłączenie trybu natychmiast
+  odrzuca te tokeny
 * 🔭 **Podgląd na żywo** — os czasu kroków po SSE, nagłówki `X-Serpent-Rid` /
   `X-Serpent-Api` oraz strona History
 * 📊 **Metryki Prometheus** — `GET /metrics` (wyniki wyszukiwań, próby
   providerów, czasy, aktywni klienci SSE)
+* 🔔 **Powiadomienia o aktualizacjach** — opcjonalne sprawdzanie nowszej wersji;
+  plakietka w menu i szczegóły w **Ustawienia → Info**
 * 📋 **Dziennik audytu** — każda mutacja administracyjna z aktorem, IP i
   nie-tajnymi szczegółami
+* 💱 **Śledzenie kosztów providerów** — opcjonalny `cost_per_request` na
+  instancję, sumowany per provider w Analytics (ukryty, gdy nieskonfigurowany)
+* 📦 **Eksport/import konfiguracji** — pozbawione sekretów snapshoty providerów,
+  łańcuchów i niesekretnych ustawień do migracji między instancjami
 * 🔐 **Bezpieczeństwo** — klucze API hashowane argon2id, passkeys WebAuthn,
   sesje SameSite=Strict z CSRF, sekrety tylko do zapisu, opcjonalne szyfrowanie
   AES-GCM

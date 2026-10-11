@@ -22,6 +22,7 @@
 * 🔗 **トークンごとのチェーンルーティング** — 各 API キーを独自のチェーンにバインドし、アクティブなチェーンとは独立させられます（未バインドのトークンは既定/アクティブチェーンに従います）。チェーンを削除してもバインドされたトークンは安全に既定へ戻ります
 * 🔌 **Open WebUI 対応** — そのまま使える `/search` エンドポイント: 常に HTTP 200、`[{"link","title","snippet"}]`
 * 🤖 **MCP サーバー** — Claude、Cursor、VS Code など任意の MCP クライアント向けの、ストリーミング可能な HTTP 上の `search` ツール。プレーンな JSON-RPC 2.0 も受け付けます
+* 🛠️ **開発者モードとトークン** — 管理者は開発者モードを有効にして、完全な管理者権限を持つ専用の `seek_dev_…` トークンを発行でき、サードパーティのシステムがプロバイダー、チェーン、ユーザー、キー、設定をすべて API 経由で管理できます。モードをオフにすると、これらのトークンは即座に拒否されます
 * 🔭 **ライブリクエストトレーシング** — SSE によるステップごとのタイムラインと、`X-Serpent-Rid` / `X-Serpent-Api` 診断ヘッダー、履歴ページ
 * 📊 **Prometheus メトリクス** — `GET /metrics` が検索結果、プロバイダーの試行/所要時間、実行中リクエスト、SSE クライアントをテキスト形式で公開します
 * 🔔 **更新通知** — 新しいリリースの任意チェック。サイドバーのバッジと **設定 → 情報** ページの詳細
@@ -445,6 +446,7 @@ cd web && npx license-checker --production --excludePrivatePackages
 | @tailwindcss/vite | 4.3.3 | MIT |
 | @simplewebauthn/browser | 14.0.0 | MIT |
 | uqr | 0.1.3 | MIT |
+| swagger-ui-dist | 5.33.1 | Apache-2.0 |
 
 サテライトコンテナ（コード依存ではありません）: `postgres:17-alpine`（PostgreSQL License）と
 外部の `searxng/searxng`（このリポジトリには含まれません。**AGPLv3** — 別個のサービスで、

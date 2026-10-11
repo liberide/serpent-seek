@@ -44,7 +44,7 @@ jobs:
           else
             v=$(sed -n 's/.*Version = "\([^"]*\)".*/\1/p' internal/version/version.go | head -1)
           fi
-          echo "value=${v:-1.1.0}" >> "$GITHUB_OUTPUT"
+          echo "value=${v:-1.1.1}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to Docker Hub
         if: env.PUSH_IMAGE == 'true'

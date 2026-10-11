@@ -486,6 +486,7 @@ cd web && npx license-checker --production --excludePrivatePackages
 | @tailwindcss/vite | 4.3.3 | MIT |
 | @simplewebauthn/browser | 14.0.0 | MIT |
 | uqr | 0.1.3 | MIT |
+| swagger-ui-dist | 5.33.1 | Apache-2.0 |
 
 Satellite containers (not code dependencies): `postgres:17-alpine` (PostgreSQL
 License) and external `searxng/searxng` (not part of this repository; **AGPLv3**

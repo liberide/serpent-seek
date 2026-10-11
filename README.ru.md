@@ -1,6 +1,6 @@
 # 🐍 SerpentSeek — поисковый шлюз (self-hosted) для Open WebUI, MCP и 40+ поисковых API
 
-[English](README.md "Read in English") | **Русский** | [Deutsch](README.de.md "Auf Deutsch lesen") | [Français](README.fr.md "Lire en français") | [日本語](README.ja.md "日本語で読む") | [中文](README.zh.md "阅读中文版")
+[English](README.md "Read in English") | **Русский** | [Polski](README.pl.md "Czytaj po polsku") | [Deutsch](README.de.md "Auf Deutsch lesen") | [Français](README.fr.md "Lire en français") | [日本語](README.ja.md "日本語で読む") | [中文](README.zh.md "阅读中文版")
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE "Лицензия проекта — GNU GPL v3.0")
 [![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod "Бэкенд написан на Go")
@@ -56,8 +56,19 @@ Grounding, Yandex, SerpApi, Serper, DataForSEO, Exa, Tavily, Kagi, Perplexity и
   токены блокируются сразу
 * 🔭 **Живая трассировка** — таймлайн шагов запроса по SSE, диагностические
   заголовки `X-Serpent-Rid` / `X-Serpent-Api` и страница History
+* 📊 **Метрики Prometheus** — `GET /metrics` отдаёт исходы поиска, попытки и
+  длительность провайдеров, активные запросы и SSE-клиентов в текстовом формате
+* 🔔 **Уведомления об обновлениях** — опциональная проверка новой версии; бейдж
+  в сайдбаре и подробности на странице **Настройки → Инфо**
 * 🔐 **Безопасность** — argon2id-хэши ключей, Passkeys (WebAuthn), сессии
   SameSite=Strict с CSRF, write-only секреты, опциональный AES-GCM
+* 📋 **Журнал аудита** — каждая административная операция (настройки,
+  провайдеры, цепочки, ключи, пользователи) записывается с исполнителем, IP и
+  несекретными деталями
+* 💱 **Учёт стоимости провайдеров** — опциональный `cost_per_request` на
+  инстанс, суммируется по провайдеру в Analytics (полностью скрыто, если не задан)
+* 📦 **Экспорт/импорт конфигурации** — снимки провайдеров, цепочек и
+  несекретных настроек без секретов для переноса между инстансами
 * 💾 **SQLite ⟷ PostgreSQL** — SQLite в WAL по умолчанию; профиль `extdb`
   поднимает PostgreSQL для мультиреплик
 * 🌍 **Мультиязычный UI** — English, Русский, Polski, Deutsch, Français, 日本語, 中文
@@ -459,6 +470,7 @@ cd web && npx license-checker --production --excludePrivatePackages
 | @tailwindcss/vite | 4.3.3 | MIT |
 | @simplewebauthn/browser | 14.0.0 | MIT |
 | uqr | 0.1.3 | MIT |
+| swagger-ui-dist | 5.33.1 | Apache-2.0 |
 
 Сателлитные контейнеры (не зависимости кода): `postgres:17-alpine` (PostgreSQL
 License) и внешний `searxng/searxng` (не входит в этот репозиторий; **AGPLv3**
