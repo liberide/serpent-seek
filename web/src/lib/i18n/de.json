@@ -91,6 +91,8 @@
 		"quickSearch": "Schnellsuche",
 		"logout": "Abmelden",
 		"language": "Sprache",
+		"collapseMenu": "Menü einklappen",
+		"expandMenu": "Menü ausklappen",
 		"authOff": "Authentifizierung deaktiviert — Admin-Zugriff ohne Anmeldung."
 	},
 	"support": {

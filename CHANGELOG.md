@@ -59,6 +59,18 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Developer section opens `/swagger` — a Swagger UI bundled locally with the
   frontend (no CDN or other external resource; the public validator is
   disabled). A download button is provided as well.
+- **Collapsed sidebar footer**: when the rail is collapsed, the build version
+  and the “Support the project” button stay at the bottom, the support entry
+  as a slowly shimmering, dimmed heart.
+
+### Changed
+- **Collapsible sidebar**: the rail collapses to an icon-only strip from the
+  button next to the logo, and the choice is remembered per browser. Hovering a
+  collapsed icon shows its section name; grouped entries (Analytics) open a
+  fly-out submenu.
+- **Sidebar icons**: navigation entries and the collapse toggle now use inline
+  SVG glyphs that inherit the active theme colour. The 🐍 brand mark is
+  unchanged.
 
 ### Fixed
 - **Settings form no longer fails with “some settings are read-only”**: the

@@ -91,6 +91,8 @@
 		"quickSearch": "Recherche rapide",
 		"logout": "Se déconnecter",
 		"language": "Langue",
+		"collapseMenu": "Réduire le menu",
+		"expandMenu": "Développer le menu",
 		"authOff": "Authentification désactivée — accès administrateur sans connexion."
 	},
 	"support": {

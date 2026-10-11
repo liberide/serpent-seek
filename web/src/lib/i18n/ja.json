@@ -91,6 +91,8 @@
 		"quickSearch": "クイック検索",
 		"logout": "ログアウト",
 		"language": "言語",
+		"collapseMenu": "メニューを折りたたむ",
+		"expandMenu": "メニューを展開する",
 		"authOff": "認証が無効です — サインインなしで管理者アクセスが可能です。"
 	},
 	"support": {

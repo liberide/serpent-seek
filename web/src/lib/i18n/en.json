@@ -91,6 +91,8 @@
 		"quickSearch": "Quick search",
 		"logout": "Log out",
 		"language": "Language",
+		"collapseMenu": "Collapse menu",
+		"expandMenu": "Expand menu",
 		"authOff": "Authentication disabled — admin access without sign-in."
 	},
 	"support": {

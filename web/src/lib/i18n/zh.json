@@ -91,6 +91,8 @@
 		"quickSearch": "快速搜索",
 		"logout": "退出登录",
 		"language": "语言",
+		"collapseMenu": "收起菜单",
+		"expandMenu": "展开菜单",
 		"authOff": "身份验证已禁用 — 无需登录即可管理员访问。"
 	},
 	"support": {

@@ -91,6 +91,8 @@
 		"quickSearch": "Szybkie wyszukiwanie",
 		"logout": "Wyloguj",
 		"language": "Język",
+		"collapseMenu": "Zwiń menu",
+		"expandMenu": "Rozwiń menu",
 		"authOff": "Uwierzytelnianie wyłączone — dostęp administratora bez logowania."
 	},
 	"support": {
