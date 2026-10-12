@@ -1,8 +1,8 @@
 openapi: 3.1.0
 info:
   title: SerpentSeek API
-  version: "1.1.0"
-  summary: Search gateway microservice — visual provider chains, per-token chain binding, live request tracing, API-key/Passkeys auth, SQLite/PostgreSQL storage.
+  version: "1.1.1"
+  summary: Search gateway microservice — visual provider chains, per-token chain binding and per-endpoint developer tokens, live request tracing, API-key/Passkeys auth, SQLite/PostgreSQL storage.
   description: |
     SerpentSeek is a drop-in replacement for the serpent-shim used by Open WebUI, upgraded to a full
     service with an admin SPA.
@@ -13,6 +13,9 @@ info:
 
     **Auth.** Two mechanisms, either or both can be used:
     - `bearerAuth`: API keys (`seek_ak_…` scope `search`; `seek_admin_…` scope `admin`; `read` for GET-only).
+      When `DEVELOPER_MODE=true`, admins can also mint dedicated developer tokens (`seek_dev_…`) with full
+      admin scope for third-party integrations (see `/api/developer`); they are rejected as soon as the
+      setting is turned off.
     - `cookieAuth`: session cookie `seek_sid` + CSRF double-submit header `X-CSRF-Token` on all mutations.
     When `AUTH_ENABLED=false` every `/api/*` endpoint behaves as open-admin and `/search` needs no key.
 
@@ -26,7 +29,8 @@ info:
 
     **Errors.** All `4xx/5xx` responses: `{ "error": { "code", "message", "rid" } }`.
   license:
-    name: MIT
+    name: GPL-3.0-only
+    url: https://www.gnu.org/licenses/gpl-3.0.html
 
 servers:
   - url: http://localhost:8080
@@ -142,6 +146,19 @@ paths:
             text/plain:
               schema: { type: string }
               example: 1.1.0
+
+  /openapi.yaml:
+    get:
+      tags: [meta]
+      summary: The OpenAPI 3.1 specification for this API (this document)
+      description: Public and CORS-enabled so external tools and client generators can import it by URL. The canonical source is github.com/liberide/serpent-seek (api/openapi.yaml).
+      security: []
+      responses:
+        "200":
+          description: Raw OpenAPI document
+          content:
+            application/yaml:
+              schema: { type: string }
 
   /metrics:
     get:
@@ -498,6 +515,57 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
 
+  /api/users/{id}/quota:
+    get:
+      tags: [users]
+      summary: Read a user's search quota including current usage (admin)
+      description: >
+        Returns the quota status. A user without a quota row reports
+        requests = 0 (unlimited); the per-user quota is enforced on every
+        search endpoint for that user's API keys and sessions.
+      parameters: [ { $ref: "#/components/parameters/UserId" } ]
+      responses:
+        "200":
+          description: Quota status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserQuotaStatus" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [users]
+      summary: Set a user's search quota (admin)
+      description: >
+        Upserts the per-user allowance. Omitted fields keep their current
+        value; requests = 0 means unlimited. Changes apply to the next request.
+      parameters: [ { $ref: "#/components/parameters/UserId" } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserQuotaInput" }
+      responses:
+        "200":
+          description: Updated quota status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserQuotaStatus" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [users]
+      summary: Remove a user's search quota (admin) — the user becomes unlimited
+      parameters: [ { $ref: "#/components/parameters/UserId" } ]
+      responses:
+        "200":
+          description: Quota removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        "404": { $ref: "#/components/responses/NotFound" }
+
   /api/keys:
     get:
       tags: [users]
@@ -595,6 +663,126 @@ paths:
       parameters: [ { $ref: "#/components/parameters/UserId" } ]
       responses:
         "204": { description: Deleted }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ---------------- developer mode ----------------
+  /api/developer:
+    get:
+      tags: [users]
+      summary: Developer-mode state and developer tokens (admin)
+      responses:
+        "200":
+          description: Developer mode status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeveloperStatus" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/developer/mode:
+    put:
+      tags: [users]
+      summary: Enable or disable developer mode (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              properties:
+                enabled: { type: boolean }
+      responses:
+        "200":
+          description: Updated developer-mode status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeveloperStatus" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/developer/endpoints:
+    get:
+      tags: [users]
+      summary: List grantable endpoint ids for developer-token permissions (admin)
+      responses:
+        "200":
+          description: Non-public API operations, usable as permission ids
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DeveloperEndpoint" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/developer/tokens:
+    post:
+      tags: [users]
+      summary: Create a developer token (admin; requires developer mode)
+      description: >
+        Returns the plaintext token exactly once. Developer tokens use the `seek_dev_…` prefix and carry
+        `admin,search,read` scope; they are only accepted while developer mode is active. When `permissions`
+        is omitted the token may call every endpoint; pass a (possibly empty) list of ids from
+        `/api/developer/endpoints` to restrict it (or `["*"]` for explicit full access).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, description: Human-readable label; defaults to "developer token" }
+                permissions:
+                  type: array
+                  description: Endpoint ids to grant; omit for full access, `[]` to deny everything.
+                  items: { type: string, example: "GET /api/chains" }
+      responses:
+        "201":
+          description: Created — copy the token now, it is never shown again
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeveloperTokenCreated" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/developer/tokens/{id}:
+    patch:
+      tags: [users]
+      summary: Edit a developer token's name and/or endpoint permissions (admin)
+      parameters: [ { $ref: "#/components/parameters/KeyId" } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeveloperTokenPatch" }
+      responses:
+        "200":
+          description: Updated developer token
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeveloperToken" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    delete:
+      tags: [users]
+      summary: Revoke a developer token, or delete it permanently with ?purge=true (admin)
+      parameters:
+        - { $ref: "#/components/parameters/KeyId" }
+        - name: purge
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+          description: When true the token row is deleted permanently instead of being revoked.
+      responses:
+        "200":
+          description: "Revoked (default) or deleted (`deleted: true`)"
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean }
+                  deleted: { type: boolean, description: Present and true when the token was permanently deleted }
         "404": { $ref: "#/components/responses/NotFound" }
 
   # ---------------- history ----------------
@@ -1083,7 +1271,11 @@ paths:
               schema: { $ref: "#/components/schemas/SettingsResponse" }
     put:
       tags: [settings]
-      summary: Update settings (db-sourced only; env-managed keys are readonly)
+      summary: Update settings (db-sourced only; unchanged read-only keys are ignored)
+      description: >
+        Environment-managed and environment-only values that are echoed back
+        unchanged are ignored, so a full-snapshot PUT succeeds; only an actual
+        attempt to change a locked value is rejected.
       requestBody:
         required: true
         content:
@@ -1109,7 +1301,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  version: { type: string, example: 1.1.0 }
+                  version: { type: string, example: 1.1.1 }
                   commit: { type: string, example: d412056 }
                   build_date: { type: string, example: "2026-10-09T21:35:39Z" }
                   go_version: { type: string, example: go1.26.0 }
@@ -1382,12 +1574,40 @@ paths:
         - { name: to, in: query, schema: { type: string, format: date }, description: Inclusive end date (UTC). Defaults to today. }
         - { name: provider, in: query, schema: { type: string }, description: Only include requests that attempted this provider (successful, failed or skipped), matched via executed steps. }
         - { name: status, in: query, schema: { type: string, enum: [ok, empty, fail, running] }, description: Only count requests with this final status. }
+        - name: user_id
+          in: query
+          required: false
+          schema: { type: string }
+          description: >
+            Narrow the report to one owner: a user id, or the literal `anonymous`
+            for requests made without a user (auth disabled or an anonymous
+            caller). Omitted = all owners. Non-admin callers may only pass their
+            own user id (403 otherwise).
       responses:
         "200":
           description: Analytics bundle
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AnalyticsResponse" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /api/stats/users:
+    get:
+      tags: [stats]
+      summary: Per-user analytics leaderboard for a date range (administrators only)
+      description: >
+        Request aggregates for every owner (users plus the `anonymous` bucket),
+        merged with account data, active key counts and the runtime quota
+        status. Users without traffic in the period are returned zero-filled.
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date }, description: Inclusive start date (UTC). Defaults to the first day of the current month. }
+        - { name: to, in: query, schema: { type: string, format: date }, description: Inclusive end date (UTC). Defaults to today. }
+      responses:
+        "200":
+          description: Leaderboard bundle
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UsersAnalyticsResponse" }
 
   # ---------------- playground ----------------
   /api/search/ui:
@@ -1488,6 +1708,12 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/ErrorEnvelope" }
           example: { error: { code: not_found, message: "entity not found", rid: "0008-1c77" } }
+    Forbidden:
+      description: Insufficient permissions (e.g. a non-admin reading another owner's data)
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }
+          example: { error: { code: forbidden, message: "admin scope required", rid: "0008-1c77" } }
     Conflict:
       description: State conflict (unique violation, rule violation, etc.)
       content:
@@ -2165,6 +2391,51 @@ components:
         fail: { type: integer }
         avg_ms: { type: integer }
 
+    UsersAnalyticsResponse:
+      type: object
+      properties:
+        range:
+          type: object
+          properties:
+            from: { type: string, format: date }
+            to: { type: string, format: date }
+        rows:
+          type: array
+          items: { $ref: "#/components/schemas/UserStatRow" }
+        totals:
+          type: object
+          properties:
+            requests: { type: integer }
+            ok: { type: integer }
+            empty: { type: integer }
+            fail: { type: integer }
+            active_users: { type: integer, description: Owners with at least one request in the period (anonymous excluded) }
+            cost: { type: number, description: Summed cost of executed attempts across all owners }
+            cost_configured: { type: boolean, description: false = no cost configured, so the UI shows a dash instead of 0 }
+
+    UserStatRow:
+      type: object
+      properties:
+        user_id:
+          type: string
+          description: User id, or the literal `anonymous` for requests made without a user
+        name: { type: string, description: Account name (empty for the anonymous bucket and deleted users) }
+        role: { type: string, enum: [admin, viewer] }
+        disabled: { type: boolean }
+        created_at: { type: string, format: date-time }
+        exists: { type: boolean, description: false = the user account was deleted but its traffic remains in history }
+        requests: { type: integer }
+        ok: { type: integer }
+        empty: { type: integer }
+        fail: { type: integer }
+        avg_ms: { type: integer }
+        last_active: { type: string, format: date-time, description: Latest request timestamp in the period (absent when no traffic) }
+        cost: { type: number, description: Summed cost of the owner's executed attempts (absent when 0) }
+        keys_count: { type: integer, description: Active (non-revoked) API keys owned by the user }
+        quota:
+          $ref: "#/components/schemas/UserQuotaStatus"
+          description: Runtime per-user quota view; absent when the user is unlimited.
+
     # ---------- auth ----------
     User:
       type: object
@@ -2175,6 +2446,54 @@ components:
         role: { type: string, enum: [admin, viewer] }
         disabled: { type: boolean }
         created_at: { type: string, format: date-time }
+        quota:
+          $ref: "#/components/schemas/UserQuotaStatus"
+          description: Runtime per-user quota view; absent when the user is unlimited.
+
+    QuotaPeriod:
+      type: string
+      enum: [daily, weekly, monthly, rolling]
+      description: >
+        daily resets at midnight (shifted by tz_offset), weekly on Monday 00:00,
+        monthly on the 1st of the month 00:00, rolling is a sliding window of
+        window_hours.
+
+    UserQuotaInput:
+      type: object
+      properties:
+        requests:
+          type: integer
+          minimum: 0
+          description: Max search requests per period; 0 = unlimited.
+        period: { $ref: "#/components/schemas/QuotaPeriod" }
+        window_hours:
+          type: integer
+          minimum: 1
+          maximum: 720
+          default: 24
+          description: Sliding-window length; only used when period = rolling.
+        tz_offset:
+          type: integer
+          minimum: -720
+          maximum: 840
+          default: 0
+          description: Fixed offset in minutes applied to calendar reset boundaries (0 = UTC).
+
+    UserQuotaStatus:
+      type: object
+      properties:
+        user_id: { type: string, format: uuid }
+        requests: { type: integer, description: 0 = unlimited }
+        period: { $ref: "#/components/schemas/QuotaPeriod" }
+        window_hours: { type: integer }
+        tz_offset: { type: integer }
+        used: { type: integer, description: Requests counted in the current period }
+        remaining: { type: integer }
+        reset_at:
+          type: string
+          format: date-time
+          description: RFC3339 UTC moment the current period ends; absent for rolling quotas.
+        updated_at: { type: string, format: date-time }
 
     UserInput:
       type: object
@@ -2237,6 +2556,64 @@ components:
           description: Full key material — returned ONCE at creation, never stored or shown again
           example: "seek_ak_ab12cd34.8f3a1c9d7b2e4a5f6c0d1e2b3a4c5d6e7f"
 
+    DeveloperToken:
+      type: object
+      required: [id, name, prefix, created_at, permissions, all_endpoints]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        prefix: { type: string, description: Identifiable prefix only, e.g. seek_dev_ab12cd }
+        last_used_at: { type: string, format: date-time, nullable: true }
+        revoked_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        permissions:
+          type: array
+          items: { type: string, example: "GET /api/chains" }
+          description: Granted endpoint ids; empty when all_endpoints is true.
+        all_endpoints:
+          type: boolean
+          description: True when the token may call every endpoint (no restriction).
+
+    DeveloperEndpoint:
+      type: object
+      required: [id, method, path]
+      properties:
+        id: { type: string, description: "Endpoint id usable in permissions", example: "GET /api/chains" }
+        method: { type: string, enum: [GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, TRACE] }
+        path: { type: string, example: "/api/chains/{id}" }
+        tag: { type: string, description: OpenAPI tag used to group the endpoint in the UI }
+        summary: { type: string }
+        public: { type: boolean, description: "Always false here — public endpoints need no permission" }
+
+    DeveloperTokenPatch:
+      type: object
+      properties:
+        name: { type: string }
+        permissions:
+          type: array
+          description: Full replacement permission list; `["*"]` restores full access, `[]` denies everything.
+          items: { type: string, example: "POST /api/chains" }
+
+    DeveloperStatus:
+      type: object
+      required: [enabled, env_locked, tokens]
+      properties:
+        enabled: { type: boolean, description: Whether developer mode is currently on }
+        env_locked: { type: boolean, description: True when DEVELOPER_MODE is pinned by an environment variable (read-only) }
+        tokens:
+          type: array
+          items: { $ref: "#/components/schemas/DeveloperToken" }
+
+    DeveloperTokenCreated:
+      type: object
+      required: [token, plaintext]
+      properties:
+        token: { $ref: "#/components/schemas/DeveloperToken" }
+        plaintext:
+          type: string
+          description: Full developer token — returned ONCE at creation, never stored or shown again
+          example: "seek_dev_ab12cd.8f3a1c9d7b2e4a5f6c0d1e2b3a4c5d6e7f"
+
     PasskeyCredential:
       type: object
       required: [id, user_id, created_at]
@@ -2257,6 +2634,10 @@ components:
           additionalProperties: { type: boolean }
           description: Granted scopes keyed by name (admin/read/search)
         admin: { type: boolean }
+        developer: { type: boolean, description: True when the caller authenticated with a seek_dev_… token }
+        developer_mode:
+          type: boolean
+          description: Whether the instance-level developer mode is enabled (drives the Developer sidebar entry)
         passkeys_enabled:
           type: boolean
           description: false when PUBLIC_ORIGIN is http:// or an IP (WebAuthn requires HTTPS + domain)

@@ -85,6 +85,21 @@ type Storage interface {
 	UsageByDay(ctx context.Context, day string) (map[string]int, error)
 	DeleteOldUsage(ctx context.Context, beforeDay string) (int64, error)
 
+	// User quotas. A user without a row is unlimited.
+	GetUserQuota(ctx context.Context, userID string) (*UserQuota, error)
+	// SetUserQuota upserts the user's quota row.
+	SetUserQuota(ctx context.Context, q *UserQuota) error
+	DeleteUserQuota(ctx context.Context, userID string) error
+	// ListUserQuotas returns every quota row keyed by user id.
+	ListUserQuotas(ctx context.Context) (map[string]*UserQuota, error)
+
+	// Rolling-window hits (period = rolling). ts is an RFC3339Nano UTC
+	// timestamp; since is the inclusive lower bound for counting.
+	AddRollingHit(ctx context.Context, subject, ts string) error
+	CountRollingHits(ctx context.Context, subject, since string) (int, error)
+	// DeleteOldRollingHits removes hits older than the cutoff timestamp.
+	DeleteOldRollingHits(ctx context.Context, before string) (int64, error)
+
 	// Passkeys
 	CreatePasskey(ctx context.Context, p *Passkey) error
 	GetPasskeyByCredentialID(ctx context.Context, credentialID []byte) (*Passkey, error)
@@ -153,6 +168,9 @@ type Storage interface {
 	Summary(ctx context.Context, days int) (*StatsSummary, error)
 	SummaryForUser(ctx context.Context, days int, userID string) (*StatsSummary, error)
 	Analytics(ctx context.Context, f AnalyticsFilter) (*AnalyticsReport, error)
+	// UsersOverview returns per-owner aggregates (users plus the anonymous
+	// bucket) over an inclusive UTC date range for the leaderboard.
+	UsersOverview(ctx context.Context, from, to string) ([]UserStat, error)
 	RecomputeDailyStats(ctx context.Context, date string) error
 
 	// Maintenance

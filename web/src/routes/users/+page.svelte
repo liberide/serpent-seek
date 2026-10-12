@@ -1,13 +1,21 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { del, get, patch, post } from '$lib/api';
+	import { del, get, patch, post, put } from '$lib/api';
 	import { notify, session } from '$lib/stores';
 	import Modal from '$lib/components/Modal.svelte';
+	import QuotaModal, { type QuotaPayload, type QuotaStatus } from '$lib/components/QuotaModal.svelte';
 	import CopyButton from '$lib/components/CopyButton.svelte';
 	import { dateTime } from '$lib/format';
 	import { t } from '$lib/i18n.svelte';
 
-	type User = { id: string; name: string; role: string; disabled: boolean; created_at: string };
+	type User = {
+		id: string;
+		name: string;
+		role: string;
+		disabled: boolean;
+		created_at: string;
+		quota?: QuotaStatus | null;
+	};
 	type Key = {
 		id: string;
 		user_id: string;
@@ -37,6 +45,10 @@
 	let chainDraft = $state('');
 	let chainSaving = $state(false);
 	let chainError = $state('');
+	// Per-user quota dialog.
+	let quotaModal = $state(false);
+	let quotaTarget = $state<User | null>(null);
+	let quotaStatus = $state<QuotaStatus | null>(null);
 
 	async function load() {
 		users = await get<User[]>('/api/users');
@@ -178,6 +190,56 @@
 		await del(`/api/passkeys/${id}`);
 		await load();
 	}
+
+	async function openQuotaModal(user: User) {
+		quotaTarget = user;
+		quotaStatus = user.quota ?? null;
+		quotaModal = true;
+		// Re-read for a fresh usage count (the list row may be stale).
+		try {
+			quotaStatus = await get<QuotaStatus>(`/api/users/${user.id}/quota`);
+			if (!quotaStatus || !quotaStatus.requests) quotaStatus = null;
+		} catch {
+			// Keep the embedded status; the modal still works without it.
+		}
+	}
+
+	async function saveQuota(payload: QuotaPayload) {
+		if (!quotaTarget) return;
+		if (payload.requests > 0) {
+			await put<QuotaStatus>(`/api/users/${quotaTarget.id}/quota`, payload);
+			notify(t('users.quotaSaved'), 'success');
+		} else {
+			// "Unlimited" checkbox: remove the quota row entirely so the user
+			// falls back to the global settings. DELETE is used instead of
+			// PUT requests=0 so no limit/period state survives on the server
+			// and cannot leak back into the modal later.
+			await del(`/api/users/${quotaTarget.id}/quota`);
+			notify(t('users.quotaRemoved'), 'success');
+		}
+		quotaModal = false;
+		quotaTarget = null;
+		quotaStatus = null;
+		await load();
+	}
+
+	async function removeQuota() {
+		if (!quotaTarget) return;
+		await del(`/api/users/${quotaTarget.id}/quota`);
+		notify(t('users.quotaRemoved'), 'success');
+		quotaModal = false;
+		quotaTarget = null;
+		quotaStatus = null;
+		await load();
+	}
+
+	// quotaLabel renders the per-user allowance for the users table.
+	function quotaLabel(user: User): string {
+		const q = user.quota;
+		if (!q || !q.requests) return t('users.quotaUnlimited');
+		const periodKey = `users.quotaShort${q.period.charAt(0).toUpperCase()}${q.period.slice(1)}`;
+		return `${q.remaining}/${q.requests} · ${t(periodKey)}`;
+	}
 </script>
 
 <div class="space-y-4">
@@ -190,12 +252,25 @@
 		<div class="card">
 			<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">{t('users.users')}</h2>
 			<table class="table">
-				<thead><tr><th>{t('common.name')}</th><th>{t('users.role')}</th><th>{t('common.status')}</th><th></th></tr></thead>
+				<thead><tr><th>{t('common.name')}</th><th>{t('users.role')}</th><th>{t('users.quota')}</th><th>{t('common.status')}</th><th></th></tr></thead>
 				<tbody>
 					{#each users as user (user.id)}
 						<tr>
 							<td>{user.name}</td>
 							<td>{user.role}</td>
+							<td>
+								<button
+									class="badge border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700"
+									title={t('users.quotaEdit')}
+									onclick={() => openQuotaModal(user)}
+								>
+									{#if user.quota && user.quota.requests}
+										🚦 {quotaLabel(user)}
+									{:else}
+										<span class="text-slate-400">∞ {t('users.quotaUnlimited')}</span>
+									{/if}
+								</button>
+							</td>
 							<td>{user.disabled ? t('users.disabled') : t('users.enabled')}</td>
 							<td class="flex gap-1">
 								<button class="btn px-2 py-0.5 text-xs" onclick={() => toggle(user)}>
@@ -331,6 +406,20 @@
 		<button class="btn btn-primary mt-3 w-full" onclick={() => (keyModal = false)}>{t('users.done')}</button>
 	{/if}
 </Modal>
+
+<QuotaModal
+	open={quotaModal}
+	userName={quotaTarget?.name ?? ''}
+	status={quotaStatus}
+	onsave={saveQuota}
+	onremove={removeQuota}
+	onclose={() => {
+		if (!quotaModal) return;
+		quotaModal = false;
+		quotaTarget = null;
+		quotaStatus = null;
+	}}
+/>
 
 <Modal open={chainModal} title={t('users.bindTitle')} onclose={closeChainModal}>
 	{#if chainTarget}

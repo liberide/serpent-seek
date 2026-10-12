@@ -10,7 +10,8 @@ export default defineConfig({
 			'/api': 'http://localhost:8080',
 			'/search': 'http://localhost:8080',
 			'/healthz': 'http://localhost:8080',
-			'/version': 'http://localhost:8080'
+			'/version': 'http://localhost:8080',
+			'/openapi.yaml': 'http://localhost:8080'
 		}
 	}
 });

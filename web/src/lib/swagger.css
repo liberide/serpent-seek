@@ -1,0 +1,214 @@
+/* Theme-aware Swagger UI.
+ *
+ * Every app theme defines the Tailwind `--color-slate-*` / `--color-emerald-*`
+ * ramps and inverts the slate ramp for light themes (see app.css and
+ * src/lib/theme.ts, which sets `data-theme` on <html>). Styling Swagger UI with
+ * those variables therefore follows the active theme automatically — dark
+ * themes get light text on dark surfaces and light themes the opposite.
+ */
+
+.swagger-host {
+	background: var(--color-slate-900);
+	color: var(--color-slate-200);
+}
+
+.swagger-host .swagger-ui {
+	background: transparent;
+	color: var(--color-slate-200);
+	font-family: var(--font-sans);
+}
+
+/* ---- text ---- */
+.swagger-host .swagger-ui .info .title,
+.swagger-host .swagger-ui .info h1,
+.swagger-host .swagger-ui .info h2,
+.swagger-host .swagger-ui .info h3,
+.swagger-host .swagger-ui .info h4,
+.swagger-host .swagger-ui .info h5,
+.swagger-host .swagger-ui .opblock-tag,
+.swagger-host .swagger-ui .opblock .opblock-summary-path,
+.swagger-host .swagger-ui .opblock .opblock-summary-description,
+.swagger-host .swagger-ui .opblock-description-wrapper p,
+.swagger-host .swagger-ui .parameter__name,
+.swagger-host .swagger-ui .parameter__type,
+.swagger-host .swagger-ui .parameter__in,
+.swagger-host .swagger-ui .response-col_status,
+.swagger-host .swagger-ui .response-col_description,
+.swagger-host .swagger-ui .model,
+.swagger-host .swagger-ui .model-title,
+.swagger-host .swagger-ui .prop-type,
+.swagger-host .swagger-ui .prop-format,
+.swagger-host .swagger-ui table thead tr th,
+.swagger-host .swagger-ui table thead tr td,
+.swagger-host .swagger-ui table tbody tr td,
+.swagger-host .swagger-ui .renderedMarkdown p {
+	color: var(--color-slate-200) !important;
+}
+
+.swagger-host .swagger-ui .info .base-url,
+.swagger-host .swagger-ui .info .title small,
+.swagger-host .swagger-ui .info .title small pre,
+.swagger-host .swagger-ui .markdown p,
+.swagger-host .swagger-ui .opblock-tag small {
+	color: var(--color-slate-400) !important;
+}
+
+.swagger-host .swagger-ui .info a,
+.swagger-host .swagger-ui .markdown a,
+.swagger-host .swagger-ui a {
+	color: var(--color-emerald-300);
+}
+
+/* ---- surfaces ---- */
+.swagger-host .swagger-ui .scheme-container,
+.swagger-host .swagger-ui .opblock .opblock-section-header,
+.swagger-host .swagger-ui .dialog-ux .modal-ux,
+.swagger-host .swagger-ui .auth-container,
+.swagger-host .swagger-ui section.models,
+.swagger-host .swagger-ui .model-box,
+.swagger-host .swagger-ui .models .model-container,
+.swagger-host .swagger-ui .responses-inner {
+	background: var(--color-slate-900) !important;
+	border-color: var(--color-slate-700) !important;
+	color: var(--color-slate-200) !important;
+	box-shadow: none !important;
+}
+
+.swagger-host .swagger-ui .opblock-tag {
+	border-bottom: 1px solid var(--color-slate-800);
+}
+
+.swagger-host .swagger-ui section.models .model-container {
+	background: var(--color-slate-900) !important;
+}
+
+/* Opblocks keep Swagger's method colour on the summary; neutralise the base. */
+.swagger-host .swagger-ui .opblock {
+	background: var(--color-slate-900);
+	background: color-mix(in srgb, var(--color-slate-800) 45%, transparent);
+	border-color: var(--color-slate-700);
+}
+
+/* ---- inputs ---- */
+.swagger-host .swagger-ui input[type='text'],
+.swagger-host .swagger-ui input[type='password'],
+.swagger-host .swagger-ui input[type='search'],
+.swagger-host .swagger-ui input[type='email'],
+.swagger-host .swagger-ui input[type='file'],
+.swagger-host .swagger-ui textarea,
+.swagger-host .swagger-ui select,
+.swagger-host .swagger-ui .opblock-body select {
+	background: var(--color-slate-950) !important;
+	border: 1px solid var(--color-slate-700) !important;
+	color: var(--color-slate-100) !important;
+}
+
+.swagger-host .swagger-ui input::placeholder,
+.swagger-host .swagger-ui textarea::placeholder {
+	color: var(--color-slate-500);
+}
+
+/* ---- buttons ---- */
+.swagger-host .swagger-ui .btn {
+	background: var(--color-slate-800);
+	border-color: var(--color-slate-700);
+	color: var(--color-slate-100);
+	box-shadow: none;
+}
+
+.swagger-host .swagger-ui .btn:hover {
+	background: var(--color-slate-700);
+}
+
+.swagger-host .swagger-ui .btn.authorize {
+	background: transparent;
+	border-color: var(--color-emerald-600);
+	color: var(--color-emerald-300);
+}
+
+.swagger-host .swagger-ui .btn.authorize svg {
+	fill: var(--color-emerald-300);
+}
+
+.swagger-host .swagger-ui .btn.execute {
+	background: var(--color-emerald-600);
+	border-color: var(--color-emerald-600);
+	color: #fff;
+}
+
+/* ---- tables ---- */
+.swagger-host .swagger-ui table thead tr th,
+.swagger-host .swagger-ui table thead tr td {
+	border-bottom: 1px solid var(--color-slate-700);
+}
+
+.swagger-host .swagger-ui table tbody tr td {
+	border-bottom: 1px solid var(--color-slate-800);
+}
+
+.swagger-host .swagger-ui .parameters-col_description p {
+	color: var(--color-slate-300);
+}
+
+/* ---- code / markdown ---- */
+.swagger-host .swagger-ui .markdown code,
+.swagger-host .swagger-ui .renderedMarkdown code,
+.swagger-host .swagger-ui .highlight-code,
+.swagger-host .swagger-ui .model-example .highlight-code,
+.swagger-host .swagger-ui pre {
+	background: var(--color-slate-950) !important;
+	color: var(--color-slate-200) !important;
+}
+
+/* ---- tabs ---- */
+.swagger-host .swagger-ui .tab li {
+	color: var(--color-slate-400);
+}
+
+.swagger-host .swagger-ui .tab li button.tablinks {
+	color: var(--color-slate-300);
+}
+
+.swagger-host .swagger-ui .tab li.active {
+	border-bottom: 2px solid var(--color-emerald-500);
+}
+
+.swagger-host .swagger-ui .tab li.active button.tablinks {
+	color: var(--color-slate-100);
+}
+
+/* ---- authorize dialog ---- */
+.swagger-host .swagger-ui .dialog-ux .modal-ux {
+	box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+}
+
+.swagger-host .swagger-ui .dialog-ux .modal-ux-header {
+	border-bottom: 1px solid var(--color-slate-700);
+}
+
+.swagger-host .swagger-ui .dialog-ux .modal-ux-header h3 {
+	color: var(--color-slate-100);
+}
+
+.swagger-host .swagger-ui .dialog-ux .modal-ux-content {
+	color: var(--color-slate-200);
+}
+
+.swagger-host .swagger-ui .dialog-ux .backdrop-ux {
+	background: rgba(2, 6, 23, 0.7);
+}
+
+/* ---- info block ---- */
+.swagger-host .swagger-ui .info {
+	margin: 20px 0;
+}
+
+.swagger-host .swagger-ui .info .title {
+	color: var(--color-slate-100);
+}
+
+/* Native controls (selects/scrollbars) follow the active color-scheme. */
+.swagger-host .swagger-ui select option {
+	background: var(--color-slate-900);
+	color: var(--color-slate-100);
+}

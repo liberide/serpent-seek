@@ -92,6 +92,7 @@ type Config struct {
 	DefaultProviderFailures    int
 	DefaultProviderCooldown    int
 	DefaultDebug               bool
+	DefaultDeveloperMode       bool
 
 	// envSet records which keys came from the environment.
 	envSet map[string]bool
@@ -149,6 +150,11 @@ const (
 	KeyProviderCooldown = "provider_cooldown_seconds"
 	// KeyDebug enables the pprof debug endpoints under /debug/pprof.
 	KeyDebug = "debug"
+	// KeyDeveloperMode enables developer mode: admins may mint dedicated
+	// developer tokens (seek_dev_…) that carry full administrative scope for
+	// third-party/programmatic integrations. When disabled every developer
+	// token is rejected at authentication time, without revoking it.
+	KeyDeveloperMode = "developer_mode"
 	// KeyUpdateCheck enables the outbound "newer release available" check.
 	KeyUpdateCheck = "update_check_enabled"
 	// KeyUpdateCheckURL is the release API endpoint (GitHub "latest release" by
@@ -176,6 +182,10 @@ type SettingDef struct {
 	Secret   bool   `json:"secret"`
 	Group    string `json:"group"`
 	Required bool   `json:"required"`
+	// Hidden keeps a setting out of the generic Settings form. It still has an
+	// environment binding and a default, but it is managed through a dedicated
+	// UI section/endpoint instead (e.g. developer_mode).
+	Hidden bool `json:"hidden,omitempty"`
 }
 
 // envBindings maps a settings key to its environment variable, type and secret flag.
@@ -206,6 +216,7 @@ var envBindings = []SettingDef{
 	{Key: KeyProviderFailures, Env: "PROVIDER_FAILURE_THRESHOLD", Type: "int", Default: "0", Group: "network"},
 	{Key: KeyProviderCooldown, Env: "PROVIDER_COOLDOWN_SECONDS", Type: "int", Default: "60", Group: "network"},
 	{Key: KeyDebug, Env: "DEBUG", Type: "bool", Default: "false", Group: "general"},
+	{Key: KeyDeveloperMode, Env: "DEVELOPER_MODE", Type: "bool", Default: "false", Group: "auth", Hidden: true},
 	{Key: KeyUpdateCheck, Env: "UPDATE_CHECK_ENABLED", Type: "bool", Default: "true", Group: "general"},
 	{Key: KeyUpdateCheckURL, Env: "UPDATE_CHECK_URL", Type: "string", Default: DefaultUpdateCheckURL, Group: "general", EnvOnly: true},
 	{Key: KeyUpdateCheckInterval, Env: "UPDATE_CHECK_INTERVAL_HOURS", Type: "int", Default: "24", Group: "general"},
@@ -279,6 +290,7 @@ func Load() (*Config, error) {
 	c.DefaultProviderFailures = envInt("PROVIDER_FAILURE_THRESHOLD", 0)
 	c.DefaultProviderCooldown = envInt("PROVIDER_COOLDOWN_SECONDS", 60)
 	c.DefaultDebug = envBool("DEBUG", false)
+	c.DefaultDeveloperMode = envBool("DEVELOPER_MODE", false)
 	c.DefaultUpdateCheck = envBool("UPDATE_CHECK_ENABLED", true)
 	c.DefaultUpdateCheckURL = envStr("UPDATE_CHECK_URL", DefaultUpdateCheckURL)
 	c.DefaultUpdateCheckInterval = envInt("UPDATE_CHECK_INTERVAL_HOURS", 24)
@@ -413,6 +425,8 @@ func defaultResolved(cfg *Config, key string) string {
 		return strconv.Itoa(cfg.DefaultProviderCooldown)
 	case KeyDebug:
 		return strconv.FormatBool(cfg.DefaultDebug)
+	case KeyDeveloperMode:
+		return strconv.FormatBool(cfg.DefaultDeveloperMode)
 	case KeyUpdateCheck:
 		return strconv.FormatBool(cfg.DefaultUpdateCheck)
 	case KeyUpdateCheckURL:

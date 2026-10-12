@@ -1,6 +1,6 @@
 # 🐍 SerpentSeek — passerelle de recherche auto-hébergée pour Open WebUI, MCP et 40+ API
 
-[English](README.md "Read in English") | [Русский](README.ru.md "README по-русски") | [Deutsch](README.de.md "Auf Deutsch lesen") | **Français** | [日本語](README.ja.md "日本語で読む") | [中文](README.zh.md "阅读中文版")
+[English](README.md "Read in English") | [Русский](README.ru.md "README по-русски") | [Polski](README.pl.md "Czytaj po polsku") | [Deutsch](README.de.md "Auf Deutsch lesen") | **Français** | [日本語](README.ja.md "日本語で読む") | [中文](README.zh.md "阅读中文版")
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE "Licence du projet — GNU GPL v3.0")
 [![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod "Backend écrit en Go")
@@ -54,10 +54,27 @@ dommage matériel (GPLv3 §§15–16, détails dans `NOTICE`).
   HTTP 200, `[{"link","title","snippet"}]`
 * 🤖 **Serveur MCP** — outil `search` en HTTP streamable pour Claude, Cursor,
   VS Code et tout client MCP ; JSON-RPC 2.0 simple accepté également
+* 🛠️ **Mode développeur & jetons** — un admin peut activer le mode développeur et
+  émettre des jetons `seek_dev_…` dédiés avec le plein accès admin, afin qu'un
+  système tiers puisse provisionner fournisseurs, chaînes, utilisateurs, clés et
+  réglages entièrement via l'API ; désactiver le mode rejette immédiatement tous
+  ces jetons
 * 🔭 **Traçage en direct** — frise chronologique des étapes via SSE, en-têtes
   de diagnostic `X-Serpent-Rid` / `X-Serpent-Api` et page d'historique
+* 📊 **Métriques Prometheus** — `GET /metrics` expose les résultats de recherche,
+  les tentatives/durées des fournisseurs, les requêtes en cours et les clients SSE
+  au format texte
+* 🔔 **Notifications de mise à jour** — vérification facultative d'une nouvelle
+  version ; un badge dans la barre latérale et le détail dans **Réglages → Infos**
 * 🔐 **Sécurité** — clés API hachées en argon2id, Passkeys (WebAuthn), sessions
   SameSite=Strict avec CSRF, secrets en écriture seule, AES-GCM optionnel
+* 📋 **Journal d'audit** — chaque mutation d'administration (réglages,
+  fournisseurs, chaînes, clés, utilisateurs) est enregistrée avec acteur, IP et
+  détails non secrets
+* 💱 **Suivi des coûts par fournisseur** — `cost_per_request` facultatif par
+  instance, cumulé par fournisseur dans Analytics (entièrement masqué si non configuré)
+* 📦 **Export/import de configuration** — instantanés sans secret des
+  fournisseurs, chaînes et réglages non secrets pour migrer entre instances
 * 💾 **SQLite ⟷ PostgreSQL** — SQLite en mode WAL par défaut ; le profil
   `extdb` fournit PostgreSQL pour les déploiements multi-réplicas
 * 🌍 **UI multilingue** — English, Русский, Polski, Deutsch, Français, 日本語, 中文
@@ -489,6 +506,7 @@ cd web && npx license-checker --production --excludePrivatePackages
 | @tailwindcss/vite | 4.3.3 | MIT |
 | @simplewebauthn/browser | 14.0.0 | MIT |
 | uqr | 0.1.3 | MIT |
+| swagger-ui-dist | 5.33.1 | Apache-2.0 |
 
 Conteneurs satellites (pas des dépendances de code) : `postgres:17-alpine`
 (PostgreSQL License) et `searxng/searxng` externe (hors de ce dépôt ; **AGPLv3** —

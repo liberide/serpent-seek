@@ -1,6 +1,6 @@
 # 🐍 SerpentSeek — 自托管搜索网关，面向 Open WebUI、MCP 及 40+ 搜索 API
 
-[English](README.md "Read in English") | [Русский](README.ru.md "README по-русски") | [Deutsch](README.de.md "Auf Deutsch lesen") | [Français](README.fr.md "Lire en français") | [日本語](README.ja.md "日本語で読む") | **中文**
+[English](README.md "Read in English") | [Русский](README.ru.md "README по-русски") | [Polski](README.pl.md "Czytaj po polsku") | [Deutsch](README.de.md "Auf Deutsch lesen") | [Français](README.fr.md "Lire en français") | [日本語](README.ja.md "日本語で読む") | **中文**
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE "项目许可证 — GNU GPL v3.0")
 [![Go 1.26](https://img.shields.io/badge/Go-1.26-00ADD8?logo=go&logoColor=white)](go.mod "后端使用 Go 编写")
@@ -41,10 +41,21 @@ API；任何费用均由运维方与其提供方之间解决。作者不对这�
   `[{"link","title","snippet"}]`
 * 🤖 **MCP 服务器** — 通过 streamable HTTP 提供 `search` 工具，适用于 Claude、
   Cursor、VS Code 等 MCP 客户端；同时兼容普通 JSON-RPC 2.0
+* 🛠️ **开发者模式与令牌** — 管理员可启用开发者模式并签发专用 `seek_dev_…`
+  令牌（拥有完整管理权限），让第三方系统完全通过 API 配置提供方、链路、用户、
+  密钥与设置；关闭该模式后所有此类令牌立即失效
 * 🔭 **实时请求追踪** — 基于 SSE 的分步时间线、`X-Serpent-Rid` /
   `X-Serpent-Api` 诊断头以及历史记录页面
+* 📊 **Prometheus 指标** — `GET /metrics` 以文本格式暴露搜索结果、提供方
+  尝试次数/耗时、进行中的请求与 SSE 客户端
+* 🔔 **更新通知** — 可选检查新版本；侧边栏显示徽标，详情见 **设置 → 信息** 页面
 * 🔐 **安全** — API 密钥使用 argon2id 哈希、Passkeys（WebAuthn）、
   SameSite=Strict 会话与 CSRF 防护、只写机密、可选 AES-GCM 静态加密
+* 📋 **审计日志** — 每次管理变更（设置、提供方、链路、密钥、用户）都会记录
+  操作者、IP 与非机密详情
+* 💱 **提供方成本统计** — 可选的按实例 `cost_per_request`，在 Analytics 中按
+  提供方汇总（未配置时完全隐藏）
+* 📦 **配置导出/导入** — 不含机密的提供方、链路与非机密设置快照，用于实例间迁移
 * 💾 **SQLite ⟷ PostgreSQL** — 默认 WAL 模式 SQLite；`extdb` profile 提供
   PostgreSQL 以支持多副本部署
 * 🌍 **多语言界面** — English, Русский, Polski, Deutsch, Français, 日本語, 中文
@@ -426,6 +437,7 @@ cd web && npx license-checker --production --excludePrivatePackages
 | @tailwindcss/vite | 4.3.3 | MIT |
 | @simplewebauthn/browser | 14.0.0 | MIT |
 | uqr | 0.1.3 | MIT |
+| swagger-ui-dist | 5.33.1 | Apache-2.0 |
 
 卫星容器（非代码依赖）：`postgres:17-alpine`（PostgreSQL License）和外部
 `searxng/searxng`（不在本仓库中；**AGPLv3** —— 独立服务，不是代码依赖）。

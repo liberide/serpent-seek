@@ -8,6 +8,8 @@
 		onclose,
 		backdropClass = 'bg-black/60',
 		panelClass = 'bg-slate-900',
+		/** Use the wider dialog width (e.g. for content-heavy dialogs). */
+		wide = false,
 		children,
 		footer
 	}: {
@@ -18,6 +20,7 @@
 		backdropClass?: string;
 		/** Extra classes for the dialog panel itself. */
 		panelClass?: string;
+		wide?: boolean;
 		children?: Snippet;
 		/** Action bar pinned to the bottom of the dialog (e.g. Cancel/Save buttons). */
 		footer?: Snippet;
@@ -30,7 +33,9 @@
 		role="presentation"
 	>
 		<div
-			class="flex max-h-[calc(100dvh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-slate-700 shadow-2xl {panelClass}"
+			class="flex max-h-[calc(100dvh-2rem)] w-full {wide
+				? 'max-w-2xl'
+				: 'max-w-lg'} flex-col overflow-hidden rounded-xl border border-slate-700 shadow-2xl {panelClass}"
 			role="dialog"
 			aria-modal="true"
 		>

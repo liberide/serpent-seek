@@ -13,7 +13,8 @@ import (
 )
 
 func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := s.store.ListUsers(r.Context())
+	ctx := r.Context()
+	users, err := s.store.ListUsers(ctx)
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
 		return
@@ -21,7 +22,169 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request) {
 	if users == nil {
 		users = []*store.User{}
 	}
+	quotas, err := s.store.ListUserQuotas(ctx)
+	if err != nil {
+		// A quota read failure must not break the user list.
+		s.log.Warn("", "", "list quotas failed: "+err.Error())
+		quotas = nil
+	}
+	for _, u := range users {
+		q := quotas[u.ID]
+		if q == nil || q.Requests <= 0 {
+			continue
+		}
+		u.Quota = s.quotaStatus(ctx, u.ID, q)
+	}
 	writeJSON(w, http.StatusOK, users)
+}
+
+// quotaStatus builds the runtime quota view (configured allowance + current
+// usage + reset moment) for the quota page and the user list.
+func (s *Server) quotaStatus(ctx context.Context, userID string, q *store.UserQuota) *store.UserQuotaStatus {
+	st := &store.UserQuotaStatus{
+		Requests:    q.Requests,
+		Period:      q.Period,
+		WindowHours: q.WindowHours,
+		TzOffset:    q.TzOffset,
+		UpdatedAt:   q.UpdatedAt,
+	}
+	if q.Requests > 0 {
+		now := time.Now()
+		if used, err := s.quotaUsage(ctx, "user:"+userID, q, now); err == nil {
+			st.Used = used
+			st.Remaining = q.Requests - used
+			if st.Remaining < 0 {
+				st.Remaining = 0
+			}
+			if resetAt, ok := quotaResetAt(q, now); ok {
+				st.ResetAt = resetAt.UTC().Format(time.RFC3339)
+			}
+		}
+	}
+	return st
+}
+
+type quotaPayload struct {
+	Requests    *int    `json:"requests"`
+	Period      *string `json:"period"`
+	WindowHours *int    `json:"window_hours"`
+	TzOffset    *int    `json:"tz_offset"`
+}
+
+// validateQuota checks a quota payload and returns the normalised quota.
+// A nil field means "keep the current value" on update; on create the
+// defaults apply (daily, 24h window, UTC).
+func validateQuota(body quotaPayload, current *store.UserQuota) (*store.UserQuota, string) {
+	q := &store.UserQuota{}
+	if current != nil {
+		*q = *current
+	}
+	if body.Requests != nil {
+		if *body.Requests < 0 {
+			return nil, "requests must be >= 0"
+		}
+		q.Requests = *body.Requests
+	}
+	if body.Period != nil {
+		switch *body.Period {
+		case store.QuotaPeriodDaily, store.QuotaPeriodWeekly, store.QuotaPeriodMonthly, store.QuotaPeriodRolling:
+			q.Period = *body.Period
+		default:
+			return nil, "period must be one of daily|weekly|monthly|rolling"
+		}
+	}
+	if q.Period == "" {
+		q.Period = store.QuotaPeriodDaily
+	}
+	if body.WindowHours != nil {
+		if *body.WindowHours < 1 || *body.WindowHours > 720 {
+			return nil, "window_hours must be between 1 and 720"
+		}
+		q.WindowHours = *body.WindowHours
+	}
+	if q.WindowHours <= 0 {
+		q.WindowHours = 24
+	}
+	if body.TzOffset != nil {
+		if *body.TzOffset < -720 || *body.TzOffset > 840 {
+			return nil, "tz_offset must be between -720 and 840 minutes"
+		}
+		q.TzOffset = *body.TzOffset
+	}
+	return q, ""
+}
+
+func (s *Server) handleGetUserQuota(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID := chi.URLParam(r, "id")
+	if _, err := s.store.GetUser(ctx, userID); err != nil {
+		writeError(w, r, http.StatusNotFound, "not_found", "user not found")
+		return
+	}
+	q, err := s.store.GetUserQuota(ctx, userID)
+	if err == store.ErrNotFound {
+		writeJSON(w, http.StatusOK, map[string]any{"user_id": userID, "requests": 0, "period": ""})
+		return
+	}
+	if err != nil {
+		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, s.quotaStatus(ctx, userID, q))
+}
+
+func (s *Server) handlePutUserQuota(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID := chi.URLParam(r, "id")
+	if _, err := s.store.GetUser(ctx, userID); err != nil {
+		writeError(w, r, http.StatusNotFound, "not_found", "user not found")
+		return
+	}
+	var body quotaPayload
+	if !readJSON(w, r, &body) {
+		return
+	}
+	current, err := s.store.GetUserQuota(ctx, userID)
+	if err != nil && err != store.ErrNotFound {
+		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
+		return
+	}
+	if err == store.ErrNotFound {
+		current = nil
+	}
+	q, verr := validateQuota(body, current)
+	if verr != "" {
+		writeError(w, r, http.StatusBadRequest, "invalid_request", verr)
+		return
+	}
+	q.UserID = userID
+	q.UpdatedAt = store.Now()
+	if err := s.store.SetUserQuota(ctx, q); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
+		return
+	}
+	s.quotas.invalidate(userID)
+	s.audit(ctx, r, "quota.set", userID, map[string]string{
+		"requests": itoa(q.Requests), "period": q.Period,
+		"window_hours": itoa(q.WindowHours), "tz_offset": itoa(q.TzOffset),
+	})
+	writeJSON(w, http.StatusOK, s.quotaStatus(ctx, userID, q))
+}
+
+func (s *Server) handleDeleteUserQuota(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID := chi.URLParam(r, "id")
+	if _, err := s.store.GetUser(ctx, userID); err != nil {
+		writeError(w, r, http.StatusNotFound, "not_found", "user not found")
+		return
+	}
+	if err := s.store.DeleteUserQuota(ctx, userID); err != nil {
+		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
+		return
+	}
+	s.quotas.invalidate(userID)
+	s.audit(ctx, r, "quota.delete", userID, nil)
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
 type userPayload struct {
@@ -81,11 +244,14 @@ func (s *Server) handleUpdateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteUser(r.Context(), chi.URLParam(r, "id")); err != nil {
+	id := chi.URLParam(r, "id")
+	if err := s.store.DeleteUser(r.Context(), id); err != nil {
 		writeError(w, r, http.StatusInternalServerError, "store_error", err.Error())
 		return
 	}
-	s.audit(r.Context(), r, "user.delete", chi.URLParam(r, "id"), nil)
+	// The quota row is cascade-deleted; drop any cached copy.
+	s.quotas.invalidate(id)
+	s.audit(r.Context(), r, "user.delete", id, nil)
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

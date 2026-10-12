@@ -49,6 +49,10 @@ liable for such charges or any other material damage (GPLv3 §§15–16, details
   `[{"link","title","snippet"}]`
 * 🤖 **MCP server** — `search` tool over streamable HTTP for Claude, Cursor, VS
   Code and any other MCP client; plain JSON-RPC 2.0 is accepted too
+* 🛠️ **Developer mode & tokens** — an admin can enable developer mode and mint
+  dedicated `seek_dev_…` tokens with full admin scope, so a third-party system
+  can provision providers, chains, users, keys and settings entirely through the
+  API; turning the mode off rejects every developer token instantly
 * 🔭 **Live request tracing** — per-step timeline over SSE plus `X-Serpent-Rid`
   / `X-Serpent-Api` diagnostics headers and a History page
 * 📊 **Prometheus metrics** — `GET /metrics` exposes search outcomes, provider
@@ -482,6 +486,7 @@ cd web && npx license-checker --production --excludePrivatePackages
 | @tailwindcss/vite | 4.3.3 | MIT |
 | @simplewebauthn/browser | 14.0.0 | MIT |
 | uqr | 0.1.3 | MIT |
+| swagger-ui-dist | 5.33.1 | Apache-2.0 |
 
 Satellite containers (not code dependencies): `postgres:17-alpine` (PostgreSQL
 License) and external `searxng/searxng` (not part of this repository; **AGPLv3**
@@ -514,6 +519,11 @@ License) and external `searxng/searxng` (not part of this repository; **AGPLv3**
   `SEARCH_DAILY_QUOTA` (both `0` = disabled/unlimited) cap requests per API key
   (or per user/IP without a key) across `/search`, `/mcp` and the playground.
   Counters live in the database (`usage_daily`) and are pruned after 90 days.
+  Admins can additionally assign a **per-user quota** (daily / weekly / monthly
+  / rolling reset) from the Users page or `PUT /api/users/{id}/quota`; see
+  [Operations](docs/operations.md#per-user-search-quotas). Live quota usage and
+  per-user traffic trends are visible on the Analytics → By-users page
+  ([Operations](docs/operations.md#per-user-analytics)).
 * **Update checks are opt-in.** With `UPDATE_CHECK_ENABLED=true` the server
   fetches the public GitHub release feed about once a day (no telemetry) and the
   UI shows a notice when a newer version exists; set it to `false` for

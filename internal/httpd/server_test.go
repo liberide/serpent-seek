@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -144,6 +145,23 @@ func TestHealthAndVersion(t *testing.T) {
 	}
 }
 
+func TestOpenAPIEndpoint(t *testing.T) {
+	ts := newTestServer(t, true)
+	rec := ts.do(t, http.MethodGet, "/openapi.yaml", nil, false)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("openapi status %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "application/yaml") {
+		t.Fatalf("unexpected content type %q", ct)
+	}
+	if rec.Header().Get("Access-Control-Allow-Origin") != "*" {
+		t.Fatal("openapi must be CORS-enabled for external tooling")
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte("openapi: 3.1.0")) {
+		t.Fatalf("unexpected spec body: %s", rec.Body.String()[:min(80, rec.Body.Len())])
+	}
+}
+
 func TestAPIRequiresAuth(t *testing.T) {
 	ts := newTestServer(t, true)
 	if rec := ts.do(t, http.MethodGet, "/api/me", nil, false); rec.Code != http.StatusUnauthorized {
@@ -262,6 +280,49 @@ func TestSettingsEnvAndSecretMasking(t *testing.T) {
 	}
 	if !bytes.Contains(rec.Body.Bytes(), []byte(`"descriptors"`)) {
 		t.Fatalf("settings response missing descriptors: %s", rec.Body.String())
+	}
+}
+
+// TestSettingsFullSnapshotSaveIgnoresReadOnly PUTs the whole GET snapshot back
+// (as the settings form does): environment-managed values echoed unchanged are
+// ignored, while changing a locked value is rejected. It also checks that the
+// developer-mode toggle is not part of the generic settings form.
+func TestSettingsFullSnapshotSaveIgnoresReadOnly(t *testing.T) {
+	ts := newTestServer(t, true)
+
+	rec := ts.do(t, http.MethodGet, "/api/settings", nil, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("settings status %d", rec.Code)
+	}
+	var snapshot struct {
+		Values      map[string]string `json:"values"`
+		Descriptors []struct {
+			Key     string `json:"key"`
+			EnvOnly bool   `json:"env_only"`
+		} `json:"descriptors"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &snapshot); err != nil {
+		t.Fatalf("decode settings: %v", err)
+	}
+	for _, d := range snapshot.Descriptors {
+		if d.Key == "developer_mode" {
+			t.Fatal("developer_mode must be hidden from the generic settings form")
+		}
+	}
+	if _, ok := snapshot.Values["developer_mode"]; ok {
+		t.Fatal("developer_mode must not be part of the settings values payload")
+	}
+
+	// Echoing the snapshot succeeds even though it contains env-only keys
+	// (storage_driver, update_check_url...).
+	if rec := ts.do(t, http.MethodPut, "/api/settings", snapshot.Values, true); rec.Code != http.StatusOK {
+		t.Fatalf("full snapshot save should succeed, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// A real change to an env-only setting is still rejected.
+	snapshot.Values["storage_driver"] = "postgres"
+	if rec := ts.do(t, http.MethodPut, "/api/settings", snapshot.Values, true); rec.Code != http.StatusBadRequest {
+		t.Fatalf("changing a read-only setting should be rejected, got %d: %s", rec.Code, rec.Body.String())
 	}
 }
 

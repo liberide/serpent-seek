@@ -141,6 +141,10 @@ body {
 	.support-link {
 		animation: none;
 	}
+	.support-heart {
+		animation: none;
+		background-position: 30% 50%;
+	}
 }
 
 /* =====================================================================
@@ -181,6 +185,63 @@ body {
 /* Wallet cards sit one surface level above the dialog panel. */
 .rainbow-frame-soft {
 	--rainbow-fill: var(--color-slate-800);
+}
+
+/* Collapsed sidebar footer: stacks the version and the support entry so they
+   fit the narrow icon rail. */
+.rail-badge {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.25rem;
+	width: 100%;
+	box-sizing: border-box;
+	padding: 0.25rem 0;
+}
+.rail-badge-version {
+	font-family:
+		ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+		monospace;
+	font-size: 0.625rem;
+	line-height: 1.1;
+	max-width: 100%;
+	overflow-wrap: anywhere;
+	text-align: center;
+	color: var(--color-slate-400);
+	transition: color 0.15s ease;
+}
+.rail-badge-version:hover {
+	color: var(--color-emerald-300);
+}
+
+/* Compact "support the project" heart: the same slow rainbow as the text link,
+   painted through a heart-shaped mask so the glyph can carry a gradient. Kept
+   slightly dim; brightens a little on hover. */
+.support-heart {
+	display: block;
+	width: 1.15rem;
+	height: 1.15rem;
+	background-image: linear-gradient(
+		90deg,
+		#ff5f6d,
+		#ffc371,
+		#47e891,
+		#4facfe,
+		#b06ab3,
+		#ff5f6d
+	);
+	background-size: 300% 100%;
+	background-position: 0% 50%;
+	animation: support-rainbow 18s linear infinite;
+	opacity: 0.5;
+	transition: opacity 0.3s ease;
+	-webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M12%2020.7l-.4-.4C7.4%2016.7%204.5%2014%204.5%2010.7%204.5%208.1%206.5%206.1%209%206.1c1.5%200%202.6.9%203%201.6.4-.7%201.5-1.6%203-1.6%202.5%200%204.5%202%204.5%204.6%200%203.3-2.9%206-7.1%209.6z'%20fill='black'/%3E%3C/svg%3E")
+		center / contain no-repeat;
+	mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%3E%3Cpath%20d='M12%2020.7l-.4-.4C7.4%2016.7%204.5%2014%204.5%2010.7%204.5%208.1%206.5%206.1%209%206.1c1.5%200%202.6.9%203%201.6.4-.7%201.5-1.6%203-1.6%202.5%200%204.5%202%204.5%204.6%200%203.3-2.9%206-7.1%209.6z'%20fill='black'/%3E%3C/svg%3E")
+		center / contain no-repeat;
+}
+button:hover .support-heart {
+	opacity: 0.75;
 }
 
 @media (prefers-reduced-motion: reduce) {

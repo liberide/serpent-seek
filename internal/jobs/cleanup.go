@@ -9,12 +9,13 @@ import (
 
 // CleanupReport summarises a retention cleanup run.
 type CleanupReport struct {
-	Requests int64 `json:"requests"`
-	Logs     int64 `json:"logs"`
-	Sessions int64 `json:"sessions"`
-	Usage    int64 `json:"usage"`
-	Audit    int64 `json:"audit"`
-	MS       int64 `json:"ms"`
+	Requests    int64 `json:"requests"`
+	Logs        int64 `json:"logs"`
+	Sessions    int64 `json:"sessions"`
+	Usage       int64 `json:"usage"`
+	RollingHits int64 `json:"rolling_hits"`
+	Audit       int64 `json:"audit"`
+	MS          int64 `json:"ms"`
 }
 
 // Cleanup deletes history and logs past their retention windows, plus expired
@@ -49,8 +50,10 @@ func (m *Manager) Cleanup(ctx context.Context) (*CleanupReport, error) {
 	}
 	report.Sessions = n
 
-	// Search quota counters only matter for the current day; keep a bounded,
-	// configurable window so the table cannot grow forever (0 disables pruning).
+	// Search quota counters only matter for the current period; keep a
+	// bounded, configurable window so the table cannot grow forever (0
+	// disables pruning). The date-prefix comparison also prunes per-user
+	// quota period keys ("<start-date>#<period>").
 	if usageDays := m.settings.GetInt(ctx, config.KeyUsageRetention); usageDays > 0 {
 		usageCutoff := time.Now().UTC().AddDate(0, 0, -usageDays).Format("2006-01-02")
 		n, err = m.store.DeleteOldUsage(ctx, usageCutoff)
@@ -58,6 +61,18 @@ func (m *Manager) Cleanup(ctx context.Context) (*CleanupReport, error) {
 			return nil, err
 		}
 		report.Usage = n
+	}
+
+	// Rolling-window quota hits are self-limiting (one row per admitted
+	// request), but prune them alongside the daily counters. The longest
+	// allowed window is 720h, so the usage retention window always covers it.
+	if usageDays := m.settings.GetInt(ctx, config.KeyUsageRetention); usageDays > 0 {
+		rollingCutoff := time.Now().UTC().AddDate(0, 0, -usageDays).Format(time.RFC3339Nano)
+		n, err = m.store.DeleteOldRollingHits(ctx, rollingCutoff)
+		if err != nil {
+			return nil, err
+		}
+		report.RollingHits = n
 	}
 
 	// Audit entries outlive logs; keep a longer configurable window.

@@ -1,7 +1,7 @@
 # Deploying SerpentSeek from Docker Hub
 
 Prebuilt image: [`sallend/serpent-seek`](https://hub.docker.com/r/sallend/serpent-seek)
-(`latest` tracks the newest version tag; fixed tags like `1.1.0` and `1.1` are available too).
+(`latest` tracks the newest version tag; fixed tags like `1.1.1` and `1.1` are available too).
 
 ## Requirements
 
@@ -137,7 +137,7 @@ The running version is shown in the UI footer and at `GET /version`, e.g.
 * `make up` / `make up-extdb` / `make image` pass `APP_VERSION`, `APP_COMMIT`
   and `APP_BUILD_DATE` automatically (from `VERSION`, `git rev-parse` and the
   current UTC time).
-* A plain `docker compose up --build` uses `1.1.0` with `dev`/`unknown` metadata
+* A plain `docker compose up --build` uses `1.1.1` with `dev`/`unknown` metadata
   (the git history is not part of the Docker build context). Override it with
   `APP_VERSION=... APP_COMMIT=... APP_BUILD_DATE=... docker compose up --build`.
 * Official images built by the release workflow (`.github/workflows/docker.yml`)

@@ -3,6 +3,7 @@ package auth
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -19,9 +20,9 @@ func TestGenerateAndVerifyKey(t *testing.T) {
 		if gotPrefix != prefix {
 			t.Fatalf("prefix mismatch: %q != %q", gotPrefix, prefix)
 		}
-		wantKind := "search"
+		wantKind := KindSearch
 		if admin {
-			wantKind = "admin"
+			wantKind = KindAdmin
 		}
 		if kind != wantKind {
 			t.Fatalf("kind mismatch: %q != %q", kind, wantKind)
@@ -35,6 +36,29 @@ func TestGenerateAndVerifyKey(t *testing.T) {
 		if VerifySecret("not-a-hash", secret) {
 			t.Fatal("VerifySecret should reject malformed hashes")
 		}
+	}
+}
+
+func TestGenerateDeveloperKey(t *testing.T) {
+	plaintext, prefix, hash, err := GenerateDeveloperKey()
+	if err != nil {
+		t.Fatalf("GenerateDeveloperKey: %v", err)
+	}
+	kind, gotPrefix, secret, ok := ParseKey(plaintext)
+	if !ok {
+		t.Fatalf("ParseKey failed for %q", plaintext)
+	}
+	if kind != KindDeveloper {
+		t.Fatalf("kind mismatch: %q != developer", kind)
+	}
+	if gotPrefix != prefix {
+		t.Fatalf("prefix mismatch: %q != %q", gotPrefix, prefix)
+	}
+	if !strings.HasPrefix(plaintext, DeveloperKeyPrefix) {
+		t.Fatalf("plaintext %q should start with %q", plaintext, DeveloperKeyPrefix)
+	}
+	if !VerifySecret(hash, secret) {
+		t.Fatal("VerifySecret should accept the generated developer secret")
 	}
 }
 

@@ -118,6 +118,14 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, http.StatusForbidden, "insufficient_scope", "this API key cannot be used for browser sign-in (read scope required)")
 		return
 	}
+	// A restricted developer token must not be able to escalate to a full-admin
+	// session: the session carries the owner's role, not the token's endpoint
+	// permissions, so allowing sign-in would bypass the restrictions entirely.
+	if identity.IsDeveloper() && !identity.AllowsAll() {
+		writeError(w, r, http.StatusForbidden, "restricted_token",
+			"a restricted developer token cannot be used for browser sign-in")
+		return
+	}
 	token, err := auth.CreateSession(r.Context(), s.store, identity.User.ID, auth.ClientIP(r), r.UserAgent())
 	if err != nil {
 		writeError(w, r, http.StatusInternalServerError, "session_error", err.Error())
@@ -152,6 +160,8 @@ func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 		"via":              id.Via,
 		"scopes":           id.Scopes,
 		"admin":            id.IsAdmin(),
+		"developer":        id.IsDeveloper(),
+		"developer_mode":   s.settings.GetBool(r.Context(), config.KeyDeveloperMode),
 		"passkeys_enabled": s.passkeys != nil && s.passkeys.Enabled(),
 	}
 	if id.User != nil {

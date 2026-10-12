@@ -84,6 +84,66 @@ The **Audit** page records every admin mutation (actor, IP, action, target,
 non-secret details) and is kept for 180 days; search-quota counters
 (`usage_daily`) are pruned after 90 days.
 
+## Per-user search quotas
+
+On top of the global `SEARCH_RATE_LIMIT_PER_MINUTE` / `SEARCH_DAILY_QUOTA`
+settings, an admin can assign a **per-user** quota from the Users page
+(🚦 badge next to each user) or via the API:
+
+```
+PUT    /api/users/{id}/quota   {"requests": 500, "period": "daily", "tz_offset": 480}
+GET    /api/users/{id}/quota   -> usage, remaining, reset_at
+DELETE /api/users/{id}/quota   -> user becomes unlimited
+```
+
+* `requests` — allowance per period; `0` = unlimited (default when no quota
+  is set, fully backwards compatible).
+* `period` — reset cadence:
+  * `daily` — resets at midnight, shifted by `tz_offset` minutes
+  * `weekly` — resets Monday 00:00 (tz-shifted)
+  * `monthly` — resets on the 1st of the month 00:00 (tz-shifted)
+  * `rolling` — sliding window of `window_hours` (1–720)
+* `tz_offset` — fixed offset in minutes (-720..840); 0 = UTC. A fixed offset
+  is used instead of a timezone name, so DST is not observed.
+
+The quota applies to **all** of a user's API keys and sessions (counted on the
+`user:<id>` subject); the global limits still apply on top. When exhausted,
+search endpoints return HTTP 429 with `Retry-After` and
+`X-Serpent-Quota-Reset-At` (calendar periods) headers. Rejections are counted
+in the `serpentseek_quota_rejected_total{period}` metric and fire the
+`quota_exceeded` webhook event. Quota mutations are recorded in the audit log
+(`quota.set` / `quota.delete`).
+
+Storage: per-user rows live in `user_quotas`; calendar-period usage is counted
+in `usage_daily` under `"<start-date>#<period>"` keys, rolling-window hits in
+`usage_rolling`. Both are pruned by the cleanup job after
+`USAGE_RETENTION_DAYS` (default 90).
+
+## Per-user analytics
+
+The Analytics sidebar group has two sections: **Overview** (the previous
+global report, `/analytics`) and **By users** (admins only,
+`/analytics/users`). The By-users page is a per-owner leaderboard for the
+selected date range: request volume with its share of all traffic, success
+rate, average time, errors, last activity, active API-key count and the live
+quota status; users without traffic in the period are listed zero-filled.
+Clicking a row opens a per-user report (KPIs, daily trend, hourly activity,
+status donut, top queries, provider comparison) plus a quota usage card.
+Requests made without a user (auth disabled or unauthenticated callers) are
+aggregated under an **Anonymous** bucket.
+
+API (both honour `from`/`to`, defaulting to the current month):
+
+```
+GET /api/stats/users                     -> leaderboard rows + totals (admin only)
+GET /api/stats/analytics?user_id=<id>    -> full analytics report for one owner
+GET /api/stats/analytics?user_id=anonymous -> requests made without a user
+```
+
+Non-admin callers may only pass their own `user_id` to the analytics endpoint
+(HTTP 403 otherwise); the leaderboard is admin-only. Traffic of deleted users
+keeps showing up (marked as deleted) because requests outlive their user rows.
+
 ## API versioning
 
 * The HTTP API is served under `/api` and documented in

@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { get, post, put, patch, del } from '$lib/api';
-	import { notify, authOffNoticeHidden } from '$lib/stores';
+	import { notify, authOffNoticeHidden, session } from '$lib/stores';
 	import Confirm from '$lib/components/Confirm.svelte';
 	import Modal from '$lib/components/Modal.svelte';
 	import SecretField from '$lib/components/SecretField.svelte';
+	import DeveloperPanel from '$lib/components/DeveloperPanel.svelte';
 	import { dateTime, formatUptime } from '$lib/format';
 	import { t } from '$lib/i18n.svelte';
 
@@ -154,17 +155,23 @@
 		const settingSections: Section[] = [...fixed, ...extra]
 			.filter((g) => (grouped[g]?.length ?? 0) > 0)
 			.map((g) => ({ id: g, labelKey: groupLabels[g] ?? g, items: grouped[g] }));
-		// The proxy tab is a bespoke manager, not descriptor-driven, so it is
-		// inserted right after the network group.
+		// The proxy and developer tabs are bespoke managers, not descriptor-driven,
+		// so they are inserted among the setting sections.
 		const out: Section[] = [];
 		for (const section of settingSections) {
 			out.push(section);
+			if (section.id === 'auth' && $session?.admin) {
+				out.push({ id: 'developer', labelKey: 'settings.groups.developer', items: [] });
+			}
 			if (section.id === 'network') {
 				out.push({ id: 'proxy', labelKey: 'settings.groups.proxy', items: [] });
 			}
 		}
 		if (!out.some((s) => s.id === 'proxy')) {
 			out.push({ id: 'proxy', labelKey: 'settings.groups.proxy', items: [] });
+		}
+		if ($session?.admin && !out.some((s) => s.id === 'developer')) {
+			out.push({ id: 'developer', labelKey: 'settings.groups.developer', items: [] });
 		}
 		// Info/About sits at the very bottom, visually separated from the rest.
 		out.push(
@@ -186,9 +193,16 @@
 	async function save() {
 		saving = true;
 		try {
-			const payload: Record<string, string> = { ...values };
+			// Never send environment-pinned / env-only values: the backend treats a
+			// real change to them as read-only, and echoing them back unchanged only
+			// used to trip that check for the whole form.
+			const locked = new Set(descriptors.filter((d) => isLocked(d)).map((d) => d.key));
+			const payload: Record<string, string> = {};
+			for (const [key, value] of Object.entries(values)) {
+				if (!locked.has(key)) payload[key] = value;
+			}
 			for (const [key, value] of Object.entries(secrets)) {
-				if (value) payload[key] = value;
+				if (value && !locked.has(key)) payload[key] = value;
 			}
 			await put('/api/settings', payload);
 			notify(t('settings.saved'), 'success');
@@ -196,6 +210,11 @@
 			await load();
 			// Keep the sidebar warning in sync without a page reload.
 			authOffNoticeHidden.set(values.hide_auth_off_notice === 'true');
+			// developer_mode is managed by the dedicated Developer section, so only
+			// touch the session flag if it ever becomes part of the form again.
+			if ('developer_mode' in values) {
+				session.update((s) => (s ? { ...s, developer_mode: values.developer_mode === 'true' } : s));
+			}
 		} catch (error) {
 			notify((error as Error).message, 'error');
 		} finally {
@@ -406,7 +425,7 @@
 <div class="space-y-4">
 	<div class="flex items-center justify-between gap-2">
 		<h1 class="text-xl font-semibold">{t('settings.title')}</h1>
-		{#if active !== 'proxy'}
+		{#if active !== 'proxy' && active !== 'developer'}
 			<button class="btn btn-primary" onclick={save} disabled={saving}>
 				{saving ? t('common.saving') : t('common.save')}
 			</button>
@@ -483,6 +502,8 @@
 								</div>
 							</div>
 						</div>
+					{:else if section.id === 'developer'}
+						<DeveloperPanel modeOnly />
 					{:else if section.id === 'proxy'}
 						<div class="flex flex-wrap items-center justify-between gap-2">
 							<p class="text-xs text-slate-500">{t('settings.proxy.hint')}</p>

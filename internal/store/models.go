@@ -16,6 +16,59 @@ type User struct {
 	Role      string `json:"role"` // admin|viewer
 	Disabled  bool   `json:"disabled"`
 	CreatedAt string `json:"created_at"`
+	// Quota is the runtime view of the user's per-user search allowance,
+	// computed by the HTTP layer and never persisted with the user row.
+	// Nil means the user is unlimited (no quota row or requests = 0).
+	Quota *UserQuotaStatus `json:"quota,omitempty"`
+}
+
+// UserQuotaStatus is the runtime view of a user's quota: the configured
+// allowance plus current usage. It is computed by the HTTP layer; only the
+// UserQuota row is persisted.
+type UserQuotaStatus struct {
+	Requests    int    `json:"requests"` // 0 = unlimited
+	Period      string `json:"period"`
+	WindowHours int    `json:"window_hours"`
+	TzOffset    int    `json:"tz_offset"`
+	Used        int    `json:"used"`
+	Remaining   int    `json:"remaining"`
+	// ResetAt is the RFC3339 UTC moment the current period ends; empty for
+	// rolling quotas (a sliding window has no fixed reset).
+	ResetAt   string `json:"reset_at,omitempty"`
+	UpdatedAt string `json:"updated_at,omitempty"`
+}
+
+// Quota reset periods for UserQuota.
+const (
+	// QuotaPeriodDaily resets the allowance at local midnight (tz_offset).
+	QuotaPeriodDaily = "daily"
+	// QuotaPeriodWeekly resets the allowance on Monday 00:00 (tz_offset).
+	QuotaPeriodWeekly = "weekly"
+	// QuotaPeriodMonthly resets the allowance on the 1st of the month 00:00.
+	QuotaPeriodMonthly = "monthly"
+	// QuotaPeriodRolling is a sliding window of WindowHours; the allowance
+	// is "requests per trailing window" counted from usage_rolling hits.
+	QuotaPeriodRolling = "rolling"
+)
+
+// UserQuota is the per-user search allowance enforced by the HTTP guard.
+// A user without a row (or with Requests == 0) is unlimited and falls back
+// to the global search_daily_quota / search_rate_limit_per_minute settings.
+type UserQuota struct {
+	UserID string `json:"user_id"`
+	// Requests is the maximum number of search requests per period.
+	// 0 means unlimited.
+	Requests int `json:"requests"`
+	// Period is one of the QuotaPeriod* constants.
+	Period string `json:"period"`
+	// WindowHours is the sliding-window length; only meaningful when
+	// Period == QuotaPeriodRolling.
+	WindowHours int `json:"window_hours"`
+	// TzOffset shifts calendar reset boundaries by this many minutes
+	// (-720..840). 0 = pure UTC. A fixed offset is used instead of an IANA
+	// name to avoid a tzdata dependency.
+	TzOffset  int    `json:"tz_offset"`
+	UpdatedAt string `json:"updated_at"`
 }
 
 // APIKey is a hashed access token. The plaintext is never stored.
@@ -30,11 +83,14 @@ type APIKey struct {
 	// ChainID optionally binds this token to a chain. Empty means the token
 	// uses the globally active chain. The reference is cleared (set to NULL)
 	// when the chain is deleted, so the token never breaks.
-	ChainID    string `json:"chain_id"`
-	LastUsedAt string `json:"last_used_at"`
-	ExpiresAt  string `json:"expires_at"`
-	RevokedAt  string `json:"revoked_at"`
-	CreatedAt  string `json:"created_at"`
+	ChainID string `json:"chain_id"`
+	// Permissions is a JSON array of endpoint ids ("METHOD /path") a developer
+	// token may call. Empty means "all endpoints"; non-developer keys ignore it.
+	Permissions string `json:"-"`
+	LastUsedAt  string `json:"last_used_at"`
+	ExpiresAt   string `json:"expires_at"`
+	RevokedAt   string `json:"revoked_at"`
+	CreatedAt   string `json:"created_at"`
 	// UsedToday is the number of search requests made with this key today
 	// (UTC). It is computed by the HTTP layer and never persisted with the key.
 	UsedToday int `json:"used_today"`
@@ -322,14 +378,21 @@ type StatsSummary struct {
 	Recent        []*Request  `json:"recent"`
 }
 
+// AnonymousUserID is the pseudo identifier used by the analytics API for
+// requests that were made without a user (auth disabled, or an anonymous
+// caller). It never matches a real user id (those are UUIDs).
+const AnonymousUserID = "anonymous"
+
 // AnalyticsFilter narrows an analytics report. From and To are inclusive
 // calendar dates (YYYY-MM-DD) interpreted in UTC; empty values fall back to the
-// last 30 days.
+// last 30 days. UserID narrows the report to one owner: a user id, or
+// AnonymousUserID for requests without a user; empty means no filtering.
 type AnalyticsFilter struct {
 	From     string
 	To       string
 	Provider string
 	Status   string
+	UserID   string
 }
 
 // ProviderStat aggregates request outcomes for one provider over a period.
@@ -409,4 +472,20 @@ type AnalyticsProvider struct {
 	// CostConfigured reports whether this provider has a cost configured (or
 	// recorded), so the UI can show "—" instead of a misleading 0.
 	CostConfigured bool `json:"cost_configured"`
+}
+
+// UserStat aggregates request outcomes for one owner over a period; it backs
+// the per-user analytics leaderboard. UserID is a real user id or
+// AnonymousUserID for requests made without a user.
+type UserStat struct {
+	UserID     string `json:"user_id"`
+	Requests   int    `json:"requests"`
+	OK         int    `json:"ok"`
+	Empty      int    `json:"empty"`
+	Fail       int    `json:"fail"`
+	AvgMS      int    `json:"avg_ms"`
+	LastActive string `json:"last_active,omitempty"`
+	// Cost is the summed per-request cost of the owner's executed attempts
+	// (0 when no provider has a cost configured).
+	Cost float64 `json:"cost,omitempty"`
 }

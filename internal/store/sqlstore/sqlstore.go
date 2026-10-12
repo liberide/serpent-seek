@@ -208,16 +208,16 @@ func (s *Store) CountAdmins(ctx context.Context) (int, error) {
 // CreateAPIKey inserts a hashed key.
 func (s *Store) CreateAPIKey(ctx context.Context, k *store.APIKey) error {
 	_, err := s.exec(ctx,
-		`INSERT INTO api_keys (id, user_id, name, prefix, hash, scopes, chain_id, last_used_at, expires_at, revoked_at, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		k.ID, k.UserID, k.Name, k.Prefix, k.Hash, k.Scopes, nullStr(k.ChainID), k.LastUsedAt, k.ExpiresAt, k.RevokedAt, k.CreatedAt)
+		`INSERT INTO api_keys (id, user_id, name, prefix, hash, scopes, chain_id, permissions, last_used_at, expires_at, revoked_at, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		k.ID, k.UserID, k.Name, k.Prefix, k.Hash, k.Scopes, nullStr(k.ChainID), nullStr(k.Permissions), k.LastUsedAt, k.ExpiresAt, k.RevokedAt, k.CreatedAt)
 	return err
 }
 
 func scanAPIKey(row interface{ Scan(...any) error }) (*store.APIKey, error) {
 	var k store.APIKey
 	err := row.Scan(&k.ID, &k.UserID, &k.Name, &k.Prefix, &k.Hash, &k.Scopes, &k.ChainID,
-		&k.LastUsedAt, &k.ExpiresAt, &k.RevokedAt, &k.CreatedAt)
+		&k.Permissions, &k.LastUsedAt, &k.ExpiresAt, &k.RevokedAt, &k.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +225,7 @@ func scanAPIKey(row interface{ Scan(...any) error }) (*store.APIKey, error) {
 }
 
 const apiKeyCols = `id, user_id, name, prefix, hash, scopes, COALESCE(chain_id, ''),
-	COALESCE(last_used_at, ''), COALESCE(expires_at, ''), COALESCE(revoked_at, ''), created_at`
+	COALESCE(permissions, ''), COALESCE(last_used_at, ''), COALESCE(expires_at, ''), COALESCE(revoked_at, ''), created_at`
 
 // GetAPIKey returns one key by id.
 func (s *Store) GetAPIKey(ctx context.Context, id string) (*store.APIKey, error) {
@@ -270,10 +270,10 @@ func (s *Store) ListAPIKeys(ctx context.Context, userID string) ([]*store.APIKey
 	return out, rows.Err()
 }
 
-// UpdateAPIKey updates name, scopes, chain binding and lifecycle fields.
+// UpdateAPIKey updates name, scopes, chain binding, permissions and lifecycle fields.
 func (s *Store) UpdateAPIKey(ctx context.Context, k *store.APIKey) error {
-	_, err := s.exec(ctx, `UPDATE api_keys SET name = ?, scopes = ?, chain_id = ?, last_used_at = ?, expires_at = ?, revoked_at = ? WHERE id = ?`,
-		k.Name, k.Scopes, nullStr(k.ChainID), k.LastUsedAt, k.ExpiresAt, k.RevokedAt, k.ID)
+	_, err := s.exec(ctx, `UPDATE api_keys SET name = ?, scopes = ?, chain_id = ?, permissions = ?, last_used_at = ?, expires_at = ?, revoked_at = ? WHERE id = ?`,
+		k.Name, k.Scopes, nullStr(k.ChainID), nullStr(k.Permissions), k.LastUsedAt, k.ExpiresAt, k.RevokedAt, k.ID)
 	return err
 }
 
@@ -358,9 +358,104 @@ func (s *Store) UsageByDay(ctx context.Context, day string) (map[string]int, err
 	return out, rows.Err()
 }
 
-// DeleteOldUsage removes counters for days strictly before beforeDay (YYYY-MM-DD).
+// DeleteOldUsage removes counters whose period-start day is strictly before
+// beforeDay (YYYY-MM-DD). Per-user quota period keys are stored as
+// "<start-date>#<period>" (e.g. "2026-10-05#weekly"), so comparing the
+// 10-character date prefix prunes both plain days and quota period keys in
+// SQLite and PostgreSQL alike.
 func (s *Store) DeleteOldUsage(ctx context.Context, beforeDay string) (int64, error) {
-	res, err := s.exec(ctx, `DELETE FROM usage_daily WHERE day < ?`, beforeDay)
+	res, err := s.exec(ctx, `DELETE FROM usage_daily WHERE substr(day, 1, 10) < ?`, beforeDay)
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
+// --- User quotas ---
+
+func scanUserQuota(row interface{ Scan(...any) error }) (*store.UserQuota, error) {
+	var q store.UserQuota
+	err := row.Scan(&q.UserID, &q.Requests, &q.Period, &q.WindowHours, &q.TzOffset, &q.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &q, nil
+}
+
+// GetUserQuota fetches the quota row for a user (ErrNotFound when absent).
+func (s *Store) GetUserQuota(ctx context.Context, userID string) (*store.UserQuota, error) {
+	q, err := scanUserQuota(s.queryRow(ctx,
+		`SELECT user_id, requests, period, window_hours, tz_offset, updated_at FROM user_quotas WHERE user_id = ?`, userID))
+	if err == sql.ErrNoRows {
+		return nil, store.ErrNotFound
+	}
+	return q, err
+}
+
+// SetUserQuota upserts the user's quota row.
+func (s *Store) SetUserQuota(ctx context.Context, q *store.UserQuota) error {
+	_, err := s.exec(ctx,
+		`INSERT INTO user_quotas (user_id, requests, period, window_hours, tz_offset, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?)
+		 ON CONFLICT (user_id) DO UPDATE SET
+		   requests = excluded.requests,
+		   period = excluded.period,
+		   window_hours = excluded.window_hours,
+		   tz_offset = excluded.tz_offset,
+		   updated_at = excluded.updated_at`,
+		q.UserID, q.Requests, q.Period, q.WindowHours, q.TzOffset, q.UpdatedAt)
+	return err
+}
+
+// DeleteUserQuota removes the user's quota row (the user becomes unlimited).
+func (s *Store) DeleteUserQuota(ctx context.Context, userID string) error {
+	_, err := s.exec(ctx, `DELETE FROM user_quotas WHERE user_id = ?`, userID)
+	return err
+}
+
+// ListUserQuotas returns every quota row keyed by user id.
+func (s *Store) ListUserQuotas(ctx context.Context) (map[string]*store.UserQuota, error) {
+	rows, err := s.query(ctx, `SELECT user_id, requests, period, window_hours, tz_offset, updated_at FROM user_quotas`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]*store.UserQuota{}
+	for rows.Next() {
+		q, err := scanUserQuota(rows)
+		if err != nil {
+			return nil, err
+		}
+		out[q.UserID] = q
+	}
+	return out, rows.Err()
+}
+
+// --- Rolling-window hits ---
+
+// AddRollingHit records one admitted request for a rolling quota subject.
+func (s *Store) AddRollingHit(ctx context.Context, subject, ts string) error {
+	_, err := s.exec(ctx,
+		`INSERT INTO usage_rolling (subject, ts) VALUES (?, ?)
+		 ON CONFLICT (subject, ts) DO NOTHING`,
+		subject, ts)
+	return err
+}
+
+// CountRollingHits counts hits for the subject at or after the inclusive
+// RFC3339Nano UTC lower bound.
+func (s *Store) CountRollingHits(ctx context.Context, subject, since string) (int, error) {
+	var n int
+	err := s.queryRow(ctx,
+		`SELECT COUNT(*) FROM usage_rolling WHERE subject = ? AND ts >= ?`,
+		subject, since).Scan(&n)
+	return n, err
+}
+
+// DeleteOldRollingHits removes hits strictly older than the RFC3339Nano UTC
+// cutoff timestamp.
+func (s *Store) DeleteOldRollingHits(ctx context.Context, before string) (int64, error) {
+	res, err := s.exec(ctx, `DELETE FROM usage_rolling WHERE ts < ?`, before)
 	if err != nil {
 		return 0, err
 	}
@@ -1419,6 +1514,9 @@ func (s *Store) Analytics(ctx context.Context, f store.AnalyticsFilter) (*store.
 		where = append(where, "id IN (SELECT request_id FROM request_steps WHERE provider = ?)")
 		args = append(args, f.Provider)
 	}
+	// Owner filtering for the per-user analytics view. The anonymous bucket
+	// covers requests without a user (auth disabled or an anonymous caller).
+	where, args = appendUserFilter(where, args, f.UserID, "user_id")
 	clause := strings.Join(where, " AND ")
 
 	out := &store.AnalyticsReport{}
@@ -1529,9 +1627,12 @@ func (s *Store) Analytics(ctx context.Context, f store.AnalyticsFilter) (*store.
 		return nil, err
 	}
 
-	// Per-provider outcomes from executed steps. Deliberately uses only the
-	// date range so the comparison panel stays complete and the provider filter
-	// selector keeps offering every provider.
+	// Per-provider outcomes from executed steps. Uses only the date range (plus
+	// the owner filter) so the comparison panel stays complete and the provider
+	// filter selector keeps offering every provider.
+	provWhere := []string{"r.created_at >= ?", "r.created_at < ?"}
+	provArgs := []any{fromTS, toTS}
+	provWhere, provArgs = appendUserFilter(provWhere, provArgs, f.UserID, "r.user_id")
 	provRows, err := s.query(ctx,
 		`SELECT COALESCE(s.provider, ''),
 		        COUNT(*),
@@ -1542,8 +1643,8 @@ func (s *Store) Analytics(ctx context.Context, f store.AnalyticsFilter) (*store.
 		        COALESCE(AVG(CASE WHEN s.status IN ('ok', 'empty', 'fail') THEN s.took_ms ELSE NULL END), 0),
 		        COALESCE(SUM(s.cost), 0)
 		 FROM request_steps s JOIN requests r ON r.id = s.request_id
-		 WHERE r.created_at >= ? AND r.created_at < ?
-		 GROUP BY COALESCE(s.provider, '') ORDER BY COUNT(*) DESC`, fromTS, toTS)
+		 WHERE `+strings.Join(provWhere, " AND ")+`
+		 GROUP BY COALESCE(s.provider, '') ORDER BY COUNT(*) DESC`, provArgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -1577,6 +1678,7 @@ func (s *Store) Analytics(ctx context.Context, f store.AnalyticsFilter) (*store.
 		costWhere = append(costWhere, "r.id IN (SELECT request_id FROM request_steps WHERE provider = ?)")
 		costArgs = append(costArgs, f.Provider)
 	}
+	costWhere, costArgs = appendUserFilter(costWhere, costArgs, f.UserID, "r.user_id")
 	if err := s.queryRow(ctx,
 		`SELECT COALESCE(SUM(s.cost), 0) FROM request_steps s JOIN requests r ON r.id = s.request_id WHERE `+
 			strings.Join(costWhere, " AND "), costArgs...).Scan(&out.CostTotal); err != nil {
@@ -1620,6 +1722,94 @@ func (s *Store) percentileMS(ctx context.Context, clause string, args []any, cou
 		return 0
 	}
 	return value
+}
+
+// appendUserFilter adds the owner condition for userID to a WHERE clause
+// builder. col is the (optionally table-qualified) user_id column. The special
+// store.AnonymousUserID matches rows without an owner; an empty userID adds no
+// condition (no filtering). It returns the extended clause and args.
+func appendUserFilter(where []string, args []any, userID, col string) ([]string, []any) {
+	switch userID {
+	case "":
+		return where, args
+	case store.AnonymousUserID:
+		return append(where, "("+col+" IS NULL OR "+col+" = '')"), args
+	default:
+		return append(where, col+" = ?"), append(args, userID)
+	}
+}
+
+// UsersOverview returns per-owner request aggregates for an inclusive UTC
+// date range, ordered by volume. Owners without a user (auth disabled or an
+// anonymous caller) are reported under store.AnonymousUserID.
+func (s *Store) UsersOverview(ctx context.Context, from, to string) ([]store.UserStat, error) {
+	if from == "" {
+		from = dateOnlyMinus(29)
+	}
+	if to == "" {
+		to = dateOnlyMinus(0)
+	}
+	fromTS := dateStartUTC(from)
+	toTS := dateEndExclusiveUTC(to)
+	if fromTS == "" || toTS == "" {
+		return nil, fmt.Errorf("store: invalid users overview date range %q..%q", from, to)
+	}
+
+	out := []store.UserStat{}
+	byUser := make(map[string]int) // owner id -> index in out
+	if err := s.forEachRow(ctx,
+		`SELECT COALESCE(user_id, ''),
+		        COUNT(*),
+		        COALESCE(SUM(CASE WHEN status = 'ok' THEN 1 ELSE 0 END), 0),
+		        COALESCE(SUM(CASE WHEN status = 'empty' THEN 1 ELSE 0 END), 0),
+		        COALESCE(SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END), 0),
+		        COALESCE(AVG(total_ms), 0),
+		        MAX(created_at)
+		 FROM requests
+		 WHERE created_at >= ? AND created_at < ?
+		 GROUP BY COALESCE(user_id, '')
+		 ORDER BY COUNT(*) DESC, COALESCE(user_id, '')`, []any{fromTS, toTS},
+		func(rows *sql.Rows) error {
+			var u store.UserStat
+			var avg float64
+			if err := rows.Scan(&u.UserID, &u.Requests, &u.OK, &u.Empty, &u.Fail, &avg, &u.LastActive); err != nil {
+				return err
+			}
+			u.AvgMS = int(avg)
+			if u.UserID == "" {
+				u.UserID = store.AnonymousUserID
+			}
+			byUser[u.UserID] = len(out)
+			out = append(out, u)
+			return nil
+		}); err != nil {
+		return nil, err
+	}
+	// Attach the summed step cost per owner (0 when no provider has a cost
+	// configured). A separate pass keeps the request aggregates a simple
+	// single-table GROUP BY.
+	if err := s.forEachRow(ctx,
+		`SELECT COALESCE(r.user_id, ''), COALESCE(SUM(s.cost), 0)
+		 FROM request_steps s JOIN requests r ON r.id = s.request_id
+		 WHERE r.created_at >= ? AND r.created_at < ?
+		 GROUP BY COALESCE(r.user_id, '')`, []any{fromTS, toTS},
+		func(rows *sql.Rows) error {
+			var id string
+			var cost float64
+			if err := rows.Scan(&id, &cost); err != nil {
+				return err
+			}
+			if id == "" {
+				id = store.AnonymousUserID
+			}
+			if i, ok := byUser[id]; ok {
+				out[i].Cost = cost
+			}
+			return nil
+		}); err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // RecomputeDailyStats recalculates the rollup row for one date (YYYY-MM-DD).
