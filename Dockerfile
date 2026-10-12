@@ -21,7 +21,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
     -o /out/serpentseek ./cmd/serpentseek
 
 # -- final stage -------------------------------------------------------------
-FROM alpine:3.21
+FROM alpine:3.24
 ARG TAG=1.1.1
 ARG COMMIT=dev
 ARG BUILD_DATE=unknown
