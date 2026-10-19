@@ -446,7 +446,7 @@
 			"unofficialHint": "Updates are checked against a custom (non-official) release feed."
 		},
 		"about": {
-			"tagline": "Self-hosted search gateway for Open WebUI, MCP and 40+ search APIs",
+			"tagline": "Self-hosted search gateway for Open WebUI, MCP and 41+ search APIs",
 			"build": "Build",
 			"runtime": "System",
 			"updates": "Updates",

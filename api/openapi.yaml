@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: SerpentSeek API
-  version: "1.1.1"
+  version: "1.1.2"
   summary: Search gateway microservice — visual provider chains, per-token chain binding and per-endpoint developer tokens, live request tracing, API-key/Passkeys auth, SQLite/PostgreSQL storage.
   description: |
     SerpentSeek is a drop-in replacement for the serpent-shim used by Open WebUI, upgraded to a full
@@ -1301,7 +1301,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  version: { type: string, example: 1.1.1 }
+                  version: { type: string, example: 1.1.2 }
                   commit: { type: string, example: d412056 }
                   build_date: { type: string, example: "2026-10-09T21:35:39Z" }
                   go_version: { type: string, example: go1.26.0 }

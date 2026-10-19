@@ -13,7 +13,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=web /web/build ./web/build
-ARG TAG=1.1.1
+ARG TAG=1.1.2
 ARG COMMIT=dev
 ARG BUILD_DATE=unknown
 RUN CGO_ENABLED=0 GOOS=linux go build \
@@ -22,7 +22,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 
 # -- final stage -------------------------------------------------------------
 FROM alpine:3.21
-ARG TAG=1.1.1
+ARG TAG=1.1.2
 ARG COMMIT=dev
 ARG BUILD_DATE=unknown
 LABEL org.opencontainers.image.title="SerpentSeek" \
