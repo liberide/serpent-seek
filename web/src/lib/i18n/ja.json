@@ -446,7 +446,7 @@
 			"unofficialHint": "更新はカスタム（非公式）のリリースフィードに対してチェックされます。"
 		},
 		"about": {
-			"tagline": "Open WebUI、MCP、40以上の検索API向けのセルフホスト型検索ゲートウェイ",
+			"tagline": "Open WebUI、MCP、41以上の検索API向けのセルフホスト型検索ゲートウェイ",
 			"build": "ビルド",
 			"runtime": "システム",
 			"updates": "更新",

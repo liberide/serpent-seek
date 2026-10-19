@@ -1,4 +1,4 @@
-# 🐍 SerpentSeek — поисковый шлюз (self-hosted) для Open WebUI, MCP и 40+ поисковых API
+# 🐍 SerpentSeek — поисковый шлюз (self-hosted) для Open WebUI, MCP и 41+ поисковых API
 
 [English](README.md "Read in English") | **Русский** | [Polski](README.pl.md "Czytaj po polsku") | [Deutsch](README.de.md "Auf Deutsch lesen") | [Français](README.fr.md "Lire en français") | [日本語](README.ja.md "日本語で読む") | [中文](README.zh.md "阅读中文版")
 
@@ -7,12 +7,12 @@
 [![CI](https://github.com/liberide/serpent-seek/actions/workflows/ci.yml/badge.svg)](https://github.com/liberide/serpent-seek/actions/workflows/ci.yml "CI: сборка, vet, тесты")
 [![Docker — single container](https://img.shields.io/badge/docker-single_container-2496ED?logo=docker&logoColor=white)](Dockerfile "Всё в одном Docker-контейнере")
 [![OpenAPI 3.1](https://img.shields.io/badge/API-OpenAPI_3.1-6BA539)](api/openapi.yaml "Спецификация OpenAPI 3.1")
-[![40 search providers](https://img.shields.io/badge/built--in_search_providers-40-orange)](#провайдеры "40 встроенных поисковых провайдеров")
+[![41 search providers](https://img.shields.io/badge/built--in_search_providers-41-orange)](#провайдеры "41 встроенных поисковых провайдеров")
 
 **SerpentSeek** — open-source «**поисковый шлюз**» (self-hosted): единый
 API веб-поиска (метапоисковый прокси) на Go с мультиязычной веб-админкой для
-**Open WebUI**. Каждый запрос проходит через настраиваемые цепочки из **40
-встроенных поисковых провайдеров** (SearXNG, Brave, Google Vertex AI Search /
+**Open WebUI**. Каждый запрос проходит через настраиваемые цепочки из **41
+встроенного поискового провайдера** (SearXNG, Brave, Google Vertex AI Search /
 Grounding, Yandex, SerpApi, Serper, DataForSEO, Exa, Tavily, Kagi, Perplexity и
 др.), собранные в визуальном редакторе нод и стрелок. Внутри: история запросов
 с живой трассировкой (SSE), API-ключи и Passkeys (WebAuthn), **MCP-инструмент
@@ -32,7 +32,7 @@ Grounding, Yandex, SerpApi, Serper, DataForSEO, Exa, Tavily, Kagi, Perplexity и
 
 ## Возможности
 
-* 🔎 **Один эндпоинт для 40 провайдеров** — веб/SERP (SearXNG, Brave, Google,
+* 🔎 **Один эндпоинт для 41 провайдера** — веб/SERP (SearXNG, Brave, Google,
   Yandex, SerpApi…), нейропоиск (Exa, Tavily, Perplexity, Kagi…), академический
   (OpenAlex, PubMed, Crossref, Semantic Scholar…) и корпоративный (Azure AI
   Search, Vertex AI Search, Vectara…)
@@ -213,6 +213,7 @@ npx mcp-remote http://<host>:8080/mcp --header "Authorization=Bearer seek_ak_...
 | `kagi` | Kagi | `api_key` | FastGPT / Search API |
 | `kimi_search` | Kimi (Moonshot) Web Search | `api_key` | title/url/snippet; `include_content` — текст страницы |
 | `kimi_search_pro` | Kimi (Moonshot) Web Search Pro | `api_key` | ранжированные chunks; фильтры `sites`/`time_window` |
+| `deepseek_search` | DeepSeek Search | `api_key` | собственный поисковый движок; `need_content` — полный текст страницы |
 
 ### Академический и разработческий поиск
 
@@ -512,4 +513,4 @@ deploy/
 
 ---
 
-<sub>**Ключевые слова:** поисковый шлюз, self-hosted search gateway, единый поисковый API, метапоиск, метапоисковый прокси, Open WebUI веб-поиск, поисковый бэкенд для Open WebUI, SearXNG, MCP-сервер, MCP search tool, Model Context Protocol веб-поиск, поиск для LLM и ИИ-ассистентов, RAG-поиск, Brave Search API, Google Vertex AI Search, Grounding with Google Search, Yandex Search API, SerpApi, Serper, DataForSEO, Exa, Tavily, Kagi, Perplexity Search API, цепочки провайдеров с fallback, агрегатор поиска, OpenAPI 3.1, Go-микросервис, один Docker-контейнер.</sub>
+<sub>**Ключевые слова:** поисковый шлюз, self-hosted search gateway, единый поисковый API, метапоиск, метапоисковый прокси, Open WebUI веб-поиск, поисковый бэкенд для Open WebUI, SearXNG, MCP-сервер, MCP search tool, Model Context Protocol веб-поиск, поиск для LLM и ИИ-ассистентов, RAG-поиск, Brave Search API, Google Vertex AI Search, Grounding with Google Search, Yandex Search API, SerpApi, Serper, DataForSEO, Exa, Tavily, Kagi, Perplexity Search API, DeepSeek Search API, цепочки провайдеров с fallback, агрегатор поиска, OpenAPI 3.1, Go-микросервис, один Docker-контейнер.</sub>

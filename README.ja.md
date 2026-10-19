@@ -1,4 +1,4 @@
-# 🐍 SerpentSeek — Open WebUI、MCP、40以上の検索API向けのセルフホスト型検索ゲートウェイ
+# 🐍 SerpentSeek — Open WebUI、MCP、41以上の検索API向けのセルフホスト型検索ゲートウェイ
 
 [English](README.md "Read in English") | [Русский](README.ru.md "README по-русски") | [Polski](README.pl.md "Czytaj po polsku") | [Deutsch](README.de.md "Auf Deutsch lesen") | [Français](README.fr.md "Lire en français") | **日本語** | [中文](README.zh.md "阅读中文版")
 
@@ -7,9 +7,9 @@
 [![CI](https://github.com/liberide/serpent-seek/actions/workflows/ci.yml/badge.svg)](https://github.com/liberide/serpent-seek/actions/workflows/ci.yml "CI: build, vet, tests")
 [![Docker — single container](https://img.shields.io/badge/docker-single_container-2496ED?logo=docker&logoColor=white)](Dockerfile "Ships as a single Docker container")
 [![OpenAPI 3.1](https://img.shields.io/badge/API-OpenAPI_3.1-6BA539)](api/openapi.yaml "OpenAPI 3.1 specification")
-[![40 search providers](https://img.shields.io/badge/built--in_search_providers-40-orange)](#providers "40 built-in search provider drivers")
+[![41 search providers](https://img.shields.io/badge/built--in_search_providers-41-orange)](#providers "41 built-in search provider drivers")
 
-**SerpentSeek** は、オープンソースの **セルフホスト型検索ゲートウェイ** です。Go で書かれた統合 Web 検索 API（メタサーチプロキシ）で、**Open WebUI** 向けに作られた多言語 Web 管理 UI を備えています。すべてのクエリは **40 の組み込み検索プロバイダー**（SearXNG、Brave、Google Vertex AI Search / Grounding、Yandex、SerpApi、Serper、DataForSEO、Exa、Tavily、Kagi、Perplexity など）を組み合わせた設定可能なチェーンを通り、ビジュアルなノード＆エッジエディターで設計できます。標準搭載: ライブトレーシング（SSE）付きのリクエスト履歴、API キーとパスキー（WebAuthn）、AI アシスタント（Claude、Cursor、VS Code など）向けの **MCP 検索ツール**（ストリーミング可能な HTTP）、Open WebUI 互換の `/search` エンドポイント、SQLite ⟷ PostgreSQL ストレージ、バックグラウンドクリーンアップジョブ。すべてが単一の Docker コンテナで提供されます。
+**SerpentSeek** は、オープンソースの **セルフホスト型検索ゲートウェイ** です。Go で書かれた統合 Web 検索 API（メタサーチプロキシ）で、**Open WebUI** 向けに作られた多言語 Web 管理 UI を備えています。すべてのクエリは **41 の組み込み検索プロバイダー**（SearXNG、Brave、Google Vertex AI Search / Grounding、Yandex、SerpApi、Serper、DataForSEO、Exa、Tavily、Kagi、Perplexity など）を組み合わせた設定可能なチェーンを通り、ビジュアルなノード＆エッジエディターで設計できます。標準搭載: ライブトレーシング（SSE）付きのリクエスト履歴、API キーとパスキー（WebAuthn）、AI アシスタント（Claude、Cursor、VS Code など）向けの **MCP 検索ツール**（ストリーミング可能な HTTP）、Open WebUI 互換の `/search` エンドポイント、SQLite ⟷ PostgreSQL ストレージ、バックグラウンドクリーンアップジョブ。すべてが単一の Docker コンテナで提供されます。
 
 プロジェクトライセンス — **GNU 3.0**（GPL-3.0-only、`LICENSE` を参照）。帰属情報は `NOTICE`/`AUTHORS` にあります。バイナリと Web バンドルにコンパイルされるすべてのサードパーティコンポーネントのライセンスは `THIRD_PARTY_LICENSES.md` にまとめられています。脆弱性は非公開で報告してください（`SECURITY.md` を参照）。コントリビューションのルールは `CONTRIBUTING.md` にあります（DCO sign-off + [CLA](CLA.md)）。
 
@@ -17,7 +17,7 @@
 
 ## 主な機能
 
-* 🔎 **40 の検索プロバイダーを 1 つのエンドポイントで** — Web/SERP（SearXNG、Brave、Google、Yandex、SerpApi など）、AI/ニューラル（Exa、Tavily、Perplexity、Kagi など）、学術（OpenAlex、PubMed、Crossref、Semantic Scholar など）、エンタープライズ（Azure AI Search、Vertex AI Search、Vectara など）
+* 🔎 **41 の検索プロバイダーを 1 つのエンドポイントで** — Web/SERP（SearXNG、Brave、Google、Yandex、SerpApi など）、AI/ニューラル（Exa、Tavily、Perplexity、Kagi など）、学術（OpenAlex、PubMed、Crossref、Semantic Scholar など）、エンタープライズ（Azure AI Search、Vertex AI Search、Vectara など）
 * 🧩 **ビジュアルチェーンエディター** — 実際のノード＆エッジグラフ: 論理的な **Start** ブロックが複数のプロバイダーに分岐し、論理的な **Join** ブロックがブランチをマージして重複 URL を除去し、残りはフォールバック/リトライポリシーが制御します。ドライバーごとに複数の名前付きインスタンスを持てます
 * 🔗 **トークンごとのチェーンルーティング** — 各 API キーを独自のチェーンにバインドし、アクティブなチェーンとは独立させられます（未バインドのトークンは既定/アクティブチェーンに従います）。チェーンを削除してもバインドされたトークンは安全に既定へ戻ります
 * 🔌 **Open WebUI 対応** — そのまま使える `/search` エンドポイント: 常に HTTP 200、`[{"link","title","snippet"}]`
@@ -183,6 +183,7 @@ npx mcp-remote http://<host>:8080/mcp --header "Authorization=Bearer seek_ak_...
 | `kagi` | Kagi | `api_key` | FastGPT / Search API |
 | `kimi_search` | Kimi（Moonshot）Web Search | `api_key` | title/url/snippet。`include_content` でページ本文を取得 |
 | `kimi_search_pro` | Kimi（Moonshot）Web Search Pro | `api_key` | ランク付きコンテンツチャンク。`sites`/`time_window` フィルター |
+| `deepseek_search` | DeepSeek Search | `api_key` | 独自検索エンジン。`need_content` でページ本文全体を取得 |
 
 ### 学術・開発者向け
 
@@ -503,4 +504,4 @@ docs/
 
 ---
 
-<sub>**キーワード:** セルフホスト型検索ゲートウェイ、統合検索 API、メタサーチプロキシ、メタ検索エンジン、Open WebUI Web 検索、Open WebUI 検索バックエンド、SearXNG JSON API、MCP サーバー検索ツール、Model Context Protocol Web 検索、LLM Web 検索 API、RAG 検索バックエンド、Brave Search API、Google Vertex AI Search、Grounding with Google Search、Yandex Search API、SerpApi、Serper、DataForSEO、Exa、Tavily、Kagi、Perplexity Search API、検索プロバイダーフォールバックチェーン、検索アグリゲーター、OpenAPI 3.1、Go マイクロサービス、単一 Docker コンテナ。</sub>
+<sub>**キーワード:** セルフホスト型検索ゲートウェイ、統合検索 API、メタサーチプロキシ、メタ検索エンジン、Open WebUI Web 検索、Open WebUI 検索バックエンド、SearXNG JSON API、MCP サーバー検索ツール、Model Context Protocol Web 検索、LLM Web 検索 API、RAG 検索バックエンド、Brave Search API、Google Vertex AI Search、Grounding with Google Search、Yandex Search API、SerpApi、Serper、DataForSEO、Exa、Tavily、Kagi、Perplexity Search API、DeepSeek Search API、検索プロバイダーフォールバックチェーン、検索アグリゲーター、OpenAPI 3.1、Go マイクロサービス、単一 Docker コンテナ。</sub>

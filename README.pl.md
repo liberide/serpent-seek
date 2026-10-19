@@ -1,4 +1,4 @@
-# 🐍 SerpentSeek — samodzielnie hostowana brama wyszukiwania dla Open WebUI, MCP i 40+ API
+# 🐍 SerpentSeek — samodzielnie hostowana brama wyszukiwania dla Open WebUI, MCP i 41+ API
 
 [English](README.md "Read in English") | [Русский](README.ru.md "README по-русски") | **Polski** | [Deutsch](README.de.md "Auf Deutsch lesen") | [Français](README.fr.md "Lire en français") | [日本語](README.ja.md "日本語で読む") | [中文](README.zh.md "阅读中文版")
 
@@ -11,7 +11,7 @@
 wyszukiwania** — ujednolicone API wyszukiwania w sieci (proxy metasearch)
 napisane w Go, z wielojęzycznym panelem administracyjnym, stworzone dla
 **Open WebUI**. Każde zapytanie przechodzi przez konfigurowalne łańcuchy
-**40 wbudowanych dostawców** (SearXNG, Brave, Google Vertex AI Search /
+**41 wbudowanych dostawców** (SearXNG, Brave, Google Vertex AI Search /
 Grounding, Yandex, SerpApi, Serper, DataForSEO, Exa, Tavily, Kagi, Perplexity
 i inne), budowane w wizualnym edytorze węzłów i krawędzi. W zestawie: historia
 zapytań z podglądem na żywo (SSE), klucze API i passkeys (WebAuthn), **narzędzie
@@ -24,7 +24,7 @@ licencje komponentów: `THIRD_PARTY_LICENSES.md`. Wersje: [CHANGELOG.md](CHANGEL
 
 ## Najważniejsze funkcje
 
-* 🔎 **Jeden endpoint dla 40 dostawców** — web/SERP, AI/neural, akademickie i
+* 🔎 **Jeden endpoint dla 41 dostawców** — web/SERP, AI/neural, akademickie i
   korporacyjne
 * 🧩 **Wizualny edytor łańcuchów** — graf z blokami **Start** (rozgałęzienie),
   providerami i blokiem **Join** (scalanie + deduplikacja URL-i)

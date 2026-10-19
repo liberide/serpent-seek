@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-10-19
+
+### Added
+- **DeepSeek Search provider** (`deepseek_search`): calls DeepSeek's in-house
+  search engine through `POST /v1/tools/search` with the regular DeepSeek API
+  key. The model-oriented `summary` is used as the result snippet, the optional
+  `need_content` flag returns the full page text, and `ori_question` /
+  `localization` are passed through. `count` is capped at 50; `408`, `429` and
+  `5xx` responses are retryable while `400`, `401`, `402`, `403` and `404` are
+  permanent. The built-in provider count is now **41**.
+- DeepSeek Search is documented in all localized README provider tables
+  (English, Russian, German, French, Japanese and Chinese).
+
+### Changed
+- Project version is now **1.1.2**.
+
 ## [1.1.1] - 2026-10-11
 
 ### Added

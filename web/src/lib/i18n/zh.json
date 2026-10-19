@@ -446,7 +446,7 @@
 			"unofficialHint": "更新来自自定义（非官方）的发行源。"
 		},
 		"about": {
-			"tagline": "面向 Open WebUI、MCP 和 40+ 搜索 API 的自托管搜索网关",
+			"tagline": "面向 Open WebUI、MCP 和 41+ 搜索 API 的自托管搜索网关",
 			"build": "构建",
 			"runtime": "系统",
 			"updates": "更新",

@@ -177,6 +177,7 @@ func NewRegistry(client *HTTPClient) *Registry {
 	r.add(anthropicProvider{http: client})
 	r.add(kimiProvider{http: client})
 	r.add(kimiProProvider{http: client})
+	r.add(deepseekProvider{http: client})
 	for _, p := range newRestRegistry(client) {
 		r.add(p)
 	}

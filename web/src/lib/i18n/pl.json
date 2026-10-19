@@ -446,7 +446,7 @@
 			"unofficialHint": "Aktualizacje sprawdzane są w nieoficjalnym źródle."
 		},
 		"about": {
-			"tagline": "Samodzielnie hostowana brama wyszukiwania dla Open WebUI, MCP i 40+ API",
+			"tagline": "Samodzielnie hostowana brama wyszukiwania dla Open WebUI, MCP i 41+ API",
 			"build": "Kompilacja",
 			"runtime": "System",
 			"updates": "Aktualizacje",

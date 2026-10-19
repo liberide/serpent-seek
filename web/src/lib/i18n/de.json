@@ -446,7 +446,7 @@
 			"unofficialHint": "Updates werden über eine benutzerdefinierte (nicht offizielle) Quelle geprüft."
 		},
 		"about": {
-			"tagline": "Selbst gehostetes Such-Gateway für Open WebUI, MCP und 40+ Such-APIs",
+			"tagline": "Selbst gehostetes Such-Gateway für Open WebUI, MCP und 41+ Such-APIs",
 			"build": "Build",
 			"runtime": "System",
 			"updates": "Updates",

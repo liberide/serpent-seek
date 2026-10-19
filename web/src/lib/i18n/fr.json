@@ -446,7 +446,7 @@
 			"unofficialHint": "Les mises à jour sont vérifiées via un flux non officiel."
 		},
 		"about": {
-			"tagline": "Passerelle de recherche auto-hébergée pour Open WebUI, MCP et 40+ API de recherche",
+			"tagline": "Passerelle de recherche auto-hébergée pour Open WebUI, MCP et 41+ API de recherche",
 			"build": "Build",
 			"runtime": "Système",
 			"updates": "Mises à jour",

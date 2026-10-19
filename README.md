@@ -1,4 +1,4 @@
-# 🐍 SerpentSeek — self-hosted search gateway for Open WebUI, MCP & 40+ search APIs
+# 🐍 SerpentSeek — self-hosted search gateway for Open WebUI, MCP & 41+ search APIs
 
 **English** | [Русский](README.ru.md "README по-русски") | [Polski](README.pl.md "Czytaj po polsku") | [Deutsch](README.de.md "Auf Deutsch lesen") | [Français](README.fr.md "Lire en français") | [日本語](README.ja.md "日本語で読む") | [中文](README.zh.md "阅读中文版")
 
@@ -7,12 +7,12 @@
 [![CI](https://github.com/liberide/serpent-seek/actions/workflows/ci.yml/badge.svg)](https://github.com/liberide/serpent-seek/actions/workflows/ci.yml "CI: build, vet, tests")
 [![Docker — single container](https://img.shields.io/badge/docker-single_container-2496ED?logo=docker&logoColor=white)](Dockerfile "Ships as a single Docker container")
 [![OpenAPI 3.1](https://img.shields.io/badge/API-OpenAPI_3.1-6BA539)](api/openapi.yaml "OpenAPI 3.1 specification")
-[![40 search providers](https://img.shields.io/badge/built--in_search_providers-40-orange)](#providers "40 built-in search provider drivers")
+[![41 search providers](https://img.shields.io/badge/built--in_search_providers-41-orange)](#providers "41 built-in search provider drivers")
 
 **SerpentSeek** is an open-source, **self-hosted search gateway** — a unified
 web-search API (metasearch proxy) written in Go with a multilingual web admin
 UI built for **Open WebUI**. Every query runs through configurable chains of
-**40 built-in search providers** (SearXNG, Brave, Google Vertex AI Search /
+**41 built-in search providers** (SearXNG, Brave, Google Vertex AI Search /
 Grounding, Yandex, SerpApi, Serper, DataForSEO, Exa, Tavily, Kagi, Perplexity
 and more), designed in a visual node-and-edge editor. Built in: request history
 with live tracing (SSE), API keys and Passkeys (WebAuthn), an **MCP search
@@ -34,7 +34,7 @@ liable for such charges or any other material damage (GPLv3 §§15–16, details
 
 ## Key features
 
-* 🔎 **One endpoint for 40 search providers** — web/SERP (SearXNG, Brave,
+* 🔎 **One endpoint for 41 search providers** — web/SERP (SearXNG, Brave,
   Google, Yandex, SerpApi…), AI/neural (Exa, Tavily, Perplexity, Kagi…),
   academic (OpenAlex, PubMed, Crossref, Semantic Scholar…) and enterprise
   (Azure AI Search, Vertex AI Search, Vectara…)
@@ -218,6 +218,7 @@ Full list of built-in search drivers. Credentials are write-only and set per ins
 | `kagi` | Kagi | `api_key` | FastGPT / Search API |
 | `kimi_search` | Kimi (Moonshot) Web Search | `api_key` | title/url/snippet; `include_content` fetches page text |
 | `kimi_search_pro` | Kimi (Moonshot) Web Search Pro | `api_key` | ranked content chunks; `sites`/`time_window` filters |
+| `deepseek_search` | DeepSeek Search | `api_key` | in-house search engine; `need_content` returns the full page text |
 
 ### Academic & developer
 
@@ -554,4 +555,4 @@ docs/
 
 ---
 
-<sub>**Keywords:** self-hosted search gateway, unified search API, metasearch proxy, meta search engine, Open WebUI web search, Open WebUI search backend, SearXNG JSON API, MCP server search tool, Model Context Protocol web search, LLM web search API, RAG search backend, Brave Search API, Google Vertex AI Search, Grounding with Google Search, Yandex Search API, SerpApi, Serper, DataForSEO, Exa, Tavily, Kagi, Perplexity Search API, search provider fallback chain, search aggregator, OpenAPI 3.1, Go microservice, single Docker container.</sub>
+<sub>**Keywords:** self-hosted search gateway, unified search API, metasearch proxy, meta search engine, Open WebUI web search, Open WebUI search backend, SearXNG JSON API, MCP server search tool, Model Context Protocol web search, LLM web search API, RAG search backend, Brave Search API, Google Vertex AI Search, Grounding with Google Search, Yandex Search API, SerpApi, Serper, DataForSEO, Exa, Tavily, Kagi, Perplexity Search API, DeepSeek Search API, search provider fallback chain, search aggregator, OpenAPI 3.1, Go microservice, single Docker container.</sub>
