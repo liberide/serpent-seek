@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 )
 
 // serpbaseProvider queries serpbase.dev via POST /google/search.
@@ -129,6 +130,21 @@ func (p serpbaseProvider) Search(ctx context.Context, q Query, c Credentials, pa
 
 // serpbaseResolveMaxLinks is the upstream limit of one /google/resolve call.
 const serpbaseResolveMaxLinks = 50
+
+// serpbaseResolveSearchTimeout covers both the search and the resolver call.
+// SerpBase documents that resolving links can take about 25 seconds and uses
+// a 60-second timeout in its official cURL example.
+const serpbaseResolveSearchTimeout = 60 * time.Second
+
+// MinimumSearchTimeout prevents the engine's 15/20-second defaults from
+// cancelling the resolver before it can answer. A longer configured timeout
+// still takes precedence in the engine.
+func (p serpbaseProvider) MinimumSearchTimeout(params Params) time.Duration {
+	if serpbaseResolveEnabled(params) {
+		return serpbaseResolveSearchTimeout
+	}
+	return 0
+}
 
 // serpbaseResolveEnabled reports whether link resolution is enabled. Default: true.
 func serpbaseResolveEnabled(params Params) bool {

@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.4] - 2026-11-08
+
+### Fixed
+- **SerpBase Google link resolution**: the optional `/google/resolve` call can
+  take about 25 seconds, but the 15-second provider-test timeout and the
+  20-second default node timeout cancelled it and silently returned the
+  original `google.com/goto` or `/url` wrappers. With `resolve_google_links`
+  enabled, the engine now allows up to 60 seconds for the combined search and
+  resolve flow. Longer configured timeouts are preserved; disabling the option
+  keeps the previous timeout behaviour.
+
 ## [1.1.3] - 2026-11-03
 
 ### Added
