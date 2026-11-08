@@ -1,0 +1,79 @@
+# Default values for serpentseek.
+
+image:
+  repository: serpentseek
+  tag: "" # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Rate limiting and SSE tracing are per-replica; use sticky sessions for >1.
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: seek.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources: {}
+  # limits:
+  #   cpu: 500m
+  #   memory: 256Mi
+  # requests:
+  #   cpu: 50m
+  #   memory: 64Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+podAnnotations: {}
+podSecurityContext: {}
+securityContext: {}
+
+# SQLite persistence; disable when using external PostgreSQL.
+persistence:
+  enabled: true
+  storageClass: ""
+  accessModes: ["ReadWriteOnce"]
+  size: 2Gi
+
+# External PostgreSQL instead of the SQLite volume.
+externalDatabase:
+  enabled: false
+  # Secret containing a `url` key with the PostgreSQL DSN.
+  urlSecretName: ""
+  urlSecretKey: "url"
+
+# Non-secret environment variables.
+env: {}
+  # LOG_LEVEL: info
+  # AUTH_ENABLED: "true"
+
+# Secret environment variables; stored in a generated Secret.
+envSecrets: {}
+  # ENCRYPTION_KEY: 64-char-hex-or-base64-32-bytes
+
+metrics:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}
+    annotations: {}
+    # Bearer token for METRICS_AUTH_TOKEN; references an existing Secret.
+    bearerTokenSecret:
+      name: ""
+      key: "token"

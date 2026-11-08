@@ -119,9 +119,9 @@ func (m *Metrics) record(byKey map[string]*agg, key string, ms int) {
 // not have to cope with missing series.
 var searchStatuses = []string{"ok", "empty", "fail"}
 
-// Render writes the metrics in the Prometheus text exposition format
-// (version 0.0.4). sseClients is the current SSE subscriber count.
-func (m *Metrics) Render(w io.Writer, sseClients int) error {
+// Render writes metrics in the Prometheus text exposition format. sseClients
+// is the current SSE subscriber count; sseDropped is the cumulative dropped events.
+func (m *Metrics) Render(w io.Writer, sseClients int, sseDropped int64) error {
 	search, providers := m.snapshot()
 	quota := m.snapshotQuota()
 
@@ -135,6 +135,9 @@ func (m *Metrics) Render(w io.Writer, sseClients int) error {
 
 	header(bw, "serpentseek_sse_clients", "Connected SSE subscribers.", "gauge")
 	fmt.Fprintf(bw, "serpentseek_sse_clients %d\n", sseClients)
+
+	header(bw, "serpentseek_sse_dropped_events_total", "SSE events skipped for slow subscribers (they replay via Last-Event-ID).", "counter")
+	fmt.Fprintf(bw, "serpentseek_sse_dropped_events_total %d\n", sseDropped)
 
 	header(bw, "serpentseek_search_requests_total", "Completed search requests by final status.", "counter")
 	var searchCount, searchSum int64

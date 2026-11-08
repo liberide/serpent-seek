@@ -195,7 +195,7 @@ beim ersten Start über `GOOGLE_*` aus der Umgebung befüllt).
 | Code | Zweck | Anmeldedaten | Hinweise |
 | --- | --- | --- | --- |
 | `apiserpent` | apiserpent.com quick search | `api_key` | Engine-Rotation google/bing/yahoo/ddg/brave |
-| `serpbase` | serpbase.dev | `api_key` | konfigurierbare Fatal-/Retry-Tabellen |
+| `serpbase` | serpbase.dev | `api_key` | konfigurierbare Fatal-/Retry-Tabellen; optionaler Google-`/goto`- und `/url`-Link-Resolver (standardmäßig aktiv) |
 | `searxng` | SearXNG — **externe Instanz** | `api_key` (optional, Gate-Token) | URL in UI/`SEARXNG_URL`; benötigt `format=json` und `limiter: false` |
 | `yandex` | Yandex Search API v2 (Yandex Cloud) | `api_key`, `folder_id` | `/v2/web/search`, Base64-XML in `rawData` |
 | `google_vertex` | Gemini Grounding / Vertex AI Search | `api_key`, `project_id`, `engine_id` | primärer Google-Pfad; Env `GOOGLE_API_KEY`, `GOOGLE_MODEL`, `GOOGLE_DRIVER` |

@@ -4,6 +4,7 @@ package sse
 import (
 	"encoding/json"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -29,6 +30,8 @@ type Hub struct {
 	maxBuf  int
 	maxKeys int
 	closed  bool
+	// dropped counts events skipped for slow subscribers.
+	dropped atomic.Int64
 }
 
 // NewHub builds a hub with bounded replay buffers.
@@ -107,6 +110,7 @@ func (h *Hub) Publish(key, eventType string, data any) {
 		select {
 		case s.ch <- ev:
 		default:
+			h.dropped.Add(1)
 		}
 	}
 }
@@ -137,3 +141,6 @@ func (h *Hub) Clients() int {
 	}
 	return n
 }
+
+// Dropped returns the number of events skipped for slow subscribers.
+func (h *Hub) Dropped() int64 { return h.dropped.Load() }

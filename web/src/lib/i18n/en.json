@@ -248,7 +248,9 @@
 		"results": "Res.",
 		"client": "Client",
 		"nothingFound": "Nothing found",
-		"date": "Date"
+		"date": "Date",
+		"exportCsv": "Export CSV",
+		"exportJsonl": "Export JSONL"
 	},
 	"request": {
 		"backHistory": "← Back to history",
@@ -338,7 +340,15 @@
 		"proxyNone": "Direct (no proxy)",
 		"proxyHint": "Route this provider’s requests through the selected proxy. Manage proxies in Settings → Proxy.",
 		"costPerRequest": "Cost per request",
-		"costPerRequestHint": "Optional cost of one call to this provider, in any unit (USD, credits…). Leave empty to not count it."
+		"costPerRequestHint": "Optional cost of one call to this provider, in any unit (USD, credits…). Leave empty to not count it.",
+		"on": "On",
+		"off": "Off",
+		"param": {
+			"resolve_google_links": {
+				"label": "Resolve Google links",
+				"hint": "Unwrap google.com/goto and /url result links via SerpBase /google/resolve (free, up to 50 links per search)."
+			}
+		}
 	},
 	"deadReason": {
 		"providerDisabled": "Provider is disabled",

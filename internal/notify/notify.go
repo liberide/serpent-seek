@@ -21,6 +21,12 @@ type Logger interface {
 // minInterval throttles repeated notifications for the same target.
 const minInterval = time.Minute
 
+// sweepThreshold is the map size at which stale throttle entries are pruned.
+const (
+	sweepThreshold = 1024
+	pruneAfter     = 10 * minInterval
+)
+
 var (
 	mu     sync.Mutex
 	last   = map[string]time.Time{}
@@ -42,6 +48,7 @@ func Emit(ctx context.Context, url, event string, data map[string]any, log Logge
 	key := url + "|" + event + "|" + target(data)
 	now := time.Now()
 	mu.Lock()
+	pruneLast(now)
 	if t, ok := last[key]; ok && now.Sub(t) < minInterval {
 		mu.Unlock()
 		return
@@ -78,6 +85,19 @@ func Emit(ctx context.Context, url, event string, data map[string]any, log Logge
 	_, _ = io.Copy(io.Discard, resp.Body)
 	if resp.StatusCode >= 300 {
 		warn(log, "webhook returned "+resp.Status)
+	}
+}
+
+// pruneLast removes throttle entries older than pruneAfter. Callers hold mu.
+func pruneLast(now time.Time) {
+	if len(last) <= sweepThreshold {
+		return
+	}
+	cutoff := now.Add(-pruneAfter)
+	for k, t := range last {
+		if t.Before(cutoff) {
+			delete(last, k)
+		}
 	}
 }
 

@@ -112,9 +112,8 @@
 		selected = row;
 		detail = null;
 		goto(`/analytics/users?user=${encodeURIComponent(row.user_id)}`, {
-			replaceState: true,
-			noScroll: true,
-			keepFocus: true
+			replace: true,
+			reset: false
 		});
 		loadDetail();
 	}
@@ -123,7 +122,7 @@
 		selectedId = '';
 		selected = null;
 		detail = null;
-		goto('/analytics/users', { replaceState: true, noScroll: true, keepFocus: true });
+		goto('/analytics/users', { replace: true, reset: false });
 	}
 
 	onMount(() => {

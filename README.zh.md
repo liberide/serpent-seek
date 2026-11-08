@@ -169,7 +169,7 @@ npx mcp-remote http://<host>:8080/mcp --header "Authorization=Bearer seek_ak_...
 | 代码 | 用途 | 凭据 | 说明 |
 | --- | --- | --- | --- |
 | `apiserpent` | apiserpent.com 快速搜索 | `api_key` | 引擎轮换 google/bing/yahoo/ddg/brave |
-| `serpbase` | serpbase.dev | `api_key` | 可配置的 fatal/retry 状态码表 |
+| `serpbase` | serpbase.dev | `api_key` | 可配置的 fatal/retry 状态码表；可选的 Google `/goto` 和 `/url` 链接解析（默认开启） |
 | `searxng` | SearXNG — **外部实例** | `api_key`（可选，网关令牌） | URL 在 UI/`SEARXNG_URL` 设置；需要 `format=json` 和 `limiter: false` |
 | `yandex` | Yandex Search API v2（Yandex Cloud） | `api_key`, `folder_id` | `/v2/web/search`，`rawData` 中的 base64 XML |
 | `google_vertex` | Gemini Grounding with Google Search / Vertex AI Search | `api_key`, `project_id`, `engine_id` | Google 主路径；env `GOOGLE_API_KEY`, `GOOGLE_MODEL`, `GOOGLE_DRIVER` |

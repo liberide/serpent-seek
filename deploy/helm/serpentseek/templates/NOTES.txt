@@ -1,0 +1,25 @@
+SerpentSeek has been deployed.
+
+1. Get the application URL:
+
+{{- if .Values.ingress.enabled }}
+{{- range $host := .Values.ingress.hosts }}
+   http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ (index $host.paths 0).path | default "/" }}
+{{- end }}
+{{- else if contains "NodePort" .Values.service.type }}
+   export NODE_PORT=$(kubectl get -n {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "serpentseek.fullname" . }})
+   export NODE_IP=$(kubectl get nodes -o jsonpath="{.items[0].status.addresses[0].address}")
+   echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+   kubectl get -n {{ .Release.Namespace }} svc {{ include "serpentseek.fullname" . }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+{{- else }}
+   kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "serpentseek.fullname" . }} {{ .Values.service.port }}:8080
+   echo http://127.0.0.1:{{ .Values.service.port }}
+{{- end }}
+
+2. First run: the one-time SETUP_TOKEN is printed to the pod log:
+
+   kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }} | grep SETUP_TOKEN
+
+3. ENCRYPTION_KEY rotation and multi-replica caveats are documented in the
+   deployment guide.

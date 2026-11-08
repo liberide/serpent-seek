@@ -2,10 +2,12 @@ package httpd
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"io/fs"
 	"net/http"
 	_ "net/http/pprof"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -151,6 +153,7 @@ func (s *Server) Routes() http.Handler {
 			r.Group(func(r chi.Router) {
 				r.Use(s.mw.RequireScope("read"))
 				r.Get("/requests", s.handleListRequests)
+				r.Get("/requests/export", s.handleExportRequests)
 				r.Get("/requests/{id}", s.handleGetRequest)
 				r.Get("/requests/{id}/events", s.handleRequestEvents)
 				r.Get("/stats/summary", s.handleStatsSummary)
@@ -351,21 +354,74 @@ func (s *Server) handleOpenAPI(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(api.OpenAPISpec)
 }
 
-// handleMetrics serves Prometheus text-format metrics. It is intentionally
-// public (like /healthz) and exposes only aggregate counters, never query text.
+// handleMetrics serves Prometheus text-format metrics. The endpoint is public
+// by default and exposes only aggregate counters.
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+	if !s.metricsGuard(w, r) {
+		return
+	}
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	if s.engine == nil || s.engine.Metrics() == nil {
 		_, _ = w.Write([]byte("# serpentseek metrics unavailable\n"))
 		return
 	}
 	clients := 0
+	var dropped int64
 	if s.hub != nil {
 		clients = s.hub.Clients()
+		dropped = s.hub.Dropped()
 	}
-	if err := s.engine.Metrics().Render(w, clients); err != nil {
+	if err := s.engine.Metrics().Render(w, clients, dropped); err != nil {
 		s.log.Warn("", "", "metrics render failed: "+err.Error())
 	}
+}
+
+// metricsGuard enforces the optional Bearer token and CIDR allowlist for
+// /metrics. Both settings are empty by default.
+func (s *Server) metricsGuard(w http.ResponseWriter, r *http.Request) bool {
+	ctx := r.Context()
+	if token := s.settings.GetString(ctx, config.KeyMetricsAuthToken); token != "" {
+		hdr := r.Header.Get("Authorization")
+		presented := strings.TrimPrefix(hdr, "Bearer ")
+		if presented == hdr || subtle.ConstantTimeCompare([]byte(presented), []byte(token)) != 1 {
+			w.Header().Set("WWW-Authenticate", `Bearer realm="metrics"`)
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return false
+		}
+	}
+	if cidrs := s.settings.GetCSV(ctx, config.KeyMetricsAllowedCIDRs); len(cidrs) > 0 {
+		if !ipAllowed(s.clientIP.ClientIP(r), cidrs) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return false
+		}
+	}
+	return true
+}
+
+// ipAllowed reports whether ip is covered by any entry in cidrs. Bare IPs are
+// treated as /32 or /128 prefixes; malformed entries are ignored.
+func ipAllowed(ip string, cidrs []string) bool {
+	addr, err := netip.ParseAddr(ip)
+	if err != nil {
+		return false
+	}
+	// Match IPv4-mapped IPv6 addresses against IPv4 prefixes.
+	addr = addr.Unmap()
+	for _, entry := range cidrs {
+		prefix, err := netip.ParsePrefix(entry)
+		if err != nil {
+			if single, aerr := netip.ParseAddr(entry); aerr == nil {
+				if single.Unmap() == addr {
+					return true
+				}
+			}
+			continue
+		}
+		if prefix.Contains(addr) {
+			return true
+		}
+	}
+	return false
 }
 
 // handleSPA serves the embedded SvelteKit bundle with an index.html fallback.

@@ -1,7 +1,7 @@
 # Deploying SerpentSeek from Docker Hub
 
 Prebuilt image: [`sallend/serpent-seek`](https://hub.docker.com/r/sallend/serpent-seek)
-(`latest` tracks the newest version tag; fixed tags like `1.1.2` and `1.1` are available too).
+(`latest` tracks the newest version tag; fixed tags like `1.1.3` and `1.1` are available too).
 
 ## Requirements
 
@@ -90,6 +90,20 @@ volumes:
   serpentseek_pg: {}
 ```
 
+## Option — Kubernetes (Helm)
+
+A chart ships in `deploy/helm/serpentseek` (Deployment + Service + PVC for
+SQLite, or external PostgreSQL, optional Ingress and ServiceMonitor):
+
+```sh
+helm install seek ./deploy/helm/serpentseek \
+  --set envSecrets.ENCRYPTION_KEY=<64-char-hex-or-base64>
+```
+
+Details and values: [deploy/helm/serpentseek/README.md](deploy/helm/serpentseek/README.md).
+A ready-made Grafana dashboard for Prometheus metrics lives in
+[`deploy/grafana/`](deploy/grafana/).
+
 ## Option — HTTPS + Passkeys (WebAuthn)
 
 Passkeys require HTTPS and a domain. Put a reverse proxy (nginx / Caddy /
@@ -132,16 +146,57 @@ volume and survives image updates.
 ## Build metadata (version / commit / date)
 
 The running version is shown in the UI footer and at `GET /version`, e.g.
-`1.1.2 (d412056, 2026-10-19T12:00:00Z)`. How it gets baked into the image:
+`1.1.3 (abcdef0, 2026-11-03T12:00:00Z)`. How it gets baked into the image:
 
 * `make up` / `make up-extdb` / `make image` pass `APP_VERSION`, `APP_COMMIT`
   and `APP_BUILD_DATE` automatically (from `VERSION`, `git rev-parse` and the
   current UTC time).
-* A plain `docker compose up --build` uses `1.1.2` with `dev`/`unknown` metadata
+* A plain `docker compose up --build` uses `1.1.3` with `dev`/`unknown` metadata
   (the git history is not part of the Docker build context). Override it with
   `APP_VERSION=... APP_COMMIT=... APP_BUILD_DATE=... docker compose up --build`.
 * Official images built by the release workflow (`.github/workflows/docker.yml`)
   are always stamped from the tag and commit.
+
+## Rotating ENCRYPTION_KEY
+
+Secrets stored at rest (provider credentials, proxy passwords, settings marked
+secret) are encrypted with `ENCRYPTION_KEY`. To change the key — or to encrypt
+an existing plaintext install — stop the service first, then run:
+
+```sh
+docker run --rm -v serpentseek-data:/app/data \
+  -e ENCRYPTION_KEY=<old-key> -e ENCRYPTION_KEY_NEW=<new-key> \
+  serpentseek:<version> rotate-key
+```
+
+* `ENCRYPTION_KEY_NEW` may be empty: the stored values are then decrypted to
+  plaintext (at-rest encryption disabled).
+* Rotation refuses to touch data when the old key does not match (it aborts
+  before writing anything).
+* Start the service again with `ENCRYPTION_KEY=<new-key>` (or unset). Never run
+  `rotate-key` against a live instance: the running process keeps its start-up
+  key in memory.
+
+## Horizontal scaling caveats
+
+The `extdb` profile (PostgreSQL) makes the database shareable across replicas,
+but some state is deliberately in-process. Running more than one replica today
+means:
+
+* **Rate limiting** (`SEARCH_RATE_LIMIT_PER_MINUTE`, the login limiter) is
+  per-replica: N replicas allow roughly N× the configured rate. The **daily
+  quota** (`SEARCH_DAILY_QUOTA`, per-user quotas) is stored in the database and
+  is accurate across replicas.
+* **SSE live tracing** (History timeline) is served by the replica that executes
+  the request; clients must receive `/events` from that same replica (sticky
+  sessions, or accept the replay buffer starting empty on another replica).
+* **The provider circuit breaker** cools down per-replica: a tripped provider
+  may still be skipped on one replica and tried on another.
+* **Sessions, passkeys, API keys and the audit log** are database-backed and
+  fully consistent.
+
+For strictly consistent multi-replica behaviour, front the deployment with
+sticky sessions. The rate limiter remains per-replica.
 
 ## More configuration
 

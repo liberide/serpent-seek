@@ -152,6 +152,9 @@ type Storage interface {
 	ListSteps(ctx context.Context, requestID string) ([]*RequestStep, error)
 	ClearHistory(ctx context.Context) (int64, error)
 	DeleteOldRequests(ctx context.Context, before string) (int64, error)
+	// FailStaleRunningRequests marks requests and steps left running before
+	// cutoff as failed. Returns the number of reconciled requests.
+	FailStaleRunningRequests(ctx context.Context, cutoff, reason string) (int64, error)
 
 	// Logs
 	AddLog(ctx context.Context, e *LogEntry) error

@@ -248,7 +248,9 @@
 		"results": "Rés.",
 		"client": "Client",
 		"nothingFound": "Rien trouvé",
-		"date": "Date"
+		"date": "Date",
+		"exportCsv": "Exporter en CSV",
+		"exportJsonl": "Exporter en JSONL"
 	},
 	"request": {
 		"backHistory": "← Retour à l'historique",
@@ -338,7 +340,15 @@
 		"proxyNone": "Direct (sans proxy)",
 		"proxyHint": "Router les requêtes de ce fournisseur via le proxy sélectionné. Gérez les proxys dans Paramètres → Proxy.",
 		"costPerRequest": "Coût par requête",
-		"costPerRequestHint": "Coût facultatif d'un appel à ce fournisseur, en unité libre (USD, crédits…). Laisser vide pour ne pas compter."
+		"costPerRequestHint": "Coût facultatif d'un appel à ce fournisseur, en unité libre (USD, crédits…). Laisser vide pour ne pas compter.",
+		"on": "Activé",
+		"off": "Désactivé",
+		"param": {
+			"resolve_google_links": {
+				"label": "Résoudre les liens Google",
+				"hint": "Développer les liens de résultat google.com/goto et /url via SerpBase /google/resolve (gratuit, jusqu’à 50 liens par recherche)."
+			}
+		}
 	},
 	"deadReason": {
 		"providerDisabled": "Le fournisseur est désactivé",

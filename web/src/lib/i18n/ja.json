@@ -248,7 +248,9 @@
 		"results": "結果",
 		"client": "クライアント",
 		"nothingFound": "何も見つかりません",
-		"date": "日付"
+		"date": "日付",
+		"exportCsv": "CSVをエクスポート",
+		"exportJsonl": "JSONLをエクスポート"
 	},
 	"request": {
 		"backHistory": "← 履歴に戻る",
@@ -338,7 +340,15 @@
 		"proxyNone": "直接（プロキシなし）",
 		"proxyHint": "このプロバイダーのリクエストを選択したプロキシ経由でルーティングします。プロキシは設定 → プロキシで管理します。",
 		"costPerRequest": "リクエストあたりのコスト",
-		"costPerRequestHint": "このプロバイダーへの1回の呼び出しの任意のコスト（USD、クレジットなど任意の単位）。空のままにするとカウントしません。"
+		"costPerRequestHint": "このプロバイダーへの1回の呼び出しの任意のコスト（USD、クレジットなど任意の単位）。空のままにするとカウントしません。",
+		"on": "オン",
+		"off": "オフ",
+		"param": {
+			"resolve_google_links": {
+				"label": "Google リンクを展開",
+				"hint": "SerpBase /google/resolve で google.com/goto と /url の検索結果リンクを展開します（無料、検索あたり最大 50 リンク）。"
+			}
+		}
 	},
 	"deadReason": {
 		"providerDisabled": "プロバイダーが無効です",

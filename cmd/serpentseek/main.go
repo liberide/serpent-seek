@@ -35,6 +35,9 @@ func main() {
 }
 
 func run() error {
+	if len(os.Args) > 1 && os.Args[1] == "rotate-key" {
+		return rotateKey(context.Background(), os.Stdout)
+	}
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -80,6 +83,12 @@ func run() error {
 	defer func() { _ = st.Close() }()
 	if err := st.Migrate(ctx); err != nil {
 		return fmt.Errorf("migrations: %w", err)
+	}
+	// Reconcile requests left running by a previous process.
+	if n, rerr := st.FailStaleRunningRequests(ctx, time.Now().UTC().Format(time.RFC3339Nano), "interrupted by service restart"); rerr != nil {
+		log.Warn("", "", "stale running requests reconciliation failed: "+rerr.Error())
+	} else if n > 0 {
+		log.Info("", "", fmt.Sprintf("marked %d stale running request(s) as failed (restart)", n))
 	}
 
 	// Persist log lines to the in-DB log viewer asynchronously.

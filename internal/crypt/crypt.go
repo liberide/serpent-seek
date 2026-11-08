@@ -18,6 +18,10 @@ import (
 // prefix marks an encrypted value and its scheme version.
 const prefix = "enc:v1:"
 
+// EncryptedPrefix marks encrypted values; key rotation uses it to detect
+// values that could not be decrypted.
+const EncryptedPrefix = prefix
+
 // Cipher encrypts and decrypts short secret strings.
 type Cipher struct {
 	aead cipher.AEAD

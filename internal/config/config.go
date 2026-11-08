@@ -93,6 +93,8 @@ type Config struct {
 	DefaultProviderCooldown    int
 	DefaultDebug               bool
 	DefaultDeveloperMode       bool
+	DefaultMetricsAuthToken    string
+	DefaultMetricsAllowedCIDRs string
 
 	// envSet records which keys came from the environment.
 	envSet map[string]bool
@@ -150,6 +152,10 @@ const (
 	KeyProviderCooldown = "provider_cooldown_seconds"
 	// KeyDebug enables the pprof debug endpoints under /debug/pprof.
 	KeyDebug = "debug"
+	// KeyMetricsAuthToken protects GET /metrics with a Bearer token when set.
+	KeyMetricsAuthToken = "metrics_auth_token"
+	// KeyMetricsAllowedCIDRs is a comma-separated IP/CIDR allowlist for GET /metrics.
+	KeyMetricsAllowedCIDRs = "metrics_allowed_cidrs"
 	// KeyDeveloperMode enables developer mode: admins may mint dedicated
 	// developer tokens (seek_dev_…) that carry full administrative scope for
 	// third-party/programmatic integrations. When disabled every developer
@@ -216,6 +222,8 @@ var envBindings = []SettingDef{
 	{Key: KeyProviderFailures, Env: "PROVIDER_FAILURE_THRESHOLD", Type: "int", Default: "0", Group: "network"},
 	{Key: KeyProviderCooldown, Env: "PROVIDER_COOLDOWN_SECONDS", Type: "int", Default: "60", Group: "network"},
 	{Key: KeyDebug, Env: "DEBUG", Type: "bool", Default: "false", Group: "general"},
+	{Key: KeyMetricsAuthToken, Env: "METRICS_AUTH_TOKEN", Type: "secret", Default: "", Group: "general", Secret: true},
+	{Key: KeyMetricsAllowedCIDRs, Env: "METRICS_ALLOWED_CIDRS", Type: "csv", Default: "", Group: "general"},
 	{Key: KeyDeveloperMode, Env: "DEVELOPER_MODE", Type: "bool", Default: "false", Group: "auth", Hidden: true},
 	{Key: KeyUpdateCheck, Env: "UPDATE_CHECK_ENABLED", Type: "bool", Default: "true", Group: "general"},
 	{Key: KeyUpdateCheckURL, Env: "UPDATE_CHECK_URL", Type: "string", Default: DefaultUpdateCheckURL, Group: "general", EnvOnly: true},
@@ -290,6 +298,8 @@ func Load() (*Config, error) {
 	c.DefaultProviderFailures = envInt("PROVIDER_FAILURE_THRESHOLD", 0)
 	c.DefaultProviderCooldown = envInt("PROVIDER_COOLDOWN_SECONDS", 60)
 	c.DefaultDebug = envBool("DEBUG", false)
+	c.DefaultMetricsAuthToken = envStr("METRICS_AUTH_TOKEN", "")
+	c.DefaultMetricsAllowedCIDRs = envStr("METRICS_ALLOWED_CIDRS", "")
 	c.DefaultDeveloperMode = envBool("DEVELOPER_MODE", false)
 	c.DefaultUpdateCheck = envBool("UPDATE_CHECK_ENABLED", true)
 	c.DefaultUpdateCheckURL = envStr("UPDATE_CHECK_URL", DefaultUpdateCheckURL)
@@ -425,6 +435,10 @@ func defaultResolved(cfg *Config, key string) string {
 		return strconv.Itoa(cfg.DefaultProviderCooldown)
 	case KeyDebug:
 		return strconv.FormatBool(cfg.DefaultDebug)
+	case KeyMetricsAuthToken:
+		return cfg.DefaultMetricsAuthToken
+	case KeyMetricsAllowedCIDRs:
+		return cfg.DefaultMetricsAllowedCIDRs
 	case KeyDeveloperMode:
 		return strconv.FormatBool(cfg.DefaultDeveloperMode)
 	case KeyUpdateCheck:

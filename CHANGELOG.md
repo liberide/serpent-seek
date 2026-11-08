@@ -4,6 +4,74 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2026-11-03
+
+### Added
+- **Restart reconciliation**: requests (and their steps) left in the
+  `running` state by a crashed/killed process are marked `failed` with the
+  "interrupted by service restart" reason at boot — History no longer shows
+  eternally running entries. New storage method `FailStaleRunningRequests`
+  (SQLite + PostgreSQL).
+- **Kubernetes Helm chart** (`deploy/helm/serpentseek`): Deployment + Service +
+  PVC for SQLite or external PostgreSQL, optional Ingress and ServiceMonitor;
+  `helm lint`/`template`-validated.
+- **Grafana dashboard** (`deploy/grafana/dashboard.json`) covering every
+  exported metric, importable via the Prometheus datasource variable.
+- **OpenTelemetry spans in the engine**: a chain-level `engine.run` span (
+  rid/chain/mode attributes, query text deliberately excluded) and one
+  `provider.attempt` span per provider try (provider/node/step/attempt, rows,
+  HTTP status, error status). No-op unless an OTLP endpoint is configured.
+- **History export**: `GET /api/requests/export?format=jsonl|csv` streams the
+  filtered history (keyset-paginated, 100k-row cap) with the list endpoint's
+  scoping rules; export buttons on the History page (all 7 locales).
+- **Optional `/metrics` protection**: `METRICS_AUTH_TOKEN` (Bearer token) and
+  `METRICS_ALLOWED_CIDRS` (client IP/CIDR allowlist) lock down the Prometheus
+  endpoint; both empty keeps it public as before. Wrong token answers 401 with
+  a `WWW-Authenticate` challenge.
+- **`serpentseek rotate-key`**: re-encrypts secrets at rest (settings, provider
+  credentials, proxy passwords) from `ENCRYPTION_KEY` to `ENCRYPTION_KEY_NEW`
+  (an empty new key disables at-rest encryption). The command aborts before
+  writing anything when the old key does not match.
+- New Prometheus counter `serpentseek_sse_dropped_events_total` — SSE events
+  skipped for slow subscribers (they replay via `Last-Event-ID` on reconnect).
+- `.env.example` documents `SQLITE_PATH` and `IGNORE_REQUEST_COUNT`; a config
+  unit test now fails CI when a supported variable is missing from the example.
+
+### Changed
+- **Dependency security sweep** (govulncheck + npm audit):
+  - Go toolchain baseline moved to **1.26.9** (13 stdlib advisories in
+    `net/http`, `html/template`, `crypto/tls`, `crypto/x509`, `os`,
+    `net/textproto` no longer apply to built binaries; govulncheck reports
+    "No vulnerabilities found").
+  - `golang.org/x/crypto` v0.57.0 → v0.58.0, `golang.org/x/net` v0.60.0 →
+    v0.62.0, plus `chi` 5.5.0, `pgx` 5.12.0, `goose` 3.29.0,
+    `go-webauthn` 0.18.2, `modernc.org/sqlite` 1.61.1 and their minor
+    transitive bumps.
+  - Web stack upgraded to **SvelteKit 3** (`@sveltejs/kit` 3.1.1,
+    `adapter-static` 4.0.1, `vite-plugin-svelte` 7.3.1, TypeScript 6):
+    config moved from `svelte.config.js` into the Vite plugin, `$lib` kept via
+    the official alias escape hatch, `goto()` options migrated
+    (`replaceState/noScroll/keepFocus` → `replace/reset`). Vite 8.3.5 fixes
+    three high dev-server advisories.
+- The asynchronous playground search (`/api/search/ui`) no longer hard-caps at
+  10 minutes: a configured `CHAIN_TIMEOUT` above 10 minutes is honored.
+- CI total coverage floor raised from 50% to 58%.
+
+### Fixed
+- `notify`: the per-target webhook throttle map grew unbounded over long
+  uptimes (one entry per exhausted-quota user); stale entries are now pruned
+  once the map exceeds 1024 keys.
+- Metrics allowlist: IPv4-mapped IPv6 client addresses (`::ffff:a.b.c.d`) now
+  match IPv4 CIDR entries in `metrics_allowed_cidrs` (dual-stack sockets).
+
+### Tests
+- Smoke tests for `cmd/serpentseek` (`seed()` bootstrap + `rotate-key`).
+- Handler tests for the `/metrics` guard; hub test for the dropped-event counter.
+- Critical auth branch tests: revoked key, developer token gated by mode on/off,
+  expired session, key of a disabled user.
+- Web unit tests for the REST client (`api.ts`): CSRF header, error envelope,
+  401 redirect, raw mode.
+
 ## [1.1.2] - 2026-10-19
 
 ### Added

@@ -68,6 +68,20 @@ func TestPostgresCRUD(t *testing.T) {
 		t.Fatalf("ListAudit: total=%d items=%d err=%v", total, len(items), err)
 	}
 
+	// Stale running reconciliation.
+	staleID := uuid.NewString()
+	if err := st.CreateRequest(ctx, &store.Request{
+		ID: staleID, RID: "pgstale" + uuid.NewString()[:6], Query: "q", Status: "running", CreatedAt: "2000-01-01T00:00:00Z",
+	}); err != nil {
+		t.Fatalf("CreateRequest stale: %v", err)
+	}
+	if n, err := st.FailStaleRunningRequests(ctx, time.Now().UTC().Format(time.RFC3339Nano), "test restart"); err != nil || n < 1 {
+		t.Fatalf("FailStaleRunningRequests: n=%d err=%v", n, err)
+	}
+	if got, err := st.GetRequest(ctx, staleID); err != nil || got.Status != "fail" || got.Error != "test restart" {
+		t.Fatalf("stale request after reconcile: %+v %v", got, err)
+	}
+
 	// Cleanup paths used by the maintenance job.
 	if _, err := st.DeleteOldUsage(ctx, "2000-01-01"); err != nil {
 		t.Fatalf("DeleteOldUsage: %v", err)

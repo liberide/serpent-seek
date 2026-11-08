@@ -14,7 +14,7 @@ func TestRenderExposition(t *testing.T) {
 	m.RecordProvider(`a"b\c`, "fail", 2000)
 
 	var b strings.Builder
-	if err := m.Render(&b, 3); err != nil {
+	if err := m.Render(&b, 3, 7); err != nil {
 		t.Fatalf("Render: %v", err)
 	}
 	out := b.String()
@@ -24,6 +24,7 @@ func TestRenderExposition(t *testing.T) {
 		"# TYPE serpentseek_active_requests gauge",
 		"serpentseek_active_requests 1",
 		"serpentseek_sse_clients 3",
+		"serpentseek_sse_dropped_events_total 7",
 		`serpentseek_search_requests_total{status="ok"} 1`,
 		`serpentseek_search_requests_total{status="empty"} 1`,
 		`serpentseek_search_requests_total{status="fail"} 0`,
@@ -46,7 +47,7 @@ func TestRenderExposition(t *testing.T) {
 
 func TestEmptyRenderHasCoreSeries(t *testing.T) {
 	var b strings.Builder
-	if err := New().Render(&b, 0); err != nil {
+	if err := New().Render(&b, 0, 0); err != nil {
 		t.Fatalf("Render: %v", err)
 	}
 	out := b.String()

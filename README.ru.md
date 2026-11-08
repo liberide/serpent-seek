@@ -181,7 +181,7 @@ npx mcp-remote http://<host>:8080/mcp --header "Authorization=Bearer seek_ak_...
 | Код | Назначение | Креды | Заметки |
 | --- | --- | --- | --- |
 | `apiserpent` | apiserpent.com quick search | `api_key` | ротация движков google/bing/yahoo/ddg/brave |
-| `serpbase` | serpbase.dev | `api_key` | настраиваемая таблица fatal/retry |
+| `serpbase` | serpbase.dev | `api_key` | настраиваемая таблица fatal/retry; опциональный резолвер Google-ссылок `/goto` и `/url` (включён по умолчанию) |
 | `searxng` | SearXNG — **внешний инстанс** | `api_key` (опц., токен гейта) | URL в UI/`SEARXNG_URL`; нужен `format=json` и `limiter: false` |
 | `yandex` | Yandex Search API v2 (Yandex Cloud) | `api_key`, `folder_id` | `/v2/web/search`, base64-XML в `rawData` |
 | `google_vertex` | Gemini Grounding / Vertex AI Search | `api_key`, `project_id`, `engine_id` | основной путь Google; env `GOOGLE_API_KEY`, `GOOGLE_MODEL`, `GOOGLE_DRIVER` |

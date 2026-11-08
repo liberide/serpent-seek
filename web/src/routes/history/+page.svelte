@@ -57,6 +57,15 @@
 		load('');
 	}
 
+	/** Builds the export URL for active filters. */
+	function exportHref(format: 'csv' | 'jsonl'): string {
+		const params = new URLSearchParams({ format });
+		if (status) params.set('status', status);
+		if (provider) params.set('provider', provider);
+		if (query) params.set('q', query);
+		return `/api/requests/export?${params}`;
+	}
+
 	function nextPage() {
 		if (!nextCursor) return;
 		cursors = [...cursors, nextCursor];
@@ -95,7 +104,11 @@
 <div class="space-y-4">
 	<div class="flex flex-wrap items-center justify-between gap-2">
 		<h1 class="text-xl font-semibold">{t('history.title')}</h1>
-		<button class="btn" onclick={() => load()}>{t('common.refresh')}</button>
+		<div class="flex flex-wrap items-center gap-2">
+			<a class="btn" href={exportHref('csv')} download>{t('history.exportCsv')}</a>
+			<a class="btn" href={exportHref('jsonl')} download>{t('history.exportJsonl')}</a>
+			<button class="btn" onclick={() => load()}>{t('common.refresh')}</button>
+		</div>
 	</div>
 
 	<div class="card grid grid-cols-1 gap-3 md:grid-cols-4">
