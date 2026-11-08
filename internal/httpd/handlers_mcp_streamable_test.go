@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -32,8 +33,8 @@ func TestMCPStreamableRealServer(t *testing.T) {
 	}
 
 	events := make(chan string, 8)
-	go func() {
-		sc := bufio.NewScanner(resp.Body)
+	go func(body io.ReadCloser) {
+		sc := bufio.NewScanner(body)
 		var data strings.Builder
 		for sc.Scan() {
 			line := sc.Text()
@@ -44,7 +45,7 @@ func TestMCPStreamableRealServer(t *testing.T) {
 				data.Reset()
 			}
 		}
-	}()
+	}(resp.Body)
 
 	// 2) POST tools/call bound to the session.
 	payload := map[string]any{
