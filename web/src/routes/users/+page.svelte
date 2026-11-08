@@ -248,40 +248,42 @@
 		<button class="btn" onclick={load}>{t('common.refresh')}</button>
 	</div>
 
-	<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
+	<div class="grid grid-cols-1 gap-4">
 		<div class="card">
 			<h2 class="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">{t('users.users')}</h2>
-			<table class="table">
-				<thead><tr><th>{t('common.name')}</th><th>{t('users.role')}</th><th>{t('users.quota')}</th><th>{t('common.status')}</th><th></th></tr></thead>
-				<tbody>
-					{#each users as user (user.id)}
-						<tr>
-							<td>{user.name}</td>
-							<td>{user.role}</td>
-							<td>
-								<button
-									class="badge border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700"
-									title={t('users.quotaEdit')}
-									onclick={() => openQuotaModal(user)}
-								>
-									{#if user.quota && user.quota.requests}
-										🚦 {quotaLabel(user)}
-									{:else}
-										<span class="text-slate-400">∞ {t('users.quotaUnlimited')}</span>
-									{/if}
-								</button>
-							</td>
-							<td>{user.disabled ? t('users.disabled') : t('users.enabled')}</td>
-							<td class="flex gap-1">
-								<button class="btn px-2 py-0.5 text-xs" onclick={() => toggle(user)}>
-									{user.disabled ? t('users.enable') : t('users.disable')}
-								</button>
-								<button class="btn btn-danger px-2 py-0.5 text-xs" onclick={() => removeUser(user)}>✕</button>
-							</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
+			<div class="overflow-x-auto">
+				<table class="table">
+					<thead><tr><th>{t('common.name')}</th><th>{t('users.role')}</th><th>{t('users.quota')}</th><th>{t('common.status')}</th><th></th></tr></thead>
+					<tbody>
+						{#each users as user (user.id)}
+							<tr>
+								<td>{user.name}</td>
+								<td>{user.role}</td>
+								<td>
+									<button
+										class="badge border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700"
+										title={t('users.quotaEdit')}
+										onclick={() => openQuotaModal(user)}
+									>
+										{#if user.quota && user.quota.requests}
+											🚦 {quotaLabel(user)}
+										{:else}
+											<span class="text-slate-400">∞ {t('users.quotaUnlimited')}</span>
+										{/if}
+									</button>
+								</td>
+								<td>{user.disabled ? t('users.disabled') : t('users.enabled')}</td>
+								<td class="flex gap-1">
+									<button class="btn px-2 py-0.5 text-xs" onclick={() => toggle(user)}>
+										{user.disabled ? t('users.enable') : t('users.disable')}
+									</button>
+									<button class="btn btn-danger px-2 py-0.5 text-xs" onclick={() => removeUser(user)}>✕</button>
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
 			<div class="mt-3 flex flex-wrap items-end gap-2">
 				<div class="flex-1">
 					<span class="label">{t('common.name')}</span>
@@ -299,44 +301,46 @@
 		</div>
 
 		<div class="card">
-			<div class="mb-3 flex items-center justify-between">
+			<div class="mb-3 flex flex-wrap items-center justify-between gap-2">
 				<h2 class="text-sm font-semibold uppercase tracking-wide text-slate-400">{t('users.apiKeys')}</h2>
-				<button class="btn text-xs" onclick={openKeyModal}>{t('users.addKey')}</button>
+				<button class="btn shrink-0 text-xs" onclick={openKeyModal}>{t('users.addKey')}</button>
 			</div>
-			<table class="table">
-				<thead><tr><th>{t('users.prefix')}</th><th>{t('common.name')}</th><th>{t('users.scopes')}</th><th>{t('users.chain')}</th><th>{t('users.used')}</th><th>{t('users.usedToday')}</th><th></th></tr></thead>
-				<tbody>
-					{#each keys as key (key.id)}
-						<tr class={key.revoked_at ? 'opacity-40' : ''}>
-							<td class="font-mono text-xs">{key.prefix}</td>
-							<td class="text-xs">{key.name}</td>
-							<td class="text-xs">{key.scopes}</td>
-							<td class="text-xs">
-								{#if key.revoked_at}
-									<span class="text-slate-500">{chainName(key.chain_id)}</span>
-								{:else}
-									<button
-										class="badge border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700"
-										title={chainMissing(key) ? t('users.chainMissing') : t('users.changeChain')}
-										onclick={() => openChainModal(key)}
-									>
-										{#if chainMissing(key)}⚠ {t('users.unknownChain')}
-										{:else if key.chain_id}🔗 {chainName(key.chain_id)}
-										{:else}<span class="text-slate-400">{t('users.activeChain')}</span>{/if}
-									</button>
-								{/if}
-							</td>
-							<td class="text-xs">{key.last_used_at ? dateTime(key.last_used_at) : '—'}</td>
-							<td class="text-xs">{key.used_today ?? 0}</td>
-							<td>
-								{#if !key.revoked_at}
-									<button class="btn btn-danger px-2 py-0.5 text-xs" onclick={() => revoke(key)}>{t('users.revoke')}</button>
-								{/if}
-							</td>
-						</tr>
-					{/each}
-				</tbody>
-			</table>
+			<div class="overflow-x-auto">
+				<table class="table">
+					<thead><tr><th>{t('users.prefix')}</th><th>{t('common.name')}</th><th>{t('users.scopes')}</th><th>{t('users.chain')}</th><th>{t('users.used')}</th><th>{t('users.usedToday')}</th><th></th></tr></thead>
+					<tbody>
+						{#each keys as key (key.id)}
+							<tr class={key.revoked_at ? 'opacity-40' : ''}>
+								<td class="font-mono text-xs">{key.prefix}</td>
+								<td class="text-xs">{key.name}</td>
+								<td class="text-xs">{key.scopes}</td>
+								<td class="text-xs">
+									{#if key.revoked_at}
+										<span class="text-slate-500">{chainName(key.chain_id)}</span>
+									{:else}
+										<button
+											class="badge border border-slate-700 bg-slate-800 text-slate-200 hover:bg-slate-700"
+											title={chainMissing(key) ? t('users.chainMissing') : t('users.changeChain')}
+											onclick={() => openChainModal(key)}
+										>
+											{#if chainMissing(key)}⚠ {t('users.unknownChain')}
+											{:else if key.chain_id}🔗 {chainName(key.chain_id)}
+											{:else}<span class="text-slate-400">{t('users.activeChain')}</span>{/if}
+										</button>
+									{/if}
+								</td>
+								<td class="text-xs">{key.last_used_at ? dateTime(key.last_used_at) : '—'}</td>
+								<td class="text-xs">{key.used_today ?? 0}</td>
+								<td>
+									{#if !key.revoked_at}
+										<button class="btn btn-danger px-2 py-0.5 text-xs" onclick={() => revoke(key)}>{t('users.revoke')}</button>
+									{/if}
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
 		</div>
 	</div>
 
