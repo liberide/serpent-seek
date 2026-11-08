@@ -1221,6 +1221,28 @@ func (s *Store) DeleteOldRequests(ctx context.Context, before string) (int64, er
 	return res.RowsAffected()
 }
 
+// FailStaleRunningRequests marks requests and steps left running before cutoff
+// as failed. Returns the number of reconciled requests.
+func (s *Store) FailStaleRunningRequests(ctx context.Context, cutoff, reason string) (int64, error) {
+	if reason == "" {
+		reason = "interrupted by service restart"
+	}
+	res, err := s.exec(ctx,
+		`UPDATE requests SET status = 'fail', error = COALESCE(NULLIF(error, ''), ?)
+		 WHERE status = 'running' AND created_at < ?`, reason, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	// Finalize the steps of reconciled requests as well.
+	if _, err := s.exec(ctx,
+		`UPDATE request_steps SET status = 'fail', error = COALESCE(NULLIF(error, ''), ?)
+		 WHERE status = 'running' AND request_id IN (SELECT id FROM requests WHERE created_at < ? AND status = 'fail' AND error = ?)`,
+		reason, cutoff, reason); err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // --- Logs ---
 
 // AddLog inserts a log line.

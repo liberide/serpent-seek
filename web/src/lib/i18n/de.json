@@ -248,7 +248,9 @@
 		"results": "Erg.",
 		"client": "Client",
 		"nothingFound": "Nichts gefunden",
-		"date": "Datum"
+		"date": "Datum",
+		"exportCsv": "CSV exportieren",
+		"exportJsonl": "JSONL exportieren"
 	},
 	"request": {
 		"backHistory": "← Zum Verlauf",
@@ -338,7 +340,15 @@
 		"proxyNone": "Direkt (kein Proxy)",
 		"proxyHint": "Anfragen dieses Providers über das ausgewählte Proxy leiten. Proxys verwaltest du unter Einstellungen → Proxy.",
 		"costPerRequest": "Kosten pro Anfrage",
-		"costPerRequestHint": "Optionaler Preis eines Aufrufs dieses Providers (USD, Credits …). Leer lassen, um nicht zu zählen."
+		"costPerRequestHint": "Optionaler Preis eines Aufrufs dieses Providers (USD, Credits …). Leer lassen, um nicht zu zählen.",
+		"on": "Ein",
+		"off": "Aus",
+		"param": {
+			"resolve_google_links": {
+				"label": "Google-Links auflösen",
+				"hint": "google.com/goto- und /url-Ergebnislinks über SerpBase /google/resolve auflösen (kostenlos, bis zu 50 Links pro Suche)."
+			}
+		}
 	},
 	"deadReason": {
 		"providerDisabled": "Provider ist deaktiviert",

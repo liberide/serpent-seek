@@ -14,6 +14,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 
 	"github.com/liberide/serpent-seek/internal/config"
 	"github.com/liberide/serpent-seek/internal/logging"
@@ -165,13 +168,23 @@ func (e *Engine) Start(ctx context.Context, in Input) (*store.Request, error) {
 	// race with - those writes.
 	snapshot := *rc.req
 	go func() {
-		runCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		runCtx, cancel := context.WithTimeout(context.Background(), asyncRunCap(e.settings.GetInt(ctx, config.KeyChainTimeout)))
 		defer cancel()
 		if _, err := e.run(runCtx, rc); err != nil {
 			e.log.Error(rc.req.RID, "", "async run failed: "+err.Error())
 		}
 	}()
 	return &snapshot, nil
+}
+
+// asyncRunCap returns the background search timeout: at least ten minutes, or
+// the configured chain timeout when it is longer.
+func asyncRunCap(chainTimeoutSecs int) time.Duration {
+	cap := 10 * time.Minute
+	if ct := time.Duration(chainTimeoutSecs) * time.Second; ct > cap {
+		cap = ct
+	}
+	return cap
 }
 
 func (e *Engine) prepare(ctx context.Context, in Input) (*runContext, error) {
@@ -413,6 +426,16 @@ func (e *Engine) run(ctx context.Context, rc *runContext) (*Output, error) {
 		e.metrics.RequestStarted()
 		defer e.metrics.RequestEnded()
 	}
+	// Chain-level tracing span; no-op without an OTLP exporter. The query text is
+	// intentionally not an attribute.
+	ctx, span := otel.Tracer("serpentseek/engine").Start(ctx, "engine.run")
+	span.SetAttributes(
+		attribute.String("serpent.rid", rc.req.RID),
+		attribute.String("serpent.chain_id", rc.plan.chain.ID),
+		attribute.String("serpent.chain_mode", rc.plan.Mode()),
+		attribute.Int("serpent.requested_count", rc.req.Count),
+	)
+	defer span.End()
 	// Optional hard cap on the whole chain's wall-clock time.
 	if secs := e.settings.GetInt(ctx, config.KeyChainTimeout); secs > 0 {
 		var cancel context.CancelFunc
@@ -610,7 +633,15 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, id
 			Extra: map[string]string{"attempt": strconv.Itoa(attempt)},
 		}
 		stages := &stageCollector{}
-		callCtx, cancel := context.WithTimeout(ctx, timeout)
+		attemptCtx, attemptSpan := otel.Tracer("serpentseek/engine").Start(ctx, "provider.attempt")
+		attemptSpan.SetAttributes(
+			attribute.String("serpent.rid", req.RID),
+			attribute.String("serpent.provider", target.display),
+			attribute.String("serpent.node", node.Key),
+			attribute.Int("serpent.step_idx", idx),
+			attribute.Int("serpent.attempt", attempt),
+		)
+		callCtx, cancel := context.WithTimeout(attemptCtx, timeout)
 		callCtx = providers.WithStepReporter(callCtx, stages)
 		if pc := e.proxyConfig(target.proxy); pc != nil {
 			callCtx = providers.WithProxy(callCtx, pc)
@@ -632,6 +663,14 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, id
 			attemptCost = costPerRequest
 		}
 		result.Provider = target.display
+		attemptSpan.SetAttributes(
+			attribute.Int("serpent.rows", len(result.Rows)),
+			attribute.Int("serpent.http_status", result.HTTPStatus),
+		)
+		if !result.OK {
+			attemptSpan.SetStatus(codes.Error, e.log.Redact(result.Error))
+		}
+		attemptSpan.End()
 		result.Error = e.log.Redact(result.Error)
 		if target.answer && strings.TrimSpace(result.Answer) != "" {
 			rc.answerMu.Lock()
@@ -644,6 +683,9 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, id
 		if target.answer && !sparse {
 			stepRows = nil
 		}
+		// An empty result is a failed attempt when treat_empty_as_fail is set;
+		// the request-level status remains "empty".
+		emptyAsFail := treatEmpty && !target.answer && result.OK && len(result.Rows) == 0
 		if result.HasQuota && result.QuotaMax > 0 && result.QuotaRemaining*10 < result.QuotaMax {
 			e.log.Warn(rc.req.RID, target.display, "provider quota low: remaining="+
 				strconv.Itoa(result.QuotaRemaining)+"/"+strconv.Itoa(result.QuotaMax))
@@ -652,7 +694,7 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, id
 
 		// A failed non-permanent attempt sleeps before the next one; the delay is
 		// the node backoff, raised to the upstream's explicit demand if larger.
-		willSleep := !result.OK && !result.Permanent && attempt+1 < attempts && ws.hasBudget()
+		willSleep := (!result.OK || emptyAsFail) && !result.Permanent && attempt+1 < attempts && ws.hasBudget()
 		delay := time.Duration(0)
 		if willSleep {
 			delay = backoffDelay(node, attempt, true)
@@ -667,6 +709,8 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, id
 			status = "ok"
 		case result.OK && len(stepRows) > 0:
 			status = "ok"
+		case emptyAsFail:
+			status = "fail"
 		case result.OK:
 			status = "empty"
 		}
@@ -698,8 +742,8 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, id
 			HTTP: result.HTTPStatus, Kind: result.Kind, Results: len(stepRows),
 			TookMS: tookMS, Permanent: result.Permanent, Error: result.Error,
 		})
-		e.logStep(req.RID, target.display, node.Key, attempt, result, tookMS)
-		if e.cooldowns.observe(node.ProviderID, result.OK, failureThreshold, cooldown, time.Now()) {
+		e.logStep(req.RID, target.display, node.Key, attempt, result, tookMS, emptyAsFail)
+		if e.cooldowns.observe(node.ProviderID, result.OK && !emptyAsFail, failureThreshold, cooldown, time.Now()) {
 			e.notifyEvent(ctx, "provider_cooldown", map[string]any{
 				"target":      node.ProviderID,
 				"provider_id": node.ProviderID,
@@ -1246,12 +1290,16 @@ func providerMetricStatus(r providers.Result) string {
 	}
 }
 
-func (e *Engine) logStep(rid, code, node string, attempt int, r providers.Result, tookMS int) {
+func (e *Engine) logStep(rid, code, node string, attempt int, r providers.Result, tookMS int, emptyAsFail bool) {
 	if e.metrics != nil {
-		e.metrics.RecordProvider(code, providerMetricStatus(r), tookMS)
+		status := providerMetricStatus(r)
+		if emptyAsFail {
+			status = "fail"
+		}
+		e.metrics.RecordProvider(code, status, tookMS)
 	}
 	level := "info"
-	if !r.OK {
+	if !r.OK || emptyAsFail {
 		level = "warn"
 	}
 	msg := "attempt node=" + node + " attempt=" + strconv.Itoa(attempt+1) +

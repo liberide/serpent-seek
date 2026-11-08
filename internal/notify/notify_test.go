@@ -3,11 +3,13 @@ package notify
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestEmitPostsPayload(t *testing.T) {
@@ -66,5 +68,35 @@ func TestEmitDisabledAndFailure(t *testing.T) {
 	Emit(context.Background(), srv.URL, "provider_cooldown", map[string]any{"target": "p3"}, nil)
 	if got.Load() != 2 {
 		t.Fatalf("expected a second delivery for a new target, got %d", got.Load())
+	}
+}
+
+func TestPruneLast(t *testing.T) {
+	mu.Lock()
+	last = map[string]time.Time{}
+	mu.Unlock()
+	defer func() {
+		mu.Lock()
+		last = map[string]time.Time{}
+		mu.Unlock()
+	}()
+
+	now := time.Now()
+	mu.Lock()
+	// Fresh entries are kept.
+	for i := 0; i < sweepThreshold+10; i++ {
+		last[fmt.Sprintf("fresh-%d", i)] = now
+	}
+	// Stale entries are removed.
+	for i := 0; i < 50; i++ {
+		last[fmt.Sprintf("stale-%d", i)] = now.Add(-pruneAfter - time.Second)
+	}
+	before := len(last)
+	pruneLast(now)
+	after := len(last)
+	mu.Unlock()
+
+	if before <= sweepThreshold || after != sweepThreshold+10 {
+		t.Fatalf("pruneLast: before=%d after=%d, want %d surviving entries", before, after, sweepThreshold+10)
 	}
 }

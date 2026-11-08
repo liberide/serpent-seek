@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "serpentseek.fullname" . }}
+  labels:
+    {{- include "serpentseek.labels" . | nindent 4 }}
+spec:
+  {{- if ne (.Values.replicaCount | int) 1 }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "serpentseek.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "serpentseek.labels" . | nindent 8 }}
+      annotations:
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          image: {{ include "serpentseek.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: DATA_DIR
+              value: /app/data
+            {{- if .Values.externalDatabase.enabled }}
+            - name: STORAGE_DRIVER
+              value: postgres
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "externalDatabase.urlSecretName is required when externalDatabase.enabled=true" .Values.externalDatabase.urlSecretName }}
+                  key: {{ .Values.externalDatabase.urlSecretKey }}
+            {{- end }}
+            {{- range $k, $v := .Values.env }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          {{- if .Values.envSecrets }}
+          envFrom:
+            - secretRef:
+                name: {{ include "serpentseek.envSecretName" . }}
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            {{- if eq (include "serpentseek.usesDataVolume" .) "true" }}
+            - name: data
+              mountPath: /app/data
+            {{- end }}
+      volumes:
+        {{- if eq (include "serpentseek.usesDataVolume" .) "true" }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "serpentseek.pvcName" . }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

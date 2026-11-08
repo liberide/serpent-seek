@@ -145,6 +145,20 @@
 		paramsText = JSON.stringify(paramValues, null, 2);
 	}
 
+	function paramText(key: string, field: 'label' | 'hint', fallback: string): string {
+		const id = `providers.param.${key}.${field}`;
+		const translated = t(id);
+		return translated === id ? fallback : translated;
+	}
+
+	function paramLabel(field: ParamField): string {
+		return paramText(field.key, 'label', field.label);
+	}
+
+	function paramHint(field: ParamField): string {
+		return field.hint ? paramText(field.key, 'hint', field.hint) : '';
+	}
+
 	function openCreate() {
 		creating = true;
 		editing = null;
@@ -484,7 +498,7 @@
 					{#each selectedSchema?.params ?? [] as field (field.key)}
 						{@const current = paramValues[field.key] ?? ''}
 						<div class="mb-2">
-							<span class="label">{field.label}{#if field.required}<span class="text-rose-400"> *</span>{/if}</span>
+							<span class="label">{paramLabel(field)}{#if field.required}<span class="text-rose-400"> *</span>{/if}</span>
 							{#if field.type === 'select'}
 								{@const known = (field.options ?? []).some((o) => o.value === current)}
 								<select
@@ -512,14 +526,14 @@
 										onchange={(e) =>
 											onParamChange(field.key, String((e.currentTarget as HTMLInputElement).checked))}
 									/>
-									{current === 'true' ? 'On' : 'Off'}
+									{current === 'true' ? t('providers.on') : t('providers.off')}
 								</label>
 							{:else if field.type === 'textarea'}
 								<textarea
 									class="input h-20 font-mono text-xs"
 									value={current}
 									required={field.required ?? false}
-									placeholder={field.hint ?? ''}
+									placeholder={paramHint(field)}
 									oninput={(e) => onParamChange(field.key, (e.currentTarget as HTMLTextAreaElement).value)}
 								></textarea>
 							{:else}
@@ -528,12 +542,12 @@
 									class="input"
 									value={current}
 									required={field.required ?? false}
-									placeholder={field.hint ?? ''}
+									placeholder={paramHint(field)}
 									oninput={(e) => onParamChange(field.key, (e.currentTarget as HTMLInputElement).value)}
 								/>
 							{/if}
 							{#if field.hint}
-								<p class="text-[11px] text-slate-500">{field.hint}</p>
+								<p class="text-[11px] text-slate-500">{paramHint(field)}</p>
 							{/if}
 						</div>
 					{/each}

@@ -33,6 +33,10 @@ import (
 const (
 	mcpPreferredVersion = "2025-03-26"
 	mcpServerName       = "serpentseek"
+
+	// mcpJobTimeout bounds a session-bound dispatch detached from the POST
+	// request.
+	mcpJobTimeout = 5 * time.Minute
 )
 
 // mcpSupportedVersions are the protocol revisions this server can speak. The
@@ -249,20 +253,30 @@ func (s *Server) handleMCPPost(w http.ResponseWriter, r *http.Request) {
 
 	sid := mcpSessionID(r)
 	if sid != "" {
-		// Streamable HTTP: deliver the response (or a notification result)
-		// over the SSE stream associated with this session.
+		// Streamable HTTP: deliver the response over the SSE stream
+		// associated with this session.
 		session := s.mcpSessions.get(sid, s.identityUserID(r))
 		if session == nil {
 			writeRPC(w, req.ID, nil, &rpcError{Code: rpcInvalidRequest, Message: "unknown session"})
 			return
 		}
 		if len(req.ID) == 0 {
-			// Notification: process in the background, no response required.
-			go s.dispatchMCP(r, &req)
+			// Notification: acknowledge without a response or tool work.
+			s.dispatchMCPNotification(&req)
 			w.WriteHeader(http.StatusAccepted)
 			return
 		}
-		go s.dispatchAndSend(session, r, &req)
+		// Detach the dispatch from the POST request: the server cancels its
+		// context after the handler returns 202, while a search may run longer.
+		// Context values are preserved; session lifetime and mcpJobTimeout bound
+		// the work.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), mcpJobTimeout)
+		stop := context.AfterFunc(session.ctx, cancel)
+		go func() {
+			defer stop()
+			defer cancel()
+			s.dispatchAndSend(session, r.WithContext(ctx), &req)
+		}()
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
@@ -270,7 +284,7 @@ func (s *Server) handleMCPPost(w http.ResponseWriter, r *http.Request) {
 	// Simple HTTP JSON-RPC 2.0 fallback: notifications are acknowledged
 	// with HTTP 202 and an empty body; requests get a JSON-RPC response body.
 	if len(req.ID) == 0 {
-		go s.dispatchMCP(r, &req)
+		s.dispatchMCPNotification(&req)
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
@@ -283,7 +297,7 @@ func (s *Server) handleMCPPost(w http.ResponseWriter, r *http.Request) {
 }
 
 // dispatchAndSend runs the JSON-RPC method and sends the result to the SSE
-// session. It also handles cancellation notifications for in-flight requests.
+// session.
 func (s *Server) dispatchAndSend(session *mcpSession, r *http.Request, req *rpcRequest) {
 	res, rpcErr := s.dispatchMCP(r, req)
 	if rpcErr != nil {
@@ -307,6 +321,16 @@ func (s *Server) handleMCPDelete(w http.ResponseWriter, r *http.Request) {
 		s.mcpSessions.remove(sid)
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// dispatchMCPNotification accepts client notifications. Notifications have no
+// response, and notifications/cancelled is not wired to request cancellation.
+func (s *Server) dispatchMCPNotification(req *rpcRequest) {
+	switch req.Method {
+	case "notifications/initialized", "notifications/cancelled":
+	default:
+		// Unknown notifications are ignored per JSON-RPC.
+	}
 }
 
 // dispatchMCP routes a request to the matching JSON-RPC method.

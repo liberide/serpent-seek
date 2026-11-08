@@ -2,10 +2,9 @@ services:
   serpentseek:
     build:
       context: .
-      # App version/commit/date baked into the binary. `make up` fills these; a
-      # plain `docker compose up --build` falls back to the 1.1.2 default.
+      # Binary build metadata; make up overrides these values.
       args:
-        TAG: ${APP_VERSION:-1.1.2}
+        TAG: ${APP_VERSION:-1.1.3}
         COMMIT: ${APP_COMMIT:-dev}
         BUILD_DATE: ${APP_BUILD_DATE:-unknown}
     container_name: serpentseek

@@ -62,3 +62,24 @@ func TestHubCloseUnblocks(t *testing.T) {
 	// Publishing after Close is a no-op and must not panic.
 	h.Publish("r", "step", nil)
 }
+
+func TestHubDroppedCounter(t *testing.T) {
+	h := NewHub()
+	// Fill the subscriber buffer; excess events are dropped.
+	_, _, unsub := h.Subscribe("r1", 0)
+	defer unsub()
+
+	const published = 300
+	for i := 0; i < published; i++ {
+		h.Publish("r1", "step", map[string]int{"n": i})
+	}
+	if got, want := h.Dropped(), int64(published-256); got != want {
+		t.Fatalf("Dropped = %d, want %d", got, want)
+	}
+
+	// No subscribers: no drops.
+	h.Publish("unsubscribed", "step", nil)
+	if got := h.Dropped(); got != int64(published-256) {
+		t.Fatalf("Dropped changed for subscriber-less key: %d", got)
+	}
+}

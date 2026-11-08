@@ -199,7 +199,7 @@ seed `google_vertex` lit `GOOGLE_*` depuis l'environnement).
 | Code | Rôle | Identifiants | Remarques |
 | --- | --- | --- | --- |
 | `apiserpent` | apiserpent.com quick search | `api_key` | rotation de moteurs google/bing/yahoo/ddg/brave |
-| `serpbase` | serpbase.dev | `api_key` | tables fatal/retry configurables |
+| `serpbase` | serpbase.dev | `api_key` | tables fatal/retry configurables ; résolveur de liens Google `/goto` et `/url` optionnel (activé par défaut) |
 | `searxng` | SearXNG — **instance externe** | `api_key` (optionnel, jeton de passerelle) | URL dans l'UI/`SEARXNG_URL` ; nécessite `format=json` et `limiter: false` |
 | `yandex` | Yandex Search API v2 (Yandex Cloud) | `api_key`, `folder_id` | `/v2/web/search`, XML base64 dans `rawData` |
 | `google_vertex` | Gemini Grounding with Google Search / Vertex AI Search | `api_key`, `project_id`, `engine_id` | voie Google principale ; env `GOOGLE_API_KEY`, `GOOGLE_MODEL`, `GOOGLE_DRIVER` |

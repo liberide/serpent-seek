@@ -151,7 +151,7 @@ npx mcp-remote http://<host>:8080/mcp --header "Authorization=Bearer seek_ak_...
 | コード | 用途 | 認証情報 | 備考 |
 | --- | --- | --- | --- |
 | `apiserpent` | apiserpent.com クイック検索 | `api_key` | エンジンローテーション google/bing/yahoo/ddg/brave |
-| `serpbase` | serpbase.dev | `api_key` | 致命的/リトライステータステーブルを設定可能 |
+| `serpbase` | serpbase.dev | `api_key` | 致命的/リトライステータステーブルを設定可能。Google `/goto`・`/url` リンクの解決に対応（任意、デフォルト有効） |
 | `searxng` | SearXNG — **外部インスタンス** | `api_key`（任意、ゲートトークン） | URL は UI/`SEARXNG_URL` で設定。`format=json` と `limiter: false` が必要 |
 | `yandex` | Yandex Search API v2（Yandex Cloud） | `api_key`, `folder_id` | `/v2/web/search`、`rawData` 内の base64 XML |
 | `google_vertex` | Google 検索 / Vertex AI Search による Gemini Grounding | `api_key`, `project_id`, `engine_id` | Google の主要パス。env `GOOGLE_API_KEY`、`GOOGLE_MODEL`、`GOOGLE_DRIVER` |

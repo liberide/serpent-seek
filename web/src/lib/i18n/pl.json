@@ -248,7 +248,9 @@
 		"results": "Wyn.",
 		"client": "Klient",
 		"nothingFound": "Nic nie znaleziono",
-		"date": "Data"
+		"date": "Data",
+		"exportCsv": "Eksport CSV",
+		"exportJsonl": "Eksport JSONL"
 	},
 	"request": {
 		"backHistory": "← Do historii",
@@ -338,7 +340,15 @@
 		"proxyNone": "Bezpośrednio (bez proxy)",
 		"proxyHint": "Kieruj żądania tego dostawcy przez wybrane proxy. Proxys konfigurujesz w Ustawienia → Proxy.",
 		"costPerRequest": "Koszt zapytania",
-		"costPerRequestHint": "Opcjonalny koszt jednego wywołania providera w dowolnej jednostce (USD, kredyty…). Puste — nie liczyć."
+		"costPerRequestHint": "Opcjonalny koszt jednego wywołania providera w dowolnej jednostce (USD, kredyty…). Puste — nie liczyć.",
+		"on": "Włączone",
+		"off": "Wyłączone",
+		"param": {
+			"resolve_google_links": {
+				"label": "Rozwijaj linki Google",
+				"hint": "Rozwijaj linki wyników google.com/goto i /url przez SerpBase /google/resolve (bezpłatnie, do 50 linków na wyszukiwanie)."
+			}
+		}
 	},
 	"deadReason": {
 		"providerDisabled": "Dostawca jest wyłączony",

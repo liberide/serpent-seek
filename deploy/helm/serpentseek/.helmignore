@@ -1,0 +1,5 @@
+# Chart packaging ignores.
+.git
+.gitignore
+*.md
+.DS_Store

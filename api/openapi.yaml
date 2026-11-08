@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: SerpentSeek API
-  version: "1.1.2"
+  version: "1.1.3"
   summary: Search gateway microservice — visual provider chains, per-token chain binding and per-endpoint developer tokens, live request tracing, API-key/Passkeys auth, SQLite/PostgreSQL storage.
   description: |
     SerpentSeek is a drop-in replacement for the serpent-shim used by Open WebUI, upgraded to a full
@@ -823,6 +823,44 @@ paths:
                     items: { $ref: "#/components/schemas/RequestSummary" }
                   next_cursor: { type: string, nullable: true }
 
+  /api/requests/export:
+    get:
+      tags: [history]
+      summary: Stream the filtered history as JSON Lines or CSV
+      description: >-
+        Streams request summaries (no steps/results bodies) using keyset
+        pagination. Non-admins only receive their own rows. The stream is
+        truncated at 100000 rows; a truncated response ends without an error
+        marker, so compare the row count with `total` from /api/requests.
+      parameters:
+        - name: format
+          in: query
+          schema: { type: string, enum: [jsonl, csv], default: jsonl }
+        - name: status
+          in: query
+          schema: { $ref: "#/components/schemas/RequestStatus" }
+        - name: provider
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - name: q
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Attachment stream
+          content:
+            application/x-ndjson:
+              schema: { type: string, description: One request summary JSON object per line }
+            text/csv:
+              schema: { type: string, description: CSV with header row }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
   /api/requests/{id}:
     get:
       tags: [history]
@@ -1301,7 +1339,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  version: { type: string, example: 1.1.2 }
+                  version: { type: string, example: 1.1.3 }
                   commit: { type: string, example: d412056 }
                   build_date: { type: string, example: "2026-10-09T21:35:39Z" }
                   go_version: { type: string, example: go1.26.0 }

@@ -57,7 +57,7 @@ liable for such charges or any other material damage (GPLv3 §§15–16, details
   / `X-Serpent-Api` diagnostics headers and a History page
 * 📊 **Prometheus metrics** — `GET /metrics` exposes search outcomes, provider
   attempts/durations, in-flight requests and SSE clients in the text exposition
-  format
+  format (optionally locked down with `METRICS_AUTH_TOKEN` / `METRICS_ALLOWED_CIDRS`)
 * 🔔 **Update notifications** — optional check for a newer release; a badge in
   the sidebar and full details on the **Settings → Info** page
 * 🔐 **Security first** — argon2id-hashed API keys, WebAuthn passkeys,
@@ -186,7 +186,7 @@ Full list of built-in search drivers. Credentials are write-only and set per ins
 | Code | Purpose | Credentials | Notes |
 | --- | --- | --- | --- |
 | `apiserpent` | apiserpent.com quick search | `api_key` | engine rotation google/bing/yahoo/ddg/brave |
-| `serpbase` | serpbase.dev | `api_key` | configurable fatal/retry status tables |
+| `serpbase` | serpbase.dev | `api_key` | configurable fatal/retry status tables; optional Google `/goto` and `/url` link resolver (on by default) |
 | `searxng` | SearXNG — **external instance** | `api_key` (optional, gate token) | URL set in UI/`SEARXNG_URL`; needs `format=json` and `limiter: false` |
 | `yandex` | Yandex Search API v2 (Yandex Cloud) | `api_key`, `folder_id` | `/v2/web/search`, base64 XML in `rawData` |
 | `google_vertex` | Gemini Grounding with Google Search / Vertex AI Search | `api_key`, `project_id`, `engine_id` | primary Google path; env `GOOGLE_API_KEY`, `GOOGLE_MODEL`, `GOOGLE_DRIVER` |

@@ -108,6 +108,9 @@ Poświadczenia są **tylko do zapisu** i ustawiane per instancja na stronie
 **Providers**. SearXNG jest zawsze **zewnętrzną** usługą (własny URL, wymagane
 `format=json` i `limiter: false`).
 
+Provider `serpbase` dodatkowo potrafi rozwijać linki Google `/goto` i `/url`
+(domyślnie włączone; przełączane w ustawieniach instancji).
+
 ## Bloki łańcucha
 
 Trzy rodzaje bloków:
