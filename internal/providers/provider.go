@@ -5,6 +5,7 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"time"
 )
 
 // ParamType describes the UI control for a non-secret provider parameter.
@@ -154,6 +155,13 @@ type Provider interface {
 	Schema() ProviderSchema
 	// Search performs one upstream call and classifies the outcome.
 	Search(ctx context.Context, q Query, c Credentials, p Params) Result
+}
+
+// MinimumTimeoutProvider is implemented by drivers whose optional multi-call
+// flow needs more time than the engine's usual per-node timeout. The engine
+// raises shorter timeouts to this minimum; longer configured timeouts win.
+type MinimumTimeoutProvider interface {
+	MinimumSearchTimeout(params Params) time.Duration
 }
 
 // Registry maps provider codes to implementations.

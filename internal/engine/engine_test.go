@@ -247,6 +247,35 @@ func chainWith(nodes []store.ChainNode, edges []store.ChainEdge) *store.Chain {
 	return &store.Chain{ID: "c1", Name: "test", Active: true, Nodes: nodes, Edges: edges}
 }
 
+func TestProviderSearchTimeout(t *testing.T) {
+	registry := providers.NewRegistry(providers.NewHTTPClient("test-agent"))
+	serpbase, ok := registry.Get("serpbase")
+	if !ok {
+		t.Fatal("SerpBase provider is not registered")
+	}
+	generic := &scriptedProvider{code: "generic"}
+	tests := []struct {
+		name       string
+		provider   providers.Provider
+		params     providers.Params
+		configured time.Duration
+		want       time.Duration
+	}{
+		{name: "resolver enabled by default", provider: serpbase, params: nil, configured: 20 * time.Second, want: 60 * time.Second},
+		{name: "provider test default", provider: serpbase, params: providers.Params{"resolve_google_links": "true"}, configured: 15 * time.Second, want: 60 * time.Second},
+		{name: "longer timeout preserved", provider: serpbase, params: providers.Params{"resolve_google_links": "true"}, configured: 90 * time.Second, want: 90 * time.Second},
+		{name: "resolver disabled", provider: serpbase, params: providers.Params{"resolve_google_links": "false"}, configured: 20 * time.Second, want: 20 * time.Second},
+		{name: "other providers unchanged", provider: generic, params: nil, configured: 20 * time.Second, want: 20 * time.Second},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := providerSearchTimeout(tc.provider, tc.params, tc.configured); got != tc.want {
+				t.Fatalf("providerSearchTimeout() = %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestExecuteSuccessFirstNode(t *testing.T) {
 	provider := &scriptedProvider{code: "p_ok", results: []providers.Result{okResult()}}
 	h := newHarness(t, chainWith([]store.ChainNode{node("a", "p_ok")}, nil), provider)

@@ -121,7 +121,8 @@ func (e *Engine) TestProvider(ctx context.Context, id string) TestResult {
 	}
 	params := e.buildParams(ctx, driver, inst, &store.ChainNode{Params: map[string]string{}})
 	creds := e.buildCredentials(inst)
-	testCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	testTimeout := providerSearchTimeout(provider, params, 15*time.Second)
+	testCtx, cancel := context.WithTimeout(ctx, testTimeout)
 	defer cancel()
 	if inst != nil && inst.ProxyID != "" {
 		if proxy, perr := e.store.GetProxy(ctx, inst.ProxyID); perr == nil {
@@ -612,6 +613,7 @@ func (e *Engine) execNode(ctx context.Context, rc *runContext, ws *walkState, id
 	if timeout <= 0 {
 		timeout = 20 * time.Second
 	}
+	timeout = providerSearchTimeout(target.provider, params, timeout)
 
 	var result providers.Result
 	attempted := false
@@ -1372,6 +1374,18 @@ func (e *Engine) buildParams(ctx context.Context, driver string, inst *store.Pro
 		params[k] = v
 	}
 	return params
+}
+
+// providerSearchTimeout applies a driver's optional minimum search budget.
+// This is needed for multi-stage calls such as SerpBase search + link resolve,
+// whose resolver alone may outlive the standard test/node timeouts.
+func providerSearchTimeout(provider providers.Provider, params providers.Params, configured time.Duration) time.Duration {
+	if p, ok := provider.(providers.MinimumTimeoutProvider); ok {
+		if minimum := p.MinimumSearchTimeout(params); minimum > configured {
+			return minimum
+		}
+	}
+	return configured
 }
 
 // proxyConfig converts a stored proxy into a request-scoped config, or returns
