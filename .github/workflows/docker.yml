@@ -17,8 +17,9 @@ jobs:
     permissions:
       contents: read
     env:
-      # Docker Hub repository. Defaults to <DockerHub-user>/serpent-seek.
-      IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/serpent-seek
+      # Docker Hub repository for tag pushes. Without the secret (PR builds)
+      # fall back to a local image name so metadata tags remain valid.
+      IMAGE: ${{ secrets.DOCKERHUB_USERNAME && format('{0}/serpent-seek', secrets.DOCKERHUB_USERNAME) || 'serpent-seek' }}
       # Publish to Docker Hub strictly on version tag pushes (v*).
       # Pull requests and manual runs build only, never push.
       PUSH_IMAGE: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') }}
